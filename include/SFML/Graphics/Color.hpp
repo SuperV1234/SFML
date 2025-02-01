@@ -68,6 +68,7 @@ struct [[nodiscard]] SFML_GRAPHICS_API Color
     ///
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline, gnu::pure]] constexpr Color withAlpha(base::U8 alpha) const;
+    // TODO P1: withRed, withGreen, withBlue
 
     ////////////////////////////////////////////////////////////
     /// \brief TODO P1: docs
