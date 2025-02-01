@@ -275,7 +275,7 @@ void SoundStream::play(PlaybackDevice& playbackDevice)
 
     if (const ma_result result = ma_sound_start(&m_impl->soundBase->getSound()); result != MA_SUCCESS)
     {
-        priv::MiniaudioUtils::fail("start playing sound", result);
+        priv::MiniaudioUtils::fail("start playing sound stream", result);
         return;
     }
 
@@ -291,7 +291,7 @@ void SoundStream::pause()
 
     if (const ma_result result = ma_sound_stop(&m_impl->soundBase->getSound()); result != MA_SUCCESS)
     {
-        priv::MiniaudioUtils::fail("stop playing sound", result);
+        priv::MiniaudioUtils::fail("stop playing sound stream", result);
         return;
     }
 
@@ -308,7 +308,7 @@ void SoundStream::stop()
 
     if (const ma_result result = ma_sound_stop(&m_impl->soundBase->getSound()); result != MA_SUCCESS)
     {
-        priv::MiniaudioUtils::fail("stop playing sound", result);
+        priv::MiniaudioUtils::fail("stop playing sound stream", result);
         return;
     }
 

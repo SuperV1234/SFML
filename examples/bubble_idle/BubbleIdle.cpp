@@ -1,3 +1,5 @@
+#include "json.hpp"
+
 #include "SFML/ImGui/ImGui.hpp"
 
 #include "SFML/Graphics/CircleShape.hpp"
@@ -35,6 +37,9 @@
 #include "SFML/System/Vector2.hpp"
 
 #include "SFML/Base/Algorithm.hpp"
+#include "SFML/Base/Assert.hpp"
+#include "SFML/Base/Builtins/Assume.hpp"
+#include "SFML/Base/Macros.hpp"
 #include "SFML/Base/Math/Ceil.hpp"
 #include "SFML/Base/Math/Exp.hpp"
 #include "SFML/Base/Math/Sqrt.hpp"
@@ -45,6 +50,7 @@
 
 #include <algorithm>
 #include <array>
+#include <fstream>
 #include <iostream>
 #include <random>
 #include <string>
@@ -56,9 +62,16 @@
 ////////////////////////////////////////////////////////////
 #define BUBBLEBYTE_VERSION_STR "v0.0.3"
 
+namespace sf
+{
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Vector2f, x, y);
+}
 
 namespace
 {
+////////////////////////////////////////////////////////////
+using json = nlohmann::json;
+
 ////////////////////////////////////////////////////////////
 using sf::base::SizeT;
 using sf::base::U64;
@@ -78,27 +91,30 @@ constexpr sf::Vector2f boundaries{1366.f * 10.f, 768.f};
 constexpr sf::Color colorBlueOutline{50, 84, 135};
 
 ////////////////////////////////////////////////////////////
-[[nodiscard]] std::minstd_rand0& getRandomEngine()
+[[nodiscard, gnu::always_inline]] inline std::minstd_rand0& getRandomEngine()
 {
     static std::minstd_rand0 randomEngine(std::random_device{}());
     return randomEngine;
 }
 
 ////////////////////////////////////////////////////////////
-[[nodiscard]] float getRndFloat(const float min, const float max)
+[[nodiscard, gnu::always_inline, gnu::flatten]] inline float getRndFloat(const float min, const float max)
 {
     SFML_BASE_ASSERT(min <= max);
+    SFML_BASE_ASSUME(min <= max);
+
     return std::uniform_real_distribution<float>{min, max}(getRandomEngine());
 }
 
 ////////////////////////////////////////////////////////////
-[[nodiscard]] sf::Vector2f getRndVector2f(const sf::Vector2f mins, const sf::Vector2f maxs)
+[[nodiscard, gnu::always_inline, gnu::flatten]] inline sf::Vector2f getRndVector2f(const sf::Vector2f mins,
+                                                                                   const sf::Vector2f maxs)
 {
     return {getRndFloat(mins.x, maxs.x), getRndFloat(mins.y, maxs.y)};
 }
 
 ////////////////////////////////////////////////////////////
-[[nodiscard]] sf::Vector2f getRndVector2f(const sf::Vector2f maxs)
+[[nodiscard, gnu::always_inline, gnu::flatten]] inline sf::Vector2f getRndVector2f(const sf::Vector2f maxs)
 {
     return getRndVector2f({0.f, 0.f}, maxs);
 }
@@ -127,28 +143,35 @@ constexpr sf::Color colorBlueOutline{50, 84, 135};
 }
 
 ////////////////////////////////////////////////////////////
-[[nodiscard, gnu::const]] constexpr float remap(const float x, const float oldMin, const float oldMax, const float newMin, const float newMax)
+[[nodiscard, gnu::const, gnu::always_inline]] inline constexpr float remap(
+    const float x,
+    const float oldMin,
+    const float oldMax,
+    const float newMin,
+    const float newMax)
 {
     SFML_BASE_ASSERT(oldMax != oldMin);
+    SFML_BASE_ASSUME(oldMax != oldMin);
+
     return newMin + ((x - oldMin) / (oldMax - oldMin)) * (newMax - newMin);
 }
 
 ////////////////////////////////////////////////////////////
-[[nodiscard, gnu::const]] constexpr float exponentialApproach(
+[[nodiscard, gnu::const, gnu::always_inline]] inline constexpr float exponentialApproach(
     const float current,
     const float target,
     const float deltaTimeMs,
     const float speed)
 {
-    if (speed <= 0.f)
-        return target; // Instant snap if time constant is zero or negative
+    SFML_BASE_ASSERT(speed >= 0.f);
+    SFML_BASE_ASSUME(speed >= 0.f);
 
     const float factor = 1.f - sf::base::exp(-deltaTimeMs / speed);
     return current + (target - current) * factor;
 }
 
 ////////////////////////////////////////////////////////////
-[[nodiscard, gnu::const]] constexpr sf::Vector2f exponentialApproach(
+[[nodiscard, gnu::const, gnu::always_inline]] inline constexpr sf::Vector2f exponentialApproach(
     const sf::Vector2f current,
     const sf::Vector2f target,
     const float        deltaTimeMs,
@@ -219,13 +242,13 @@ struct [[nodiscard]] Bubble
     BubbleType type;
 
     ////////////////////////////////////////////////////////////
-    void update(const float deltaTime)
+    [[gnu::always_inline]] inline void update(const float deltaTime)
     {
         position += velocity * deltaTime;
     }
 
     ////////////////////////////////////////////////////////////
-    void applyToSprite(sf::Sprite& sprite) const
+    [[gnu::always_inline]] inline void applyToSprite(sf::Sprite& sprite) const
     {
         sprite.position = position;
         sprite.scale    = {scale, scale};
@@ -258,7 +281,7 @@ struct [[nodiscard]] ParticleData
     float torque;
 
     ////////////////////////////////////////////////////////////
-    void update(const float deltaTime)
+    [[gnu::always_inline]] inline void update(const float deltaTime)
     {
         velocity.y += accelerationY * deltaTime;
         position += velocity * deltaTime;
@@ -269,7 +292,7 @@ struct [[nodiscard]] ParticleData
     }
 
     ////////////////////////////////////////////////////////////
-    void applyToTransformable(auto& transformable) const
+    [[gnu::always_inline]] inline void applyToTransformable(auto& transformable) const
     {
         transformable.position = position;
         transformable.scale    = {scale, scale};
@@ -277,7 +300,7 @@ struct [[nodiscard]] ParticleData
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::pure]] U8 opacityAsAlpha() const
+    [[nodiscard, gnu::pure, gnu::always_inline]] inline U8 opacityAsAlpha() const
     {
         return static_cast<U8>(opacity * 255.f);
     }
@@ -290,13 +313,13 @@ struct [[nodiscard]] Particle
     ParticleType type;
 
     ////////////////////////////////////////////////////////////
-    void update(const float deltaTime)
+    [[gnu::always_inline]] inline void update(const float deltaTime)
     {
         data.update(deltaTime);
     }
 
     ////////////////////////////////////////////////////////////
-    void applyToSprite(sf::Sprite& sprite) const
+    [[gnu::always_inline]] inline void applyToSprite(sf::Sprite& sprite) const
     {
         data.applyToTransformable(sprite);
         sprite.color.a = data.opacityAsAlpha();
@@ -304,7 +327,7 @@ struct [[nodiscard]] Particle
 };
 
 ////////////////////////////////////////////////////////////
-[[nodiscard, gnu::always_inline]] Particle makeParticle(
+[[nodiscard, gnu::always_inline]] inline Particle makeParticle(
     const sf::Vector2f position,
     const ParticleType particleType,
     const float        scaleMult,
@@ -329,13 +352,13 @@ struct [[nodiscard]] TextParticle
     ParticleData data;
 
     ////////////////////////////////////////////////////////////
-    void update(const float deltaTime)
+    [[gnu::always_inline]] inline void update(const float deltaTime)
     {
         data.update(deltaTime);
     }
 
     ////////////////////////////////////////////////////////////
-    void applyToText(sf::Text& text) const
+    [[gnu::always_inline]] inline void applyToText(sf::Text& text) const
     {
         text.setString(buffer); // TODO P1: should find a way to assign directly to text buffer
 
@@ -348,10 +371,10 @@ struct [[nodiscard]] TextParticle
 };
 
 ////////////////////////////////////////////////////////////
-[[nodiscard, gnu::always_inline]] TextParticle makeTextParticle(const float x, const float y, const int combo)
+[[nodiscard, gnu::always_inline]] inline TextParticle makeTextParticle(const sf::Vector2f position, const int combo)
 {
     return {.buffer = {},
-            .data   = {.position      = {x, y - 10.f},
+            .data   = {.position      = {position.x, position.y - 10.f},
                        .velocity      = getRndVector2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
                        .scale         = sf::base::clamp(1.f + 0.1f * static_cast<float>(combo + 1) / 1.75f, 1.f, 3.0f),
                        .accelerationY = 0.0042f,
@@ -369,7 +392,12 @@ enum class [[nodiscard]] CatType : U8
     Devil  = 2u,
     Witch  = 3u,
     Astro  = 4u,
+
+    Count
 };
+
+////////////////////////////////////////////////////////////
+constexpr auto nCatTypes = static_cast<SizeT>(CatType::Count);
 
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] Cat
@@ -390,13 +418,16 @@ struct [[nodiscard]] Cat
     float mainOpacity = 255.f;
     float pawOpacity  = 255.f;
 
+    float inspiredTimer = 0.f;
+
     SizeT nameIdx;
 
     TextShakeEffect textStatusShakeEffect;
 
     int hits = 0;
 
-    struct AstroState
+    ////////////////////////////////////////////////////////////
+    struct [[nodiscard]] AstroState
     {
         float startX;
 
@@ -408,7 +439,7 @@ struct [[nodiscard]] Cat
     sf::base::Optional<AstroState> astroState;
 
     ////////////////////////////////////////////////////////////
-    void update(const float deltaTime)
+    [[gnu::always_inline]] inline void update(const float deltaTime)
     {
         textStatusShakeEffect.update(deltaTime);
 
@@ -418,9 +449,13 @@ struct [[nodiscard]] Cat
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] bool updateCooldown(const float maxCooldown, const float deltaTime)
+    [[nodiscard, gnu::always_inline]] inline bool updateCooldown(const float maxCooldown, const float deltaTime)
     {
-        cooldown += deltaTime;
+        if (inspiredTimer > 0.f)
+            inspiredTimer -= deltaTime;
+
+        const float cooldownSpeed = inspiredTimer > 0.f ? 2.f : 1.f;
+        cooldown += deltaTime * cooldownSpeed;
 
         if (cooldown >= maxCooldown)
         {
@@ -432,20 +467,40 @@ struct [[nodiscard]] Cat
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] float getRadius() const noexcept
+    [[nodiscard, gnu::always_inline]] inline float getRadius() const noexcept
     {
         return 64.f;
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] bool isCloseToBase() const noexcept
+    [[nodiscard, gnu::always_inline]] inline bool isCloseToStartX() const noexcept
     {
         SFML_BASE_ASSERT(type == CatType::Astro);
         SFML_BASE_ASSERT(astroState.hasValue());
 
         return astroState->wrapped && sf::base::fabs(position.x - astroState->startX) < 400.f;
     }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline]] inline bool isAstroAndInFlight() const noexcept
+    {
+        return type == CatType::Astro && astroState.hasValue();
+    }
 };
+
+////////////////////////////////////////////////////////////
+[[nodiscard]] Cat makeCat(const CatType catType, const sf::Vector2f& position, const sf::Vector2f rangeOffset, const SizeT nameIdx)
+{
+    return Cat{.type                  = catType,
+               .position              = position,
+               .rangeOffset           = rangeOffset,
+               .drawPosition          = position,
+               .pawPosition           = position,
+               .pawRotation           = sf::radians(0.f),
+               .nameIdx               = nameIdx,
+               .textStatusShakeEffect = {},
+               .astroState            = {}};
+}
 
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] CollisionResolution
@@ -455,6 +510,18 @@ struct [[nodiscard]] CollisionResolution
     sf::Vector2f iVelocityChange;
     sf::Vector2f jVelocityChange;
 };
+
+////////////////////////////////////////////////////////////
+[[nodiscard]] bool detectCollision(const sf::Vector2f iPosition, const sf::Vector2f jPosition, const float iRadius, const float jRadius)
+{
+    const sf::Vector2f diff        = jPosition - iPosition;
+    const float        squaredDiff = diff.lengthSquared();
+
+    const sf::Vector2f radii{iRadius, jRadius};
+    const float        squaredRadiiSum = radii.lengthSquared();
+
+    return squaredDiff < squaredRadiiSum;
+}
 
 ////////////////////////////////////////////////////////////
 [[nodiscard]] sf::base::Optional<CollisionResolution> handleCollision(
@@ -558,7 +625,7 @@ bool handleCatCollision(const float deltaTimeMs, Cat& iCat, Cat& jCat)
 }
 
 ////////////////////////////////////////////////////////////
-[[nodiscard]] Bubble makeRandomBubble(const float mapLimit, const float maxY)
+[[nodiscard, gnu::always_inline]] inline Bubble makeRandomBubble(const float mapLimit, const float maxY)
 {
     const float scaleFactor = getRndFloat(0.07f, 0.17f) * 0.65f;
 
@@ -582,7 +649,7 @@ struct [[nodiscard]] GrowthFactors
 };
 
 ////////////////////////////////////////////////////////////
-[[nodiscard, gnu::pure]] float computeGrowth(const GrowthFactors& factors, const float n)
+[[nodiscard, gnu::pure, gnu::always_inline]] inline float computeGrowth(const GrowthFactors& factors, const float n)
 {
     return ((factors.initial + n * factors.multiplicative) * std::pow(factors.exponential, n) + factors.linear * n +
             factors.flat) *
@@ -600,25 +667,19 @@ struct [[nodiscard]] PSVData
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] PurchasableScalingValue
 {
-    const PSVData& data;
-    SizeT          nPurchases;
+    const PSVData* data;
+    SizeT          nPurchases = 0u;
 
     ////////////////////////////////////////////////////////////
-    void reset()
+    [[nodiscard, gnu::always_inline]] inline float nextCost() const
     {
-        nPurchases = 0u;
+        return computeGrowth(data->cost, static_cast<float>(nPurchases));
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] float nextCost() const
+    [[nodiscard, gnu::always_inline]] inline float currentValue() const
     {
-        return computeGrowth(data.cost, static_cast<float>(nPurchases));
-    }
-
-    ////////////////////////////////////////////////////////////
-    [[nodiscard]] float currentValue() const
-    {
-        return computeGrowth(data.value, static_cast<float>(nPurchases));
+        return computeGrowth(data->value, static_cast<float>(nPurchases));
     }
 
     ////////////////////////////////////////////////////////////
@@ -633,10 +694,10 @@ struct [[nodiscard]] PurchasableScalingValue
 
         MoneyType cumulative = 0;
 
-        for (SizeT i = nPurchases; i < data.nMaxPurchases; ++i)
+        for (SizeT i = nPurchases; i < data->nMaxPurchases; ++i)
         {
             const auto currentCost = static_cast<MoneyType>(
-                computeGrowth(data.cost, static_cast<float>(i)) * globalMultiplier);
+                computeGrowth(data->cost, static_cast<float>(i)) * globalMultiplier);
 
             // Check if we can afford to buy the next upgrade
             if (cumulative + currentCost > money)
@@ -649,15 +710,15 @@ struct [[nodiscard]] PurchasableScalingValue
 
             // Calculate the cumulative cost for the next potential purchase
             const auto nextCostCandidate = static_cast<MoneyType>(
-                computeGrowth(data.cost, static_cast<float>(i + 1)) * globalMultiplier);
+                computeGrowth(data->cost, static_cast<float>(i + 1)) * globalMultiplier);
             result.nextCost = cumulative + nextCostCandidate;
         }
 
         // Handle edge case: no purchases possible, but next cost exists
-        if (result.times == 0 && nPurchases < data.nMaxPurchases)
+        if (result.times == 0 && nPurchases < data->nMaxPurchases)
         {
             result.nextCost = static_cast<MoneyType>(
-                computeGrowth(data.cost, static_cast<float>(nPurchases)) * globalMultiplier);
+                computeGrowth(data->cost, static_cast<float>(nPurchases)) * globalMultiplier);
         }
 
         return result;
@@ -735,8 +796,8 @@ void drawSplashScreen(sf::RenderWindow& window, const sf::Texture& txLogo, const
 {
     float fade = 255.f;
 
-    if (splashTimer > 1250.f)
-        fade = remap(splashTimer, 1250.f, 1500.f, 255.f, 0.f);
+    if (splashTimer > 1500.f)
+        fade = remap(splashTimer, 1500.f, 1750.f, 255.f, 0.f);
     else if (splashTimer < 255.f)
         fade = splashTimer;
 
@@ -832,104 +893,111 @@ struct GameResources
 };
 
 ////////////////////////////////////////////////////////////
+namespace PSVDataConstants
+{
+
+constexpr PSVData comboStartTime //
+    {.nMaxPurchases = 20u,
+     .cost          = {.initial = 35.f, .linear = 125.f, .exponential = 1.7f},
+     .value         = {.initial = 0.55f, .linear = 0.04f, .exponential = 1.02f}};
+
+constexpr PSVData bubbleCount //
+    {.nMaxPurchases = 30u,
+     .cost          = {.initial = 75.f, .linear = 1500.f, .exponential = 2.5f},
+     .value         = {.initial = 500.f, .linear = 325.f, .exponential = 1.01f}};
+
+constexpr PSVData bubbleValue //
+    {.nMaxPurchases = 19u,
+     .cost          = {.initial = 2500.f, .linear = 2500.f, .exponential = 2.f},
+     .value         = {.initial = 0.f, .linear = 1.f}};
+
+constexpr PSVData explosionRadiusMult //
+    {.nMaxPurchases = 10u, .cost = {.initial = 15000.f, .exponential = 1.5f}, .value = {.initial = 1.f, .linear = 0.1f}};
+
+constexpr PSVData catNormalCooldownMult //
+    {.nMaxPurchases = 12u,
+     .cost          = {.initial = 2000.f, .exponential = 1.68f, .flat = -1500.f},
+     .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
+
+constexpr PSVData catNormalRangeDiv //
+    {.nMaxPurchases = 9u,
+     .cost          = {.initial = 4000.f, .exponential = 1.85f, .flat = -2500.f},
+     .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
+
+constexpr PSVData catUniCooldownMult //
+    {.nMaxPurchases = 12u,
+     .cost          = {.initial = 6000.f, .exponential = 1.68f, .flat = -2500.f},
+     .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
+
+constexpr PSVData catUniRangeDiv //
+    {.nMaxPurchases = 9u,
+     .cost          = {.initial = 4000.f, .exponential = 1.85f, .flat = -2500.f},
+     .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
+
+constexpr PSVData catDevilCooldownMult //
+    {.nMaxPurchases = 12u,
+     .cost          = {.initial = 2000.f, .exponential = 1.68f, .flat = -1500.f},
+     .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
+
+constexpr PSVData catDevilRangeDiv //
+    {.nMaxPurchases = 9u,
+     .cost          = {.initial = 4000.f, .exponential = 1.85f, .flat = -2500.f},
+     .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
+
+// TODO test
+constexpr PSVData catWitchCooldownMult //
+    {.nMaxPurchases = 12u,
+     .cost          = {.initial = 2000.f, .exponential = 1.68f, .flat = -1500.f},
+     .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
+
+// TODO test
+constexpr PSVData catWitchRangeDiv //
+    {.nMaxPurchases = 9u,
+     .cost          = {.initial = 4000.f, .exponential = 1.85f, .flat = -2500.f},
+     .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
+
+// TODO test
+constexpr PSVData catAstroCooldownMult //
+    {.nMaxPurchases = 12u,
+     .cost          = {.initial = 2000.f, .exponential = 1.68f, .flat = -1500.f},
+     .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
+
+// TODO test
+constexpr PSVData catAstroRangeDiv //
+    {.nMaxPurchases = 9u,
+     .cost          = {.initial = 4000.f, .exponential = 1.85f, .flat = -2500.f},
+     .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
+
+constexpr PSVData multiPopRange //
+    {.nMaxPurchases = 24u,
+     .cost = {.initial = 1.0f, .linear = 1.0f, .multiplicative = 0.0f, .exponential = 1.5f, .flat = 0.0f, .finalMult = 1.0f},
+     .value = {.initial = 64.0f, .linear = 8.0f, .multiplicative = 0.0f, .exponential = 1.0f, .flat = 0.0f, .finalMult = 1.0f}};
+
+} // namespace PSVDataConstants
+
+////////////////////////////////////////////////////////////
 struct Game
 {
     //
-    // PSV Data
-    static inline constexpr PSVData psvComboStartTimeData //
-        {.nMaxPurchases = 20u,
-         .cost          = {.initial = 35.f, .linear = 125.f, .exponential = 1.7f},
-         .value         = {.initial = 0.55f, .linear = 0.04f, .exponential = 1.02f}};
-
-    static inline constexpr PSVData psvBubbleCountData //
-        {.nMaxPurchases = 30u,
-         .cost          = {.initial = 75.f, .linear = 1500.f, .exponential = 2.5f},
-         .value         = {.initial = 500.f, .linear = 325.f, .exponential = 1.01f}};
-
-    static inline constexpr PSVData psvBubbleValueData //
-        {.nMaxPurchases = 19u,
-         .cost          = {.initial = 2500.f, .linear = 2500.f, .exponential = 2.f},
-         .value         = {.initial = 0.f, .linear = 1.f}};
-
-    static inline constexpr PSVData psvExplosionRadiusMultData //
-        {.nMaxPurchases = 10u, .cost = {.initial = 15000.f, .exponential = 1.5f}, .value = {.initial = 1.f, .linear = 0.1f}};
-
-    static inline constexpr PSVData psvCatNormalCooldownMultData //
-        {.nMaxPurchases = 12u,
-         .cost          = {.initial = 2000.f, .exponential = 1.68f, .flat = -1500.f},
-         .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
-
-    static inline constexpr PSVData psvCatNormalRangeDivData //
-        {.nMaxPurchases = 9u,
-         .cost          = {.initial = 4000.f, .exponential = 1.85f, .flat = -2500.f},
-         .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
-
-    static inline constexpr PSVData psvCatUniCooldownMultData //
-        {.nMaxPurchases = 12u,
-         .cost          = {.initial = 6000.f, .exponential = 1.68f, .flat = -2500.f},
-         .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
-
-    static inline constexpr PSVData psvCatUniRangeDivData //
-        {.nMaxPurchases = 9u,
-         .cost          = {.initial = 4000.f, .exponential = 1.85f, .flat = -2500.f},
-         .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
-
-    static inline constexpr PSVData psvCatDevilCooldownMultData //
-        {.nMaxPurchases = 12u,
-         .cost          = {.initial = 2000.f, .exponential = 1.68f, .flat = -1500.f},
-         .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
-
-    static inline constexpr PSVData psvCatDevilRangeDivData //
-        {.nMaxPurchases = 9u,
-         .cost          = {.initial = 4000.f, .exponential = 1.85f, .flat = -2500.f},
-         .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
-
-    // TODO test
-    static inline constexpr PSVData psvCatWitchCooldownMultData //
-        {.nMaxPurchases = 12u,
-         .cost          = {.initial = 2000.f, .exponential = 1.68f, .flat = -1500.f},
-         .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
-
-    // TODO test
-    static inline constexpr PSVData psvCatWitchRangeDivData //
-        {.nMaxPurchases = 9u,
-         .cost          = {.initial = 4000.f, .exponential = 1.85f, .flat = -2500.f},
-         .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
-
-    // TODO test
-    static inline constexpr PSVData psvCatAstroCooldownMultData //
-        {.nMaxPurchases = 12u,
-         .cost          = {.initial = 2000.f, .exponential = 1.68f, .flat = -1500.f},
-         .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
-
-    // TODO test
-    static inline constexpr PSVData psvCatAstroRangeDivData //
-        {.nMaxPurchases = 9u,
-         .cost          = {.initial = 4000.f, .exponential = 1.85f, .flat = -2500.f},
-         .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
-
-    static inline constexpr PSVData psvMultiPopRangeData //
-        {.nMaxPurchases = 24u,
-         .cost = {.initial = 1.0f, .linear = 1.0f, .multiplicative = 0.0f, .exponential = 1.5f, .flat = 0.0f, .finalMult = 1.0f},
-         .value = {.initial = 64.0f, .linear = 8.0f, .multiplicative = 0.0f, .exponential = 1.0f, .flat = 0.0f, .finalMult = 1.0f}};
-
-    //
     // PSV instances
-    PurchasableScalingValue psvComboStartTime{.data{psvComboStartTimeData}, .nPurchases = 0u};
-    PurchasableScalingValue psvBubbleCount{.data{psvBubbleCountData}, .nPurchases = 0u};
-    PurchasableScalingValue psvBubbleValue{.data{psvBubbleValueData}, .nPurchases = 0u};
-    PurchasableScalingValue psvExplosionRadiusMult{.data{psvExplosionRadiusMultData}, .nPurchases = 0u};
-    PurchasableScalingValue psvCatNormalCooldownMult{.data{psvCatNormalCooldownMultData}, .nPurchases = 0u};
-    PurchasableScalingValue psvCatNormalRangeDiv{.data{psvCatNormalRangeDivData}, .nPurchases = 0u};
-    PurchasableScalingValue psvCatUniCooldownMult{.data{psvCatUniCooldownMultData}, .nPurchases = 0u};
-    PurchasableScalingValue psvCatUniRangeDiv{.data{psvCatUniRangeDivData}, .nPurchases = 0u};
-    PurchasableScalingValue psvCatDevilCooldownMult{.data{psvCatDevilCooldownMultData}, .nPurchases = 0u};
-    PurchasableScalingValue psvCatDevilRangeDiv{.data{psvCatDevilRangeDivData}, .nPurchases = 0u};
-    PurchasableScalingValue psvCatWitchCooldownMult{.data{psvCatWitchCooldownMultData}, .nPurchases = 0u};
-    PurchasableScalingValue psvCatWitchRangeDiv{.data{psvCatWitchRangeDivData}, .nPurchases = 0u};
-    PurchasableScalingValue psvCatAstroCooldownMult{.data{psvCatAstroCooldownMultData}, .nPurchases = 0u};
-    PurchasableScalingValue psvCatAstroRangeDiv{.data{psvCatAstroRangeDivData}, .nPurchases = 0u};
-    PurchasableScalingValue psvMultiPopRange{.data{psvMultiPopRangeData}, .nPurchases = 0u};
+    PurchasableScalingValue psvComboStartTime{&PSVDataConstants::comboStartTime};
+    PurchasableScalingValue psvBubbleCount{&PSVDataConstants::bubbleCount};
+    PurchasableScalingValue psvBubbleValue{&PSVDataConstants::bubbleValue};
+    PurchasableScalingValue psvExplosionRadiusMult{&PSVDataConstants::explosionRadiusMult};
+
+    PurchasableScalingValue psvCooldownMultsPerCatType[nCatTypes]{{&PSVDataConstants::catNormalCooldownMult},
+                                                                  {&PSVDataConstants::catUniCooldownMult},
+                                                                  {&PSVDataConstants::catDevilCooldownMult},
+                                                                  {&PSVDataConstants::catWitchCooldownMult},
+                                                                  {&PSVDataConstants::catAstroCooldownMult}};
+
+    PurchasableScalingValue psvRangeDivsPerCatType[nCatTypes]{{&PSVDataConstants::catNormalRangeDiv},
+                                                              {&PSVDataConstants::catUniRangeDiv},
+                                                              {&PSVDataConstants::catDevilRangeDiv},
+                                                              {&PSVDataConstants::catWitchRangeDiv},
+                                                              {&PSVDataConstants::catAstroRangeDiv}};
+
+    PurchasableScalingValue psvMultiPopRange{&PSVDataConstants::multiPopRange};
 
     //
     // Currencies
@@ -962,19 +1030,18 @@ struct Game
 
     //
     // Statistics
-    float secondsPlayedTotal            = 0.f;
-    U64   bubblesPoppedTotal            = 0u;
-    U64   bubblesPoppedRevenueTotal     = 0u;
-    U64   bubblesHandPoppedTotal        = 0u;
-    U64   bubblesHandPoppedRevenueTotal = 0u;
-    U64   explosionRevenueTotal         = 0u;
+    struct [[nodiscard]] Stats
+    {
+        float secondsPlayed            = 0.f;
+        U64   bubblesPopped            = 0u;
+        U64   bubblesPoppedRevenue     = 0u;
+        U64   bubblesHandPopped        = 0u;
+        U64   bubblesHandPoppedRevenue = 0u;
+        U64   explosionRevenue         = 0u;
+    };
 
-    float secondsPlayedThisPrestige            = 0.f;
-    U64   bubblesPoppedThisPrestige            = 0u;
-    U64   bubblesPoppedRevenueThisPrestige     = 0u;
-    U64   bubblesHandPoppedThisPrestige        = 0u;
-    U64   bubblesHandPoppedRevenueThisPrestige = 0u;
-    U64   explosionRevenueThisPrestige         = 0u;
+    Stats statsTotal;
+    Stats statsSession;
 
     //
     // Settings
@@ -988,17 +1055,15 @@ struct Game
     ////////////////////////////////////////////////////////////
     void onPrestige(const U64 prestigeCount)
     {
-        psvComboStartTime.reset();
-        psvBubbleCount.reset();
-        psvExplosionRadiusMult.reset();
-        psvCatNormalCooldownMult.reset();
-        psvCatNormalRangeDiv.reset();
-        psvCatUniCooldownMult.reset();
-        psvCatUniRangeDiv.reset();
-        psvCatDevilCooldownMult.reset();
-        psvCatDevilRangeDiv.reset();
-        psvCatWitchCooldownMult.reset();
-        psvCatWitchRangeDiv.reset();
+        psvComboStartTime.nPurchases      = 0u;
+        psvBubbleCount.nPurchases         = 0u;
+        psvExplosionRadiusMult.nPurchases = 0u;
+
+        for (auto& psv : psvCooldownMultsPerCatType)
+            psv.nPurchases = 0u;
+
+        for (auto& psv : psvRangeDivsPerCatType)
+            psv.nPurchases = 0u;
 
         money = 0u;
         prestigePoints += prestigeCount;
@@ -1009,16 +1074,11 @@ struct Game
 
         windEnabled = false;
 
-        secondsPlayedThisPrestige            = 0.f;
-        bubblesPoppedThisPrestige            = 0u;
-        bubblesPoppedRevenueThisPrestige     = 0u;
-        bubblesHandPoppedThisPrestige        = 0u;
-        bubblesHandPoppedRevenueThisPrestige = 0u;
-        explosionRevenueThisPrestige         = 0u;
+        statsSession = {};
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] float getMapLimit() const
+    [[nodiscard, gnu::always_inline]] inline float getMapLimit() const
     {
         return resolution.x * static_cast<float>(mapLimitIncreases + 1u);
     }
@@ -1026,73 +1086,57 @@ struct Game
     ////////////////////////////////////////////////////////////
     [[nodiscard]] constexpr float getBaseCooldownByCatType(const CatType type) const
     {
-        constexpr float result[5]{
+        constexpr float baseCooldowns[nCatTypes]{
             1000.f, // Normal
-            3000.f, // Unicorn
+            3000.f, // Uni
             7000.f, // Devil
             2000.f, // Witch
-            5000.f  // TODO Astro 15000.f
+            5000.f  // Astro
         };
 
-        return result[static_cast<U8>(type)];
+        return baseCooldowns[static_cast<U8>(type)];
     }
 
     ////////////////////////////////////////////////////////////
     [[nodiscard]] constexpr float getBaseRangeByCatType(const CatType type) const
     {
-        constexpr float result[5]{
+        constexpr float baseRanges[nCatTypes]{
             96.f,  // Normal
-            64.f,  // Unicorn
+            64.f,  // Uni
             48.f,  // Devil
             256.f, // Witch
             48.f   // Astro
         };
 
-        return result[static_cast<U8>(type)];
+        return baseRanges[static_cast<U8>(type)];
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] PurchasableScalingValue& getCooldownMultPSVByCatType(const CatType catType)
+    [[nodiscard, gnu::always_inline]] inline PurchasableScalingValue& getCooldownMultPSVByCatType(const CatType catType)
     {
-        PurchasableScalingValue* const psvCooldownMults[5] = {
-            &psvCatNormalCooldownMult, // Normal
-            &psvCatUniCooldownMult,    // Unicorn
-            &psvCatDevilCooldownMult,  // Devil
-            &psvCatWitchCooldownMult,  // Witch
-            &psvCatAstroCooldownMult   // Astro
-        };
-
-        return *psvCooldownMults[static_cast<U8>(catType)];
+        return psvCooldownMultsPerCatType[static_cast<U8>(catType)];
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] PurchasableScalingValue& getRangeDivPSVByCatType(const CatType catType)
+    [[nodiscard, gnu::always_inline]] inline PurchasableScalingValue& getRangeDivPSVByCatType(const CatType catType)
     {
-        PurchasableScalingValue* const psvRangeDivs[5] = {
-            &psvCatNormalRangeDiv, // Normal
-            &psvCatUniRangeDiv,    // Unicorn
-            &psvCatDevilRangeDiv,  // Devil
-            &psvCatWitchRangeDiv,  // Witch
-            &psvCatAstroRangeDiv   // Astro
-        };
-
-        return *psvRangeDivs[static_cast<U8>(catType)];
+        return psvRangeDivsPerCatType[static_cast<U8>(catType)];
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] float getComputedCooldownByCatType(const CatType catType)
+    [[nodiscard, gnu::always_inline]] inline float getComputedCooldownByCatType(const CatType catType)
     {
         return getBaseCooldownByCatType(catType) * getCooldownMultPSVByCatType(catType).currentValue();
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] float getComputedRangeByCatType(const CatType catType)
+    [[nodiscard, gnu::always_inline]] inline float getComputedRangeByCatType(const CatType catType)
     {
         return getBaseRangeByCatType(catType) / getRangeDivPSVByCatType(catType).currentValue();
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] float getComputedBombExplosionRadius() const
+    [[nodiscard, gnu::always_inline]] inline float getComputedBombExplosionRadius() const
     {
         return 200.f * psvExplosionRadiusMult.currentValue();
     }
@@ -1106,7 +1150,7 @@ struct Game
         if (psvMultiPopRange.nPurchases == 1u)
             return 64.f;
 
-        return computeGrowth(psvMultiPopRange.data.value, static_cast<float>(psvMultiPopRange.nPurchases - 1));
+        return computeGrowth(psvMultiPopRange.data->value, static_cast<float>(psvMultiPopRange.nPurchases - 1));
     }
 };
 
@@ -1116,6 +1160,225 @@ enum class ControlFlow
     Continue,
     Break
 };
+
+////////////////////////////////////////////////////////////
+class SpatialGrid
+{
+private:
+    static inline constexpr float gridSize = 64.f;
+    static inline constexpr SizeT nCellsX  = static_cast<SizeT>(boundaries.x / gridSize) + 1;
+    static inline constexpr SizeT nCellsY  = static_cast<SizeT>(boundaries.y / gridSize) + 1;
+
+    [[nodiscard, gnu::always_inline]] inline static constexpr SizeT convert2DTo1D(const SizeT x, const SizeT y, const SizeT width)
+    {
+        return y * width + x;
+    }
+
+    [[nodiscard, gnu::always_inline]] inline constexpr auto computeGridRange(const sf::Vector2f center, const float radius) const
+    {
+        const float minX = center.x - radius;
+        const float minY = center.y - radius;
+        const float maxX = center.x + radius;
+        const float maxY = center.y + radius;
+
+        struct Result
+        {
+            SizeT xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx;
+        };
+
+        return Result{static_cast<SizeT>(sf::base::max(0.f, minX / gridSize)),
+                      static_cast<SizeT>(sf::base::max(0.f, minY / gridSize)),
+                      static_cast<SizeT>(sf::base::clamp(maxX / gridSize, 0.f, static_cast<float>(nCellsX) - 1.f)),
+                      static_cast<SizeT>(sf::base::clamp(maxY / gridSize, 0.f, static_cast<float>(nCellsY) - 1.f))};
+    }
+
+
+    std::vector<SizeT> m_objectIndices;          // Flat list of all bubble indices in all cells
+    std::vector<SizeT> m_cellStartIndices;       // Tracks where each cell's data starts in `bubbleIndices`
+    std::vector<SizeT> m_cellInsertionPositions; // Temporary copy of `cellStartIndices` to track insertion points
+
+public:
+    void forEachIndexInRadius(const sf::Vector2f center, const float radius, auto&& func)
+    {
+        const auto [xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx] = computeGridRange(center, radius);
+
+        // Check all candidate cells
+        for (SizeT cellX = xCellStartIdx; cellX <= xCellEndIdx; ++cellX)
+            for (SizeT cellY = yCellStartIdx; cellY <= yCellEndIdx; ++cellY)
+            {
+                const SizeT cellIdx = convert2DTo1D(cellX, cellY, nCellsX);
+
+                // Get range of bubbles in this cell
+                const SizeT start = m_cellStartIndices[cellIdx];
+                const SizeT end   = m_cellStartIndices[cellIdx + 1];
+
+                // Check each bubble in cell
+                for (SizeT i = start; i < end; ++i)
+                    if (func(m_objectIndices[i]) == ControlFlow::Break)
+                        return;
+            }
+    }
+
+    void forEachUniqueIndexPair(auto&& func)
+    {
+        for (SizeT ix = 0; ix < nCellsX; ++ix)
+            for (SizeT iy = 0; iy < nCellsY; ++iy)
+            {
+                const SizeT cellIdx = convert2DTo1D(ix, iy, nCellsX);
+                const SizeT start   = m_cellStartIndices[cellIdx];
+                const SizeT end     = m_cellStartIndices[cellIdx + 1];
+
+                for (SizeT i = start; i < end; ++i)
+                    for (SizeT j = i + 1; j < end; ++j)
+                        func(m_objectIndices[i], m_objectIndices[j]);
+            }
+    }
+
+    void clear()
+    {
+        m_cellStartIndices.clear();
+        m_cellStartIndices.resize(nCellsX * nCellsY + 1, 0); // +1 for prefix sum
+    }
+
+    void populate(const auto& bubbles)
+    {
+        //
+        // First Pass (Counting):
+        // - Calculate how many bubbles will be placed in each grid cell.
+        for (auto& bubble : bubbles)
+        {
+            const auto [xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx] = computeGridRange(bubble.position,
+                                                                                                   bubble.radius);
+
+            // For each cell the bubble covers, increment the count
+            for (SizeT x = xCellStartIdx; x <= xCellEndIdx; ++x)
+                for (SizeT y = yCellStartIdx; y <= yCellEndIdx; ++y)
+                {
+                    const SizeT cellIdx = convert2DTo1D(x, y, nCellsX) + 1; // +1 offsets for prefix sum
+                    ++m_cellStartIndices[sf::base::min(cellIdx, m_cellStartIndices.size() - 1)];
+                }
+        }
+
+        //
+        // Second Pass (Prefix Sum):
+        // - Calculate the starting index for each cell’s data in `m_objectIndices`.
+
+        // Prefix sum to compute start indices
+        for (SizeT i = 1; i < m_cellStartIndices.size(); ++i)
+            m_cellStartIndices[i] += m_cellStartIndices[i - 1];
+
+        m_objectIndices.resize(m_cellStartIndices.back()); // Total bubbles across all cells
+
+        // Used to track where to insert the next bubble index into the `m_objectIndices` buffer for each cell
+        m_cellInsertionPositions.assign(m_cellStartIndices.begin(), m_cellStartIndices.end());
+
+        //
+        // Third Pass (Populating):
+        // - Place the bubble indices into the correct positions in the `m_objectIndices` buffer.
+        for (SizeT i = 0; i < bubbles.size(); ++i)
+        {
+            const auto& bubble                                                  = bubbles[i];
+            const auto [xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx] = computeGridRange(bubble.position,
+                                                                                                   bubble.radius);
+
+            // Insert the bubble index into all overlapping cells
+            for (SizeT x = xCellStartIdx; x <= xCellEndIdx; ++x)
+                for (SizeT y = yCellStartIdx; y <= yCellEndIdx; ++y)
+                {
+                    const SizeT cellIdx        = convert2DTo1D(x, y, nCellsX);
+                    const SizeT insertPos      = m_cellInsertionPositions[cellIdx]++;
+                    m_objectIndices[insertPos] = i;
+                }
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Cat, type, position, rangeOffset, wobbleTimer, cooldown, inspiredTimer, nameIdx, hits);
+
+////////////////////////////////////////////////////////////
+void to_json(json& j, const PurchasableScalingValue& p)
+{
+    j = p.nPurchases;
+}
+
+////////////////////////////////////////////////////////////
+void from_json(const json& j, PurchasableScalingValue& p)
+{
+    p.nPurchases = j;
+}
+
+////////////////////////////////////////////////////////////
+template <SizeT N>
+void to_json(json& j, const PurchasableScalingValue (&p)[N])
+{
+    j = json::array({p[0].nPurchases, p[1].nPurchases, p[2].nPurchases, p[3].nPurchases, p[4].nPurchases});
+}
+
+////////////////////////////////////////////////////////////
+template <SizeT N>
+void from_json(const json& j, PurchasableScalingValue (&p)[N])
+{
+    p[0].nPurchases = j[0];
+    p[1].nPurchases = j[1];
+    p[2].nPurchases = j[2];
+    p[3].nPurchases = j[3];
+    p[4].nPurchases = j[4];
+}
+
+////////////////////////////////////////////////////////////
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
+    Game::Stats,
+    secondsPlayed,
+    bubblesPopped,
+    bubblesPoppedRevenue,
+    bubblesHandPopped,
+    bubblesHandPoppedRevenue,
+    explosionRevenue);
+
+////////////////////////////////////////////////////////////
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
+    Game,
+    psvComboStartTime,
+    psvBubbleCount,
+    psvBubbleValue,
+    psvExplosionRadiusMult,
+    psvCooldownMultsPerCatType,
+    psvRangeDivsPerCatType,
+    psvMultiPopRange,
+    money,
+    prestigePoints,
+    comboPurchased,
+    mapPurchased,
+    mapLimitIncreases,
+    smarterCatsPurchased,
+    windPurchased,
+    multiPopEnabled,
+    windEnabled,
+    // bubbles,
+    cats,
+    statsTotal,
+    statsSession,
+    masterVolume,
+    musicVolume,
+    playAudioInBackground,
+    playComboEndSound,
+    minimapScale,
+    tipsEnabled);
+
+////////////////////////////////////////////////////////////
+void saveGameToFile(const Game& game)
+{
+    const auto gameAsJsonString = nlohmann::json(game).dump(4);
+    std::ofstream("save.json") << gameAsJsonString;
+}
+
+////////////////////////////////////////////////////////////
+void loadGameFromFile(Game& game)
+{
+    std::ifstream gameAsJsonString("save.json");
+    json::parse(gameAsJsonString).get_to(game);
+}
 
 } // namespace
 
@@ -1184,7 +1447,7 @@ int main()
 
     /* --- Texture atlas rects */
     const auto txrWhiteDot     = textureAtlas.add(graphicsContext.getBuiltInWhiteDotTexture()).value();
-    const auto txrBubble128    = addImgResourceToAtlas("bubble2.png");
+    const auto txrBubble       = addImgResourceToAtlas("bubble2.png");
     const auto txrBubbleStar   = addImgResourceToAtlas("bubble3.png");
     const auto txrCat          = addImgResourceToAtlas("cat.png");
     const auto txrSmartCat     = addImgResourceToAtlas("smartcat.png");
@@ -1216,6 +1479,7 @@ int main()
 
     Game game;
 
+
     //
     //
     // UI Text
@@ -1240,39 +1504,19 @@ int main()
 
     //
     // Spatial partitioning
-    const float gridSize = 64.f;
-    const auto  nCellsX  = static_cast<SizeT>(sf::base::ceil(boundaries.x / gridSize)) + 1;
-    const auto  nCellsY  = static_cast<SizeT>(sf::base::ceil(boundaries.y / gridSize)) + 1;
-
-    const auto convert2DTo1D = [](const SizeT x, const SizeT y, const SizeT width) { return y * width + x; };
-
-    std::vector<SizeT> bubbleIndices;          // Flat list of all bubble indices in all cells
-    std::vector<SizeT> cellStartIndices;       // Tracks where each cell's data starts in `bubbleIndices`
-    std::vector<SizeT> cellInsertionPositions; // Temporary copy of `cellStartIndices` to track insertion points
-
-    const auto computeGridRange = [&](const sf::Vector2f center, const float radius)
-    {
-        const float minX = center.x - radius;
-        const float minY = center.y - radius;
-        const float maxX = center.x + radius;
-        const float maxY = center.y + radius;
-
-        struct Result
-        {
-            SizeT xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx;
-        };
-
-        return Result{static_cast<SizeT>(sf::base::max(0.f, minX / gridSize)),
-                      static_cast<SizeT>(sf::base::max(0.f, minY / gridSize)),
-                      static_cast<SizeT>(sf::base::clamp(maxX / gridSize, 0.f, static_cast<float>(nCellsX) - 1.f)),
-                      static_cast<SizeT>(sf::base::clamp(maxY / gridSize, 0.f, static_cast<float>(nCellsY) - 1.f))};
-    };
+    SpatialGrid spatialGrid;
 
     //
     //
     // Particles
     std::vector<Particle>     particles;
     std::vector<TextParticle> textParticles;
+
+    const auto spawnParticles = [&](const SizeT n, auto&&... args)
+    {
+        for (SizeT i = 0; i < n; ++i)
+            particles.emplace_back(makeParticle(SFML_BASE_FORWARD(args)...));
+    };
 
     //
     //
@@ -1306,40 +1550,27 @@ int main()
     //
     // Persistent game state
     game.bubbles.reserve(20000);
+    game.cats.reserve(512);
 
     const auto forEachBubbleInRadius = [&](const sf::Vector2f center, const float radius, auto&& func)
     {
-        const auto [xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx] = computeGridRange(center, radius);
-
-        // Pre-calculate squared radius for efficient comparison
         const float radiusSq = radius * radius;
 
-        // Check all candidate cells
-        for (SizeT cellX = xCellStartIdx; cellX <= xCellEndIdx; ++cellX)
-            for (SizeT cellY = yCellStartIdx; cellY <= yCellEndIdx; ++cellY)
-            {
-                const SizeT cellIdx = convert2DTo1D(cellX, cellY, nCellsX);
+        spatialGrid.forEachIndexInRadius(center,
+                                         radius,
+                                         [&](const SizeT index)
+                                         {
+                                             auto& bubble = game.bubbles[index];
 
-                // Get range of bubbles in this cell
-                const SizeT start = cellStartIndices[cellIdx];
-                const SizeT end   = cellStartIndices[cellIdx + 1];
+                                             if ((bubble.position - center).lengthSquared() > radiusSq)
+                                                 return ControlFlow::Continue;
 
-                // Check each bubble in cell
-                for (SizeT i = start; i < end; ++i)
-                {
-                    auto& bubble = game.bubbles[bubbleIndices[i]];
-
-                    if ((bubble.position - center).lengthSquared() <= radiusSq)
-                        if (func(bubble) == ControlFlow::Break)
-                            return;
-                }
-            }
+                                             return func(bubble);
+                                         });
     };
 
     constexpr float bubbleSpawnDelay = 3.f;
     float           bubbleSpawnTimer = 0.f;
-
-    game.cats.reserve(512);
 
     //
     //
@@ -1358,7 +1589,9 @@ int main()
     //
     //
     // Clocks
-    sf::Clock playedClock;
+    sf::Clock     playedClock;
+    sf::base::I64 playedUsAccumulator = 0;
+
     sf::Clock fpsClock;
     sf::Clock deltaClock;
 
@@ -1382,14 +1615,15 @@ int main()
 
     //
     //
-    // Touch state
+    // Touch state (TODO)
     std::vector<sf::base::Optional<sf::Vector2f>> fingerPositions;
     fingerPositions.resize(10);
 
     //
     //
     // Startup
-    float splashTimer = 1500.f;
+    constexpr float splashTimerMax = 1750.f;
+    float           splashTimer    = splashTimerMax;
     sounds.byteMeow.play(playbackDevice);
 
     //
@@ -1404,7 +1638,6 @@ int main()
     musicBGM.setLooping(true);
     musicBGM.setAttenuation(0.f);
     musicBGM.play(playbackDevice);
-    musicBGM.setVolume(75.f);
 
     //
     //
@@ -1479,82 +1712,95 @@ int main()
         const auto deltaTime   = deltaClock.restart();
         const auto deltaTimeMs = static_cast<float>(deltaTime.asMilliseconds());
 
-        constexpr float scrollSpeed = 2.f;
-
-        if (game.mapPurchased && sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left))
-        {
-            dragPosition.reset();
-            scroll -= scrollSpeed * deltaTimeMs;
-        }
-        else if (game.mapPurchased && sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right))
-        {
-            dragPosition.reset();
-            scroll += scrollSpeed * deltaTimeMs;
-        }
-
+        //
+        // Cheats (TODO)
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::F4))
         {
             game.comboPurchased = true;
             game.mapPurchased   = true;
         }
-
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::F5))
+        else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::F5))
+        {
             game.money = 1'000'000'000u;
-
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::F6))
+        }
+        else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::F6))
+        {
             game.money += 15u;
-
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::F7))
+        }
+        else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::F7))
+        {
             game.prestigePoints += 15u;
+        }
 
+        //
+        // Number of fingers
         const auto countFingersDown = std::count_if(fingerPositions.begin(),
                                                     fingerPositions.end(),
                                                     [](const auto& fingerPos) { return fingerPos.hasValue(); });
 
-        if (game.mapPurchased && countFingersDown == 2)
+        //
+        // Map scrolling via keyboard and touch
+        if (game.mapPurchased)
         {
-            // TODO: check fingers distance
-
-            const auto [fingerPos0, fingerPos1] = [&]
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left))
             {
-                std::pair<sf::base::Optional<sf::Vector2f>, sf::base::Optional<sf::Vector2f>> result;
-
-                for (const auto& fingerPosition : fingerPositions)
-                {
-                    if (fingerPosition.hasValue())
-                    {
-                        if (!result.first.hasValue())
-                            result.first.emplace(*fingerPosition);
-                        else if (!result.second.hasValue())
-                            result.second.emplace(*fingerPosition);
-                    }
-                }
-
-                return result;
-            }();
-
-            const auto avg = (*fingerPos0 + *fingerPos1) / 2.f;
-
-            if (dragPosition.hasValue())
-            {
-                scroll = dragPosition->x - avg.x;
+                dragPosition.reset();
+                scroll -= 2.f * deltaTimeMs;
             }
-            else
+            else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right))
             {
-                dragPosition.emplace(avg);
-                dragPosition->x += scroll;
+                dragPosition.reset();
+                scroll += 2.f * deltaTimeMs;
+            }
+            else if (countFingersDown == 2)
+            {
+                // TODO: check fingers distance
+                const auto [fingerPos0, fingerPos1] = [&]
+                {
+                    std::pair<sf::base::Optional<sf::Vector2f>, sf::base::Optional<sf::Vector2f>> result;
+
+                    for (const auto& fingerPosition : fingerPositions)
+                    {
+                        if (fingerPosition.hasValue())
+                        {
+                            if (!result.first.hasValue())
+                                result.first.emplace(*fingerPosition);
+                            else if (!result.second.hasValue())
+                                result.second.emplace(*fingerPosition);
+                        }
+                    }
+
+                    return result;
+                }();
+
+                const auto avg = (*fingerPos0 + *fingerPos1) / 2.f;
+
+                if (dragPosition.hasValue())
+                {
+                    scroll = dragPosition->x - avg.x;
+                }
+                else
+                {
+                    dragPosition.emplace(avg);
+                    dragPosition->x += scroll;
+                }
             }
         }
 
+        //
+        // Reset map scrolling
         if (dragPosition.hasValue() && countFingersDown != 2 && !sf::Mouse::isButtonPressed(sf::Mouse::Button::Right))
         {
             dragPosition.reset();
         }
 
-        scroll       = sf::base::clamp(scroll,
+        //
+        // Scrolling
+        scroll = sf::base::clamp(scroll,
                                  0.f,
                                  sf::base::min(game.getMapLimit() / 2.f - resolution.x / 2.f,
                                                (boundaries.x - resolution.x) / 2.f));
+
         actualScroll = exponentialApproach(actualScroll, scroll, deltaTimeMs, 75.f);
 
         const sf::View gameView //
@@ -1566,9 +1812,16 @@ int main()
 
         const auto mousePos = window.mapPixelToCoords(sf::Mouse::getPosition(window), gameView);
 
-        listener.position = {mousePos.x, mousePos.y, 0.f};
+        //
+        // Update listener position
+        listener.position = {sf::base::clamp(mousePos.x, 0.f, game.getMapLimit()),
+                             sf::base::clamp(mousePos.y, 0.f, boundaries.y),
+                             0.f};
+        musicBGM.setPosition(listener.position);
         (void)playbackDevice.updateListener(listener);
 
+        //
+        // Target bubble count
         const auto targetBubbleCountPerScreen = static_cast<SizeT>(
             game.psvBubbleCount.currentValue() / (boundaries.x / resolution.x));
         const auto nScreens          = static_cast<SizeT>(game.getMapLimit() / resolution.x) + 1;
@@ -1576,6 +1829,15 @@ int main()
 
         //
         // Startup and bubble spawning
+        const auto playReversePopAt = [&](const sf::Vector2f position)
+        {
+            if (sounds.reversePop.getStatus() == sf::Sound::Status::Playing)
+                return;
+
+            sounds.reversePop.setPosition({position.x, position.y});
+            sounds.reversePop.play(playbackDevice);
+        };
+
         if (splashTimer > 0.f)
             splashTimer -= deltaTimeMs;
 
@@ -1591,55 +1853,44 @@ int main()
                 {
                     if (!game.bubbles.empty())
                     {
-                        const auto& b = game.bubbles.back();
+                        const SizeT times = game.bubbles.size() > 1000 ? 25 : 1;
 
-                        for (int i = 0; i < 8; ++i)
-                            particles.emplace_back(makeParticle(b.position, ParticleType::Bubble, 0.5f, 0.5f));
-
-                        game.bubbles.pop_back();
-
-                        if (sounds.reversePop.getStatus() != sf::Sound::Status::Playing)
+                        for (SizeT i = 0; i < times; ++i)
                         {
-                            sounds.reversePop.setPosition({b.position.x, b.position.y});
-                            sounds.reversePop.play(playbackDevice);
+                            const auto& b = game.bubbles.back();
+                            spawnParticles(8, b.position, ParticleType::Bubble, 0.5f, 0.5f);
+                            game.bubbles.pop_back();
+                            playReversePopAt(b.position);
                         }
                     }
 
-                    if (!game.cats.empty())
+                    if (!game.cats.empty()) // TODO add a longer delay here
                     {
                         const auto& c = game.cats.back();
 
-                        for (int i = 0; i < 24; ++i)
-                            particles.emplace_back(makeParticle(c.position, ParticleType::Star, 0.5f, 0.5f));
-
+                        spawnParticles(24, c.position, ParticleType::Star, 0.5f, 0.5f);
                         game.cats.pop_back();
-
-                        if (sounds.reversePop.getStatus() != sf::Sound::Status::Playing)
-                        {
-                            sounds.reversePop.setPosition({c.position.x, c.position.y});
-                            sounds.reversePop.play(playbackDevice);
-                        }
+                        playReversePopAt(c.position);
                     }
 
                     if (game.cats.empty() && game.bubbles.empty())
                     {
                         prestigeTransition = 0;
 
-                        splashTimer = 1500.f;
+                        splashTimer = splashTimerMax;
                         sounds.byteMeow.play(playbackDevice);
                     }
                 }
                 else if (game.bubbles.size() < targetBubbleCount)
                 {
-                    const auto& b = game.bubbles.emplace_back(makeRandomBubble(game.getMapLimit(), boundaries.y));
+                    const SizeT times = (targetBubbleCount - game.bubbles.size()) > 1000 ? 25 : 1;
 
-                    for (int i = 0; i < 8; ++i)
-                        particles.emplace_back(makeParticle(b.position, ParticleType::Bubble, 0.5f, 0.5f));
-
-                    if (sounds.reversePop.getStatus() != sf::Sound::Status::Playing)
+                    for (SizeT i = 0; i < times; ++i)
                     {
-                        sounds.reversePop.setPosition({b.position.x, b.position.y});
-                        sounds.reversePop.play(playbackDevice);
+                        const auto& b = game.bubbles.emplace_back(makeRandomBubble(game.getMapLimit(), boundaries.y));
+
+                        spawnParticles(8, b.position, ParticleType::Bubble, 0.5f, 0.5f);
+                        playReversePopAt(b.position);
                     }
                 }
             }
@@ -1648,106 +1899,52 @@ int main()
         //
         //
         // Update spatial partitioning
-        cellStartIndices.clear();
-        cellStartIndices.resize(nCellsX * nCellsY + 1, 0); // +1 for prefix sum
-
-        //
-        // First Pass (Counting):
-        // - Calculate how many bubbles will be placed in each grid cell.
-        for (auto& bubble : game.bubbles)
-        {
-            const auto [xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx] = computeGridRange(bubble.position,
-                                                                                                   bubble.radius);
-
-            // For each cell the bubble covers, increment the count
-            for (SizeT x = xCellStartIdx; x <= xCellEndIdx; ++x)
-                for (SizeT y = yCellStartIdx; y <= yCellEndIdx; ++y)
-                {
-                    const SizeT cellIdx = convert2DTo1D(x, y, nCellsX) + 1; // +1 offsets for prefix sum
-                    ++cellStartIndices[sf::base::min(cellIdx, cellStartIndices.size() - 1)];
-                }
-        }
-
-        //
-        // Second Pass (Prefix Sum):
-        // - Calculate the starting index for each cell’s data in `bubbleIndices`.
-
-        // Prefix sum to compute start indices
-        for (SizeT i = 1; i < cellStartIndices.size(); ++i)
-            cellStartIndices[i] += cellStartIndices[i - 1];
-
-        bubbleIndices.resize(cellStartIndices.back()); // Total bubbles across all cells
-
-        // Used to track where to insert the next bubble index into the `bubbleIndices` buffer for each cell
-        cellInsertionPositions.assign(cellStartIndices.begin(), cellStartIndices.end());
-
-        //
-        // Third Pass (Populating):
-        // - Place the bubble indices into the correct positions in the `bubbleIndices` buffer.
-        for (SizeT i = 0; i < game.bubbles.size(); ++i)
-        {
-            const auto& bubble                                                  = game.bubbles[i];
-            const auto [xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx] = computeGridRange(bubble.position,
-                                                                                                   bubble.radius);
-
-            // Insert the bubble index into all overlapping cells
-            for (SizeT x = xCellStartIdx; x <= xCellEndIdx; ++x)
-                for (SizeT y = yCellStartIdx; y <= yCellEndIdx; ++y)
-                {
-                    const SizeT cellIdx      = convert2DTo1D(x, y, nCellsX);
-                    const SizeT insertPos    = cellInsertionPositions[cellIdx]++;
-                    bubbleIndices[insertPos] = i;
-                }
-        }
+        spatialGrid.clear();
+        spatialGrid.populate(game.bubbles);
 
         const auto popBubble =
-            [&](auto             self,
-                const bool       byHand,
-                const BubbleType bubbleType,
-                const MoneyType  reward,
-                const int        combo,
-                const float      x,
-                const float      y) -> void
+            [&](auto               self,
+                const bool         byHand,
+                const BubbleType   bubbleType,
+                const MoneyType    reward,
+                const int          combo,
+                const sf::Vector2f position) -> void
         {
-            ++game.bubblesPoppedTotal;
-            ++game.bubblesPoppedThisPrestige;
-            game.bubblesPoppedRevenueTotal += reward;
-            game.bubblesPoppedRevenueThisPrestige += reward;
+            ++game.statsTotal.bubblesPopped;
+            ++game.statsSession.bubblesPopped;
+            game.statsTotal.bubblesPoppedRevenue += reward;
+            game.statsSession.bubblesPoppedRevenue += reward;
 
             if (byHand)
             {
-                ++game.bubblesHandPoppedTotal;
-                ++game.bubblesHandPoppedThisPrestige;
-                game.bubblesHandPoppedRevenueTotal += reward;
-                game.bubblesHandPoppedRevenueThisPrestige += reward;
+                ++game.statsTotal.bubblesHandPopped;
+                ++game.statsSession.bubblesHandPopped;
+                game.statsTotal.bubblesHandPoppedRevenue += reward;
+                game.statsSession.bubblesHandPoppedRevenue += reward;
             }
 
-            auto& tp = textParticles.emplace_back(makeTextParticle(x, y, combo));
+            auto& tp = textParticles.emplace_back(makeTextParticle(position, combo));
             std::snprintf(tp.buffer, sizeof(tp.buffer), "+$%zu", reward);
 
-            sounds.pop.setPosition({x, y});
+            sounds.pop.setPosition({position.x, position.y});
             sounds.pop.setPitch(remap(static_cast<float>(combo), 1, 10, 1.f, 2.f));
             sounds.pop.play(playbackDevice);
 
-            for (int i = 0; i < 32; ++i)
-                particles.emplace_back(makeParticle({x, y}, ParticleType::Bubble, 0.5f, 0.5f));
-
-            for (int i = 0; i < 8; ++i)
-                particles.emplace_back(makeParticle({x, y}, ParticleType::Bubble, 1.2f, 0.25f));
+            spawnParticles(32, position, ParticleType::Bubble, 0.5f, 0.5f);
+            spawnParticles(8, position, ParticleType::Bubble, 1.2f, 0.25f);
 
             if (bubbleType == BubbleType::Star)
-                for (int i = 0; i < 16; ++i)
-                    particles.emplace_back(makeParticle({x, y}, ParticleType::Star, 0.25f, 0.35f));
-
-            if (bubbleType == BubbleType::Bomb)
             {
-                sounds.explosion.setPosition({x, y});
+                spawnParticles(16, position, ParticleType::Star, 0.25f, 0.35f);
+            }
+            else if (bubbleType == BubbleType::Bomb)
+            {
+                sounds.explosion.setPosition({position.x, position.y});
                 sounds.explosion.play(playbackDevice);
 
-                for (int i = 0; i < 32; ++i)
-                    particles.emplace_back(makeParticle({x, y}, ParticleType::Fire, 3.f, 1.f));
+                spawnParticles(32, position, ParticleType::Fire, 3.f, 1.f);
 
-                forEachBubbleInRadius({x, y},
+                forEachBubbleInRadius(position,
                                       game.getComputedBombExplosionRadius(),
                                       [&](Bubble& bubble)
                                       {
@@ -1756,16 +1953,10 @@ int main()
 
                                           const SizeT newReward = getScaledReward(bubble.type) * 10u;
 
-                                          game.explosionRevenueTotal += newReward;
-                                          game.explosionRevenueThisPrestige += newReward;
+                                          game.statsTotal.explosionRevenue += newReward;
+                                          game.statsSession.explosionRevenue += newReward;
 
-                                          self(self,
-                                               byHand,
-                                               bubble.type,
-                                               newReward,
-                                               1,
-                                               bubble.position.x,
-                                               bubble.position.y);
+                                          self(self, byHand, bubble.type, newReward, 1, bubble.position);
                                           addReward(newReward);
                                           bubble = makeRandomBubble(game.getMapLimit(), 0.f);
                                           bubble.position.y -= bubble.radius;
@@ -1798,12 +1989,10 @@ int main()
             if (pos.y - bubble.radius > boundaries.y)
             {
                 pos.y             = -bubble.radius;
-                bubble.velocity.y = 0.f;
+                bubble.velocity.y = game.windEnabled ? 0.2f : 0.f;
 
                 if (sf::base::fabs(bubble.velocity.x) > 0.04f)
-                {
                     bubble.velocity.x = 0.04f;
-                }
 
                 bubble.type = BubbleType::Normal;
             }
@@ -1818,7 +2007,7 @@ int main()
             const auto reward = static_cast<MoneyType>(
                 sf::base::ceil(static_cast<float>(getScaledReward(bubble.type)) * comboValueMult(combo)));
 
-            popBubble(popBubble, byHand, bubble.type, reward, combo, bubble.position.x, bubble.position.y);
+            popBubble(popBubble, byHand, bubble.type, reward, combo, bubble.position);
             addReward(reward);
             bubble = makeRandomBubble(game.getMapLimit(), 0.f);
             bubble.position.y -= bubble.radius;
@@ -1830,56 +2019,55 @@ int main()
         {
             const auto clickPos = window.mapPixelToCoords(clickPosition->toVector2i(), gameView);
 
-            forEachBubbleInRadius(clickPos,
-                                  128.f,
-                                  [&](Bubble& bubble)
-                                  {
-                                      if ((clickPos - bubble.position).length() > bubble.radius)
-                                          return ControlFlow::Continue;
+            const auto clickAction = [&](Bubble& bubble)
+            {
+                if ((clickPos - bubble.position).length() > bubble.radius)
+                    return ControlFlow::Continue;
 
-                                      anyBubblePoppedByClicking = true;
+                anyBubblePoppedByClicking = true;
 
-                                      if (game.comboPurchased)
-                                      {
-                                          if (combo == 0)
+                if (game.comboPurchased)
+                {
+                    if (combo == 0)
+                    {
+                        combo      = 1;
+                        comboTimer = game.psvComboStartTime.currentValue() * 1000.f;
+                    }
+                    else
+                    {
+                        combo += 1;
+                        comboTimer += 150.f - sf::base::clamp(static_cast<float>(combo) * 10.f, 0.f, 100.f);
+
+                        comboTextShakeEffect.bump(1.f + static_cast<float>(combo) * 0.2f);
+                    }
+                }
+                else
+                {
+                    combo = 1;
+                }
+
+                popWithRewardAndReplaceBubble(/* byHand */ true, bubble, combo);
+
+                if (game.multiPopEnabled && game.psvMultiPopRange.nPurchases > 0)
+                    forEachBubbleInRadius(clickPos,
+                                          game.getComputedMultiPopRange(),
+                                          [&](Bubble& otherBubble)
                                           {
-                                              combo      = 1;
-                                              comboTimer = game.psvComboStartTime.currentValue() * 1000.f;
-                                          }
-                                          else
-                                          {
-                                              combo += 1;
-                                              comboTimer += 150.f -
-                                                            sf::base::clamp(static_cast<float>(combo) * 10.f, 0.f, 100.f);
+                                              if (&otherBubble != &bubble)
+                                                  popWithRewardAndReplaceBubble(/* byHand */ true, otherBubble, combo);
 
-                                              comboTextShakeEffect.bump(1.f + static_cast<float>(combo) * 0.2f);
-                                          }
-                                      }
-                                      else
-                                      {
-                                          combo = 1;
-                                      }
-
-                                      popWithRewardAndReplaceBubble(/* byHand */ true, bubble, combo);
-
-                                      if (game.multiPopEnabled && game.psvMultiPopRange.nPurchases > 0)
-                                          forEachBubbleInRadius(clickPos,
-                                                                game.getComputedMultiPopRange(),
-                                                                [&](Bubble& otherBubble)
-                                                                {
-                                                                    if (&otherBubble != &bubble)
-                                                                        popWithRewardAndReplaceBubble(/* byHand */ true,
-                                                                                                      otherBubble,
-                                                                                                      combo);
-
-                                                                    return ControlFlow::Continue;
-                                                                });
+                                              return ControlFlow::Continue;
+                                          });
 
 
-                                      return ControlFlow::Break;
-                                  });
+                return ControlFlow::Break;
+            };
+
+            forEachBubbleInRadius(clickPos, 128.f, clickAction);
         }
 
+        //
+        // Combo failure due to missed click
         if (!anyBubblePoppedByClicking && clickPosition.hasValue())
         {
             if (combo > 1)
@@ -1889,32 +2077,42 @@ int main()
             comboTimer = 0.f;
         }
 
-        for (SizeT ix = 0; ix < nCellsX; ++ix)
-            for (SizeT iy = 0; iy < nCellsY; ++iy)
-            {
-                const SizeT cellIdx = convert2DTo1D(ix, iy, nCellsX);
-                const SizeT start   = cellStartIndices[cellIdx];
-                const SizeT end     = cellStartIndices[cellIdx + 1];
+        //
+        // Bubble vs bubble collisions
+        spatialGrid.forEachUniqueIndexPair(
+            [&](const SizeT bubbleIdxI, const SizeT bubbleIdxJ)
+            { handleBubbleCollision(deltaTimeMs, game.bubbles[bubbleIdxI], game.bubbles[bubbleIdxJ]); });
 
-                // Iterate over all bubbles in this cell
-                for (SizeT i = start; i < end; ++i)
-                {
-                    const SizeT bubbleA = bubbleIndices[i];
-                    for (SizeT j = i + 1; j < end; ++j)
-                    {
-                        const SizeT bubbleB = bubbleIndices[j];
-                        handleBubbleCollision(deltaTimeMs, game.bubbles[bubbleA], game.bubbles[bubbleB]);
-                    }
-                }
-            }
-
-        const auto shouldIgnoreCatCollision = [&](const Cat& cat)
-        { return (cat.type == CatType::Astro && cat.astroState.hasValue()) || draggedCat == &cat; };
-
+        //
+        // Cat vs cat collisions
         for (SizeT i = 0u; i < game.cats.size(); ++i)
             for (SizeT j = i + 1; j < game.cats.size(); ++j)
-                if (!shouldIgnoreCatCollision(game.cats[i]) && !shouldIgnoreCatCollision(game.cats[j]))
-                    handleCatCollision(deltaTimeMs, game.cats[i], game.cats[j]);
+            {
+                Cat& iCat = game.cats[i];
+                Cat& jCat = game.cats[j];
+
+                if (draggedCat == &iCat || draggedCat == &jCat)
+                    continue;
+
+                if (iCat.isAstroAndInFlight() && jCat.type != CatType::Astro)
+                {
+                    if (detectCollision(iCat.position, jCat.position, iCat.getRadius(), jCat.getRadius()))
+                        jCat.inspiredTimer = 2000.f; // TODO: repetition, upgrade to scale
+
+                    continue;
+                }
+
+                if (jCat.isAstroAndInFlight() && iCat.type != CatType::Astro)
+                {
+                    // TODO: inspire cat
+                    if (detectCollision(iCat.position, jCat.position, iCat.getRadius(), jCat.getRadius()))
+                        iCat.inspiredTimer = 2000.f;
+
+                    continue;
+                }
+
+                handleCatCollision(deltaTimeMs, game.cats[i], game.cats[j]);
+            }
 
         if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) // TODO: touch
         {
@@ -1991,13 +2189,28 @@ int main()
 
             const auto [cx, cy] = cat.position + cat.rangeOffset;
 
+            if (cat.inspiredTimer > 0.f)
+            {
+                if (getRndFloat(0.f, 1.f) > 0.5f)
+                    particles.push_back(
+                        {.data = {.position = cat.drawPosition + sf::Vector2f{getRndFloat(-catRadius, +catRadius), catRadius},
+                                  .velocity      = getRndVector2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
+                                  .scale         = getRndFloat(0.08f, 0.27f) * 0.2f,
+                                  .accelerationY = -0.002f,
+                                  .opacity       = 255.f,
+                                  .opacityDecay  = getRndFloat(0.00025f, 0.0015f),
+                                  .rotation      = getRndFloat(0.f, sf::base::tau),
+                                  .torque        = getRndFloat(-0.002f, 0.002f)},
+                         .type = ParticleType::Star});
+            }
+
             if (cat.type == CatType::Astro && cat.astroState.hasValue())
             {
                 auto& [startX, velocityX, wrapped, particleTimer] = *cat.astroState;
 
                 particleTimer += deltaTimeMs;
 
-                if (particleTimer >= 3.f && !cat.isCloseToBase())
+                if (particleTimer >= 3.f && !cat.isCloseToStartX())
                 {
                     if (sounds.rocket.getStatus() != sf::Sound::Status::Playing)
                     {
@@ -2005,38 +2218,35 @@ int main()
                         sounds.rocket.play(playbackDevice);
                     }
 
-                    particles.emplace_back(
-                        makeParticle({cat.drawPosition.x + 56.f, cat.drawPosition.y + 45.f}, ParticleType::Fire, 1.5f, 0.25f, 0.65f));
-
+                    spawnParticles(1, cat.drawPosition + sf::Vector2f{56.f, 45.f}, ParticleType::Fire, 1.5f, 0.25f, 0.65f);
                     particleTimer = 0.f;
                 }
 
-                forEachBubbleInRadius({cx, cy},
-                                      range,
-                                      [&](Bubble& bubble)
-                                      {
-                                          const SizeT newReward = getScaledReward(bubble.type) * 20u;
+                const auto astroPopAction = [&](Bubble& bubble)
+                {
+                    const SizeT newReward = getScaledReward(bubble.type) * 20u;
 
-                                          popBubble(popBubble,
-                                                    /* byHand */ false,
-                                                    bubble.type,
-                                                    newReward,
-                                                    /* combo */ 1,
-                                                    bubble.position.x,
-                                                    bubble.position.y);
-                                          addReward(newReward);
-                                          bubble = makeRandomBubble(game.getMapLimit(), 0.f);
-                                          bubble.position.y -= bubble.radius;
+                    popBubble(popBubble,
+                              /* byHand */ false,
+                              bubble.type,
+                              newReward,
+                              /* combo */ 1,
+                              bubble.position);
+                    addReward(newReward);
+                    bubble = makeRandomBubble(game.getMapLimit(), 0.f);
+                    bubble.position.y -= bubble.radius;
 
-                                          cat.textStatusShakeEffect.bump(1.5f);
+                    cat.textStatusShakeEffect.bump(1.5f);
 
-                                          return ControlFlow::Continue;
-                                      });
+                    return ControlFlow::Continue;
+                };
 
-                if (!cat.isCloseToBase() && velocityX > -5.f)
+                forEachBubbleInRadius({cx, cy}, range, astroPopAction);
+
+                if (!cat.isCloseToStartX() && velocityX > -5.f)
                     velocityX -= 0.00025f * deltaTimeMs;
 
-                if (!cat.isCloseToBase())
+                if (!cat.isCloseToStartX())
                     cat.position.x += velocityX * deltaTimeMs;
                 else
                     cat.position.x = exponentialApproach(cat.position.x, startX - 10.f, deltaTimeMs, 500.f);
@@ -2060,7 +2270,6 @@ int main()
             if (!cat.updateCooldown(maxCooldown, deltaTimeMs))
                 continue;
 
-
             if (cat.type == CatType::Astro)
             {
                 if (!cat.astroState.hasValue())
@@ -2073,7 +2282,7 @@ int main()
                 }
             }
 
-            if (cat.type == CatType::Witch)
+            if (cat.type == CatType::Witch) // TODO: change
             {
                 int  witchHits = 0;
                 bool pawSet    = false;
@@ -2098,8 +2307,7 @@ int main()
                         cat.pawRotation = (otherCat.position - cat.position).angle() + sf::degrees(45);
                     }
 
-                    for (int i = 0; i < 8; ++i)
-                        particles.emplace_back(makeParticle(otherCat.position, ParticleType::Hex, 0.5f, 0.35f));
+                    spawnParticles(8, otherCat.position, ParticleType::Hex, 0.5f, 0.35f);
                 }
 
                 if (witchHits > 0)
@@ -2131,8 +2339,7 @@ int main()
                     sounds.shine.setPosition({bubble.position.x, bubble.position.y});
                     sounds.shine.play(playbackDevice);
 
-                    for (int i = 0; i < 4; ++i)
-                        particles.emplace_back(makeParticle(bubble.position, ParticleType::Star, 0.25f, 0.35f));
+                    spawnParticles(4, bubble.position, ParticleType::Star, 0.25f, 0.35f);
 
                     cat.textStatusShakeEffect.bump(1.5f);
                     ++cat.hits;
@@ -2151,8 +2358,7 @@ int main()
                     sounds.makeBomb.setPosition({bubble.position.x, bubble.position.y});
                     sounds.makeBomb.play(playbackDevice);
 
-                    for (int i = 0; i < 8; ++i)
-                        particles.emplace_back(makeParticle(bubble.position, ParticleType::Fire, 1.25f, 0.35f));
+                    spawnParticles(8, bubble.position, ParticleType::Fire, 1.25f, 0.35f);
 
                     cat.textStatusShakeEffect.bump(1.5f);
                     ++cat.hits;
@@ -2271,10 +2477,8 @@ int main()
 
         float buttonHueMod = 0.f;
 
-        const auto makeButtonImpl = [&](const char* buffer)
+        const auto pushButtonColors = [&]
         {
-            ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 147.f);
-
             const auto convertColor = [&](const auto colorId)
             {
                 return sf::Color::fromVec4(ImGui::GetStyleColorVec4(colorId)).withHueMod(buttonHueMod).template toVec4<ImVec4>();
@@ -2283,16 +2487,25 @@ int main()
             ImGui::PushStyleColor(ImGuiCol_Button, convertColor(ImGuiCol_Button));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, convertColor(ImGuiCol_ButtonHovered));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, convertColor(ImGuiCol_ButtonActive));
+        };
+
+        const auto popButtonColors = [&] { ImGui::PopStyleColor(3); };
+
+        const auto makeButtonImpl = [&](const char* buffer)
+        {
+            ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 151.f);
+
+            pushButtonColors();
 
             if (ImGui::Button(buffer, ImVec2(135.f, 0.f)))
             {
                 sounds.buy.play(playbackDevice);
 
-                ImGui::PopStyleColor(3);
+                popButtonColors();
                 return true;
             }
 
-            ImGui::PopStyleColor(3);
+            popButtonColors();
             return false;
         };
 
@@ -2332,7 +2545,7 @@ int main()
 
         const auto makePurchasableButtonPSV = [&](const char* label, PurchasableScalingValue& psv)
         {
-            const bool maxedOut = psv.nPurchases == psv.data.nMaxPurchases;
+            const bool maxedOut = psv.nPurchases == psv.data->nMaxPurchases;
 
             bool result = false;
 
@@ -2363,7 +2576,7 @@ int main()
         const auto makePrestigePurchasableButtonPSV =
             [&](const char* label, PurchasableScalingValue& psv, const SizeT times, const MoneyType cost)
         {
-            const bool maxedOut = psv.nPurchases == psv.data.nMaxPurchases;
+            const bool maxedOut = psv.nPurchases == psv.data->nMaxPurchases;
 
             bool result = false;
 
@@ -2449,7 +2662,7 @@ int main()
 
         const auto makePrestigePurchasablePPButtonPSV = [&](const char* label, PurchasableScalingValue& psv)
         {
-            const bool maxedOut           = psv.nPurchases == psv.data.nMaxPurchases;
+            const bool maxedOut           = psv.nPurchases == psv.data->nMaxPurchases;
             const U64  prestigePointsCost = static_cast<U64>(psv.nextCost());
 
             bool result = false;
@@ -2476,10 +2689,9 @@ int main()
             return result;
         };
 
-
-        const auto doTip = [&](const char* str)
+        const auto doTip = [&](const char* str, const SizeT maxPrestigeLevel = 0)
         {
-            if (!game.tipsEnabled)
+            if (!game.tipsEnabled || game.psvBubbleValue.nPurchases > maxPrestigeLevel)
                 return;
 
             sounds.byteMeow.play(playbackDevice);
@@ -2566,31 +2778,19 @@ int main()
                     makePurchasableButtonPSV("More bubbles", game.psvBubbleCount);
                 }
 
-
-                const auto makeCat = [&](const CatType catType, const sf::Vector2f rangeOffset)
+                const auto spawnCat = [&](const CatType catType, const sf::Vector2f rangeOffset) -> Cat&
                 {
                     const auto pos = window.mapPixelToCoords((resolution / 2.f).toVector2i(), gameView);
-
-                    for (int i = 0; i < 32; ++i)
-                        particles.emplace_back(makeParticle(pos, ParticleType::Star, 0.25f, 0.75f));
-
-                    return Cat{.type                  = catType,
-                               .position              = pos,
-                               .rangeOffset           = rangeOffset,
-                               .drawPosition          = pos,
-                               .pawPosition           = pos,
-                               .pawRotation           = sf::radians(0.f),
-                               .nameIdx               = getNextCatNameIdx(),
-                               .textStatusShakeEffect = {}};
+                    spawnParticles(32, pos, ParticleType::Star, 0.25f, 0.75f);
+                    return game.cats.emplace_back(makeCat(catType, pos, rangeOffset, getNextCatNameIdx()));
                 };
-
 
                 if (game.comboPurchased && game.psvComboStartTime.nPurchases > 0)
                 {
                     std::sprintf(labelBuffer, "%d cats", nCatNormal);
                     if (makePurchasableButton("Cat", 35, 1.7f, static_cast<float>(nCatNormal)))
                     {
-                        game.cats.emplace_back(makeCat(CatType::Normal, {0.f, 0.f}));
+                        spawnCat(CatType::Normal, {0.f, 0.f});
 
                         if (nCatNormal == 0)
                         {
@@ -2632,7 +2832,7 @@ int main()
                     std::sprintf(labelBuffer, "%d unicats", nCatUni);
                     if (makePurchasableButton("Unicat", 250, 1.75f, static_cast<float>(nCatUni)))
                     {
-                        game.cats.emplace_back(makeCat(CatType::Uni, {0.f, -100.f}));
+                        spawnCat(CatType::Uni, {0.f, -100.f});
 
                         if (nCatUni == 0)
                         {
@@ -2657,13 +2857,14 @@ int main()
                     std::sprintf(labelBuffer, "%d devilcats", nCatDevil);
                     if (makePurchasableButton("Devilcat", 15000.f, 1.6f, static_cast<float>(nCatDevil)))
                     {
-                        game.cats.emplace_back(makeCat(CatType::Devil, {0.f, 100.f}));
+                        spawnCat(CatType::Devil, {0.f, 100.f});
 
                         if (nCatDevil == 0)
                         {
                             doTip(
                                 "Devilcats transform bubbles in bombs!\nPop a bomb to explode all nearby bubbles\nwith "
-                                "a huge x10 money multiplier!");
+                                "a huge x10 money multiplier!",
+                                /* maxPrestigeLevel */ 1);
                         }
                     }
 
@@ -2678,14 +2879,14 @@ int main()
                 }
 
                 // ASTRO CAT
-                const bool astroCatUnlocked         = true; // TODO: nCatNormal >= 10 && nCatUni >= 5 && nCatDevil >= 2;
+                const bool astroCatUnlocked         = nCatNormal >= 10 && nCatUni >= 5 && nCatDevil >= 2;
                 const bool astroCatUpgradesUnlocked = astroCatUnlocked && nCatDevil >= 10 && nCatAstro >= 5;
                 if (astroCatUnlocked)
                 {
                     std::sprintf(labelBuffer, "%d astrocats", nCatAstro);
-                    if (makePurchasableButton("astrocat", 200000.f, 1.5f, static_cast<float>(nCatAstro)))
+                    if (makePurchasableButton("astrocat", 150000.f, 1.5f, static_cast<float>(nCatAstro)))
                     {
-                        game.cats.emplace_back(makeCat(CatType::Astro, {-64.f, 0.f}));
+                        spawnCat(CatType::Astro, {-64.f, 0.f});
                     }
 
                     if (astroCatUpgradesUnlocked)
@@ -2900,10 +3101,9 @@ int main()
 
                     std::sprintf(labelBuffer, "%.2fpx", static_cast<double>(game.getComputedMultiPopRange()));
                     if (makePrestigePurchasablePPButtonPSV("Multipop range", game.psvMultiPopRange))
-                    {
-                        // TODO:
-                        doTip("Pop bubbles in quick successions to\nkeep your combo up and make money!");
-                    }
+                        if (game.psvMultiPopRange.nPurchases == 1)
+                            doTip("Popping a bubble now also pops\nnearby bubbles automatically!",
+                                  /* maxPrestigeLevel */ UINT_MAX);
 
                     // TODO:
                     if (!game.smarterCatsPurchased)
@@ -2912,10 +3112,8 @@ int main()
                         std::sprintf(labelBuffer, "pop smartly");
 
                     if (makePurchasablePPButtonOneTime("Smarter cats", 1u, game.smarterCatsPurchased))
-                    {
-                        // TODO: tooltip, etc
-                        doTip("Pop bubbles in quick successions to\nkeep your combo up and make money!");
-                    }
+                        doTip("Cats will now prioritize popping\nspecial bubbles over basic ones!",
+                              /* maxPrestigeLevel */ UINT_MAX);
 
                     if (game.windPurchased)
                     {
@@ -2925,11 +3123,8 @@ int main()
 
                     std::sprintf(labelBuffer, "");
                     if (makePurchasablePPButtonOneTime("Windy season", 2u, game.windPurchased))
-                    {
-                        // TODO:
-                        doTip("Pop bubbles in quick successions to\nkeep your combo up and make money!");
-                    }
-
+                        doTip("It's windy season!\nHold onto something!",
+                              /* maxPrestigeLevel */ UINT_MAX);
 
                     buttonHueMod = 0.f;
 
@@ -2937,70 +3132,57 @@ int main()
                 }
             }
 
-            game.secondsPlayedTotal        = playedClock.getElapsedTime().asSeconds();
-            game.secondsPlayedThisPrestige = playedClock.getElapsedTime().asSeconds();
+            playedUsAccumulator += playedClock.getElapsedTime().asMicroseconds();
+            playedClock.restart();
+
+            while (playedUsAccumulator > 1000000)
+            {
+                playedUsAccumulator -= 1'000'000;
+
+                game.statsTotal.secondsPlayed += 1.f;
+                game.statsSession.secondsPlayed += 1.f;
+            }
 
             if (ImGui::BeginTabItem(" Stats "))
             {
+                const auto displayStats = [&](const Game::Stats& stats)
+                {
+                    ImGui::Spacing();
+                    ImGui::Spacing();
+
+                    const auto secondsPlayedToDisplay = static_cast<U64>(std::fmod(stats.secondsPlayed, 60.f));
+                    const auto minutesPlayedToDisplay = static_cast<U64>(stats.secondsPlayed / 60u);
+                    ImGui::Text("Time played: %llu min %llu sec", minutesPlayedToDisplay, secondsPlayedToDisplay);
+
+                    ImGui::Spacing();
+                    ImGui::Spacing();
+
+                    ImGui::Text("Bubbles popped: %llu", stats.bubblesPopped);
+                    ImGui::Indent();
+                    ImGui::Text("Clicked: %llu", stats.bubblesHandPopped);
+                    ImGui::Text("By cats: %llu", stats.bubblesPopped - stats.bubblesHandPopped);
+                    ImGui::Unindent();
+
+                    ImGui::Spacing();
+                    ImGui::Spacing();
+
+                    ImGui::Text("Revenue: $%llu", stats.bubblesPoppedRevenue);
+                    ImGui::Indent();
+                    ImGui::Text("Clicked: $%llu", stats.bubblesHandPoppedRevenue);
+                    ImGui::Text("By cats: $%llu", stats.bubblesPoppedRevenue - stats.bubblesHandPoppedRevenue);
+                    ImGui::Text("Bombs:   $%llu", stats.explosionRevenue);
+                    ImGui::Unindent();
+                };
+
                 ImGui::SetWindowFontScale(0.75f);
 
-                const auto secondsPlayedToDisplay = static_cast<U64>(std::fmod(game.secondsPlayedTotal, 60.f));
-                const auto minutesPlayedToDisplay = static_cast<U64>(game.secondsPlayedTotal / 60u);
-
-                const auto secondsPlayedTPToDisplay = static_cast<U64>(std::fmod(game.secondsPlayedThisPrestige, 60.f));
-                const auto minutesPlayedTPToDisplay = static_cast<U64>(game.secondsPlayedThisPrestige / 60u);
-
-                ImGui::Text("Time played (lifetime): %llu min %llu sec", minutesPlayedToDisplay, secondsPlayedToDisplay);
-                ImGui::Text("Time played (prestige): %llu min %llu sec", minutesPlayedTPToDisplay, secondsPlayedTPToDisplay);
-
-                ImGui::Separator();
-
                 ImGui::Text(" -- Total values -- ");
-
-                ImGui::Spacing();
-                ImGui::Spacing();
-
-                ImGui::Text("Bubbles popped: %llu", game.bubblesPoppedTotal);
-                ImGui::Indent();
-                ImGui::Text("Clicked: %llu", game.bubblesHandPoppedTotal);
-                ImGui::Text("By cats: %llu", game.bubblesPoppedTotal - game.bubblesHandPoppedTotal);
-                ImGui::Unindent();
-
-                ImGui::Spacing();
-                ImGui::Spacing();
-
-                ImGui::Text("Revenue: $%llu", game.bubblesPoppedRevenueTotal);
-                ImGui::Indent();
-                ImGui::Text("Clicked: $%llu", game.bubblesHandPoppedRevenueTotal);
-                ImGui::Text("By cats: $%llu", game.bubblesPoppedRevenueTotal - game.bubblesHandPoppedRevenueTotal);
-                ImGui::Text("Bombs:   $%llu", game.explosionRevenueTotal);
-                ImGui::Unindent();
+                displayStats(game.statsTotal);
 
                 ImGui::Separator();
 
                 ImGui::Text(" -- Prestige values -- ");
-
-                ImGui::Spacing();
-                ImGui::Spacing();
-
-                ImGui::Text("Bubbles popped: %llu", game.bubblesPoppedThisPrestige);
-                ImGui::Indent();
-                ImGui::Text("Clicked: %llu", game.bubblesHandPoppedThisPrestige);
-                ImGui::Text("By cats: %llu", game.bubblesPoppedThisPrestige - game.bubblesHandPoppedThisPrestige);
-                ImGui::Unindent();
-
-                ImGui::Spacing();
-                ImGui::Spacing();
-
-                ImGui::Text("Revenue: $%llu", game.bubblesPoppedRevenueThisPrestige);
-                ImGui::Indent();
-                ImGui::Text("Clicked: $%llu", game.bubblesHandPoppedRevenueThisPrestige);
-                ImGui::Text("By cats: $%llu",
-                            game.bubblesPoppedRevenueThisPrestige - game.bubblesHandPoppedRevenueThisPrestige);
-                ImGui::Text("Bombs:   $%llu", game.explosionRevenueThisPrestige);
-                ImGui::Unindent();
-
-                ImGui::Separator();
+                displayStats(game.statsSession);
 
                 ImGui::SetWindowFontScale(1.f);
                 ImGui::EndTabItem();
@@ -3025,11 +3207,37 @@ int main()
                 const float fps = 1.f / fpsClock.getElapsedTime().asSeconds();
                 ImGui::Text("FPS: %.2f", static_cast<double>(fps));
 
+                ImGui::Separator();
+
+                if (ImGui::Button("Save game"))
+                {
+                    saveGameToFile(game);
+                }
+
+                ImGui::SameLine();
+
+                if (ImGui::Button("Load game"))
+                {
+                    loadGameFromFile(game);
+                }
+
+                ImGui::SameLine();
+
+                buttonHueMod = 120.f;
+                pushButtonColors();
+
+                if (ImGui::Button("Reset game"))
+                {
+                    game = Game{};
+                }
+
+                popButtonColors();
+                buttonHueMod = 0.f;
 
                 ImGui::EndTabItem();
             }
 
-            const float volumeMult = game.playAudioInBackground ? 1.f : window.hasFocus() ? 1.f : 0.f;
+            const float volumeMult = game.playAudioInBackground || window.hasFocus() ? 1.f : 0.f;
 
             listener.volume = game.masterVolume * volumeMult;
             musicBGM.setVolume(game.musicVolume * volumeMult);
@@ -3074,15 +3282,15 @@ int main()
                                 .outlineColor     = colorBlueOutline,
                                 .outlineThickness = 1.f}};
 
-        const sf::FloatRect* catTxrsByType[5]{
-            game.smarterCatsPurchased ? &txrSmartCat : &txrCat,
-            &txrUniCat,
-            &txrDevilCat,
-            &txrWitchCat,
-            &txrAstroCat,
+        const sf::FloatRect* const catTxrsByType[nCatTypes]{
+            game.smarterCatsPurchased ? &txrSmartCat : &txrCat, // Normal
+            &txrUniCat,                                         // Unicorn
+            &txrDevilCat,                                       // Devil
+            &txrWitchCat,                                       // Witch
+            &txrAstroCat,                                       // Astro
         };
 
-        const sf::FloatRect* catPawTxrsByType[5]{
+        const sf::FloatRect* const catPawTxrsByType[nCatTypes]{
             &txrCatPaw,      // Normal
             &txrUniCatPaw,   // Unicorn
             &txrDevilCatPaw, // Devil
@@ -3112,10 +3320,12 @@ int main()
 
             if (cat.type == CatType::Astro)
             {
-                if (cat.astroState.hasValue() && cat.isCloseToBase())
+                if (cat.astroState.hasValue() && cat.isCloseToStartX())
                     catRotation = remap(sf::base::fabs(cat.position.x - cat.astroState->startX), 0.f, 400.f, 0.f, 0.523599f);
                 else if (cooldownDiff < 1000.f)
                     catRotation = remap(cooldownDiff, 0.f, 1000.f, 0.523599f, 0.f);
+                else if (cat.astroState.hasValue())
+                    catRotation = 0.523599f;
             }
 
             cpuDrawableBatch.add(
@@ -3136,7 +3346,7 @@ int main()
 
             const auto range = game.getComputedRangeByCatType(cat.type);
 
-            constexpr sf::Color colorsByType[5]{
+            constexpr sf::Color colorsByType[nCatTypes]{
                 sf::Color::Blue,   // Cat
                 sf::Color::Purple, // Unicorn
                 sf::Color::Red,    // Devil
@@ -3158,7 +3368,7 @@ int main()
             catTextName.origin   = catTextName.getLocalBounds().size / 2.f;
             cpuDrawableBatch.add(catTextName);
 
-            constexpr const char* catActions[5]{"Pops", "Shines", "IEDs", "Hexes", "Flights"};
+            constexpr const char* catActions[nCatTypes]{"Pops", "Shines", "IEDs", "Hexes", "Flights"};
             catTextStatus.setString(std::to_string(cat.hits) + " " + catActions[static_cast<int>(cat.type)]);
             catTextStatus.position = cat.position + sf::Vector2f{0.f, 68.f};
             catTextStatus.origin   = catTextStatus.getLocalBounds().size / 2.f;
@@ -3170,7 +3380,7 @@ int main()
         sf::Sprite tempSprite;
 
         // ---
-        const sf::FloatRect bubbleRects[3]{txrBubble128, txrBubbleStar, txrBomb};
+        const sf::FloatRect bubbleRects[3]{txrBubble, txrBubbleStar, txrBomb};
 
         for (const auto& bubble : game.bubbles)
         {
@@ -3312,21 +3522,24 @@ int main()
 }
 
 // TODO IDEAS:
-// x - unicat cooldown scaling should be less powerful and capped
-// x - cat cooldown scaling should be a bit more powerful at the beginning and capped around 0.4
-// x - unicat range scaling should be much more exponential and be capped
 // - leveling cat (2500 pops is a good milestone for 1st lvl up, 5000 for 2nd, 10000 for 3rd)
 // - some normal cat buff around 17000 money as a milestone towards devilcats, maybe two paws?
 // - change bg when unlocking new cat type or prestiging?
 // - steam achievements
 // - find better word for "prestige"
 // - tooltips in menus
-// - stats tab
 // - change cat names
 // - smart cat name prefix
-// - cat after devil should be at least 150k
-// - prestige should scale indefinitely...? or make PP costs scale linearly, max is 20
-// - another prestige bonus could be toggleable wind
+// - pp point ideas: start with stuff unlocked, start with a bit of money, etc
+// - prestige should scale indefinitely...? or make PP costs scale linearly, max is 20 -- or maybe when we reach max bubble value just purchase prestige points
+// x - astrocat should inspire cats touched while flying
+// x - unicat cooldown scaling should be less powerful and capped
+// x - cat cooldown scaling should be a bit more powerful at the beginning and capped around 0.4
+// x - unicat range scaling should be much more exponential and be capped
+// x - cat after devil should be at least 150k
+// x - another prestige bonus could be toggleable wind
+// x - add stats to astrocats
+// x - stats tab
 // x - timer
 // x - bomb explosion should have circular range (slight nerf)
 // x - bomb should have higher mass for bubble collisions ??
@@ -3339,9 +3552,9 @@ int main()
 // - release trailer with Byte and real life bubbles!
 // - check Google Keep
 // - unlock hard mode and speedrun mode at the end
-// - make open source?
 
 // TODO LOW PRIO:
+// - make open source?
 // - bubbles that need to be weakened
 // - individual cat levels and upgrades
 // - unlockable areas, different bubble types

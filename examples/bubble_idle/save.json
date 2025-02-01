@@ -1,0 +1,126 @@
+{
+    "cats": [
+        {
+            "nameIdx": 0,
+            "position": {
+                "x": 455.7562561035156,
+                "y": 384.0
+            },
+            "rangeOffset": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "type": 0
+        },
+        {
+            "nameIdx": 1,
+            "position": {
+                "x": 910.757568359375,
+                "y": 384.0
+            },
+            "rangeOffset": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "type": 0
+        },
+        {
+            "nameIdx": 2,
+            "position": {
+                "x": 546.4264526367188,
+                "y": 384.0
+            },
+            "rangeOffset": {
+                "x": 0.0,
+                "y": 0.0
+            },
+            "type": 0
+        },
+        {
+            "nameIdx": 3,
+            "position": {
+                "x": 819.0708618164063,
+                "y": 384.0
+            },
+            "rangeOffset": {
+                "x": 0.0,
+                "y": -100.0
+            },
+            "type": 1
+        },
+        {
+            "nameIdx": 4,
+            "position": {
+                "x": 637.517333984375,
+                "y": 384.0
+            },
+            "rangeOffset": {
+                "x": 0.0,
+                "y": -100.0
+            },
+            "type": 1
+        },
+        {
+            "nameIdx": 5,
+            "position": {
+                "x": 728.471435546875,
+                "y": 384.0
+            },
+            "rangeOffset": {
+                "x": 0.0,
+                "y": -100.0
+            },
+            "type": 1
+        }
+    ],
+    "comboPurchased": true,
+    "mapLimitIncreases": 2,
+    "mapPurchased": true,
+    "masterVolume": 100.0,
+    "minimapScale": 20.0,
+    "money": 999987827,
+    "multiPopEnabled": true,
+    "musicVolume": 100.0,
+    "playAudioInBackground": true,
+    "playComboEndSound": true,
+    "prestigePoints": 0,
+    "psvBubbleCount": 2,
+    "psvBubbleValue": 0,
+    "psvComboStartTime": 2,
+    "psvCooldownMultsPerCatType": [
+        1,
+        0,
+        0,
+        0,
+        0
+    ],
+    "psvExplosionRadiusMult": 0,
+    "psvMultiPopRange": 0,
+    "psvRangeDivsPerCatType": [
+        1,
+        0,
+        0,
+        0,
+        0
+    ],
+    "smarterCatsPurchased": false,
+    "statsSession": {
+        "bubblesHandPopped": 3,
+        "bubblesHandPoppedRevenue": 3,
+        "bubblesPopped": 19,
+        "bubblesPoppedRevenue": 19,
+        "explosionRevenue": 0,
+        "secondsPlayed": 14.0
+    },
+    "statsTotal": {
+        "bubblesHandPopped": 3,
+        "bubblesHandPoppedRevenue": 3,
+        "bubblesPopped": 19,
+        "bubblesPoppedRevenue": 19,
+        "explosionRevenue": 0,
+        "secondsPlayed": 14.0
+    },
+    "tipsEnabled": false,
+    "windEnabled": false,
+    "windPurchased": false
+}
