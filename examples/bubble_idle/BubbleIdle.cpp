@@ -61,7 +61,7 @@
 
 
 ////////////////////////////////////////////////////////////
-#define BUBBLEBYTE_VERSION_STR "v0.0.4"
+#define BUBBLEBYTE_VERSION_STR "v0.0.5"
 
 
 namespace sf
@@ -656,7 +656,7 @@ struct [[nodiscard]] CollisionResolution
     const float overlap  = (iRadius + jRadius) - distance; // Amount of overlap
 
     // Define a "softness" factor to control how quickly the overlap is resolved
-    const float softnessFactor = 0.005f * deltaTimeMs;
+    const float softnessFactor = 0.0005f * deltaTimeMs;
 
     // Calculate the displacement needed to resolve the overlap
     const sf::Vector2f normal       = diff == sf::Vector2f{} ? sf::Vector2f{1.f, 0.f} : diff.normalized();
@@ -734,7 +734,7 @@ bool handleCatCollision(const float deltaTimeMs, Cat& iCat, Cat& jCat)
 ////////////////////////////////////////////////////////////
 [[nodiscard, gnu::always_inline]] inline Bubble makeRandomBubble(const float mapLimit, const float maxY)
 {
-    const float scaleFactor = getRndFloat(0.06f, 0.16f);
+    const float scaleFactor = getRndFloat(0.07f, 0.16f);
 
     return Bubble{.position = getRndVector2f({mapLimit, maxY}),
                   .velocity = getRndVector2f({-0.1f, -0.1f}, {0.1f, 0.1f}),
@@ -1779,7 +1779,8 @@ int main()
     const auto fontSuperBakery = sf::Font::openFromFile("resources/superbakery.ttf", &textureAtlas).value();
 
     /* --- ImGui fonts */
-    ImFont* fontImGuiSuperBakery = ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/superbakery.ttf", 26.f);
+    ImFont* fontImGuiSuperBakery  = ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/superbakery.ttf", 26.f);
+    ImFont* fontImGuiMouldyCheese = ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/mouldycheese.ttf", 26.f);
 
     /* --- Music */
     auto musicBGM = sf::Music::openFromFile("resources/hibiscus.mp3").value();
@@ -2020,6 +2021,7 @@ int main()
          &tipString,
          &tipTimer,
          &fontImGuiSuperBakery,
+         &fontImGuiMouldyCheese,
          &combo,
          &spawnCat,
          &getScaledReward,
@@ -2035,9 +2037,11 @@ int main()
 
         constexpr float normalFontScale    = 1.f;
         constexpr float subBulletFontScale = 0.8f;
+        constexpr float toolTipFontScale   = 0.65f;
 
-        char buffer[256];
-        char labelBuffer[512];
+        char buffer[256]{};
+        char labelBuffer[512]{};
+        char tooltipBuffer[1024]{};
 
         const auto makeButtonLabel = [&](const char* label)
         {
@@ -2081,7 +2085,28 @@ int main()
 
         constexpr float buttonWidth = 150.f;
 
-        const auto makeButtonImpl = [&](const char* label, const char* buffer)
+        const auto makeTooltip = [&]()
+        {
+            if (!ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) || std::strlen(tooltipBuffer) == 0u)
+                return;
+
+            const float tooltipWidth = 400.f;
+
+            ImGui::SetNextWindowPos(ImVec2(ImGui::GetMousePos().x - tooltipWidth, ImGui::GetMousePos().y + 20));
+            ImGui::SetNextWindowSizeConstraints(ImVec2(tooltipWidth, 0), ImVec2(tooltipWidth, FLT_MAX));
+
+            ImGui::BeginTooltip();
+            ImGui::PushFont(fontImGuiMouldyCheese);
+            ImGui::SetWindowFontScale(toolTipFontScale);
+
+            ImGui::TextWrapped("%s", tooltipBuffer);
+
+            ImGui::SetWindowFontScale(normalFontScale);
+            ImGui::PopFont();
+            ImGui::EndTooltip();
+        };
+
+        auto makeButtonImpl = [&](const char* label, const char* buffer)
         {
             ImGui::Dummy(ImVec2(ImGui::GetContentRegionAvail().x - buttonWidth - 2.5f, 0.f)); // Push to right
             ImGui::SameLine();
@@ -2095,6 +2120,8 @@ int main()
                 popButtonColors();
                 return true;
             }
+
+            makeTooltip();
 
             popButtonColors();
 
@@ -2311,6 +2338,10 @@ int main()
                 beginColumns();
 
                 std::sprintf(labelBuffer, "");
+                std::sprintf(tooltipBuffer,
+                             "Build your combo by popping bubbles quickly, increasing the value of each subsequent "
+                             "one.\n\nCombos expires on misclicks and over time, but can be upgraded to last "
+                             "longer.\n\nStar bubbles are affected -- pop them while your multiplier is high!");
                 if (makePurchasableButtonOneTime("Combo", 15, game.comboPurchased))
                 {
                     combo = 0;
@@ -2319,6 +2350,7 @@ int main()
 
                 if (game.comboPurchased)
                 {
+                    std::sprintf(tooltipBuffer, "Increase combo duration.");
                     std::sprintf(labelBuffer, "%.2fs", static_cast<double>(game.psvComboStartTime.currentValue()));
                     makePurchasableButtonPSV("- Longer combo", game.psvComboStartTime);
                 }
@@ -2327,6 +2359,8 @@ int main()
 
                 if (nCatNormal > 0 && game.psvComboStartTime.nPurchases > 0)
                 {
+                    std::sprintf(tooltipBuffer,
+                                 "Extend the map and enable scrolling (right click or drag with two fingers).");
                     std::sprintf(labelBuffer, "");
                     if (makePurchasableButtonOneTime("Map scrolling", 250, game.mapPurchased))
                     {
@@ -2340,6 +2374,7 @@ int main()
                     {
                         if (game.getMapLimit() < boundaries.x - resolution.x)
                         {
+                            std::sprintf(tooltipBuffer, "Extend the map further by one screen.");
                             std::sprintf(labelBuffer,
                                          "%.2f%%",
                                          static_cast<double>(remap(game.getMapLimit(), 0.f, boundaries.x, 0.f, 100.f) + 10.f));
@@ -2351,6 +2386,7 @@ int main()
                         }
                         else
                         {
+                            std::sprintf(tooltipBuffer, "Extend the map further by one screen.");
                             std::sprintf(labelBuffer, "100%%");
                             makeDoneButton("- Extend map");
                         }
@@ -2358,6 +2394,9 @@ int main()
 
                     ImGui::Separator();
 
+                    std::sprintf(tooltipBuffer,
+                                 "Increase the total number of bubbles. Scales with map size.\n\nMore bubbles, more "
+                                 "money!");
                     std::sprintf(labelBuffer, "%zu bubbles", static_cast<SizeT>(game.psvBubbleCount.currentValue()));
                     makePurchasableButtonPSV("More bubbles", game.psvBubbleCount);
 
@@ -2366,6 +2405,11 @@ int main()
 
                 if (game.comboPurchased && game.psvComboStartTime.nPurchases > 0)
                 {
+                    std::sprintf(tooltipBuffer,
+                                 "Cats periodically pop nearby bubbles or bombs. Their cooldown and range can be "
+                                 "upgraded. Their behavior can be permanently upgraded with prestige points.\n\nCats "
+                                 "can be dragged around to position them strategically.\n\nNo, cats cannot be removed "
+                                 "once purchased, you monster.");
                     std::sprintf(labelBuffer, "%llu cats", nCatNormal);
                     if (makePurchasableButton("Cat", 35, 1.7f, static_cast<float>(nCatNormal)))
                     {
@@ -2384,6 +2428,7 @@ int main()
                 {
                     auto& psv = game.getCooldownMultPSVByCatType(catType);
 
+                    std::sprintf(tooltipBuffer, "Decrease cooldown.");
                     std::sprintf(labelBuffer,
                                  "%.2fs",
                                  static_cast<double>(game.getComputedCooldownByCatType(catType) / 1000.f));
@@ -2394,6 +2439,7 @@ int main()
                 {
                     auto& psv = game.getRangeDivPSVByCatType(catType);
 
+                    std::sprintf(tooltipBuffer, "Increase range.");
                     std::sprintf(labelBuffer, "%.2fpx", static_cast<double>(game.getComputedRangeByCatType(catType)));
                     makePurchasableButtonPSV(label, psv);
                 };
@@ -2412,6 +2458,9 @@ int main()
                 const bool catUnicornUpgradesUnlocked = catUnicornUnlocked && nCatUni >= 2 && nCatDevil >= 1;
                 if (catUnicornUnlocked)
                 {
+                    std::sprintf(tooltipBuffer,
+                                 "Unicats transform bubbles into star bubbles, which are worth x25 more!\n\nHave your "
+                                 "cats pop them for you, or pop them near the end of a combo for huge rewards!");
                     std::sprintf(labelBuffer, "%llu unicats", nCatUni);
                     if (makePurchasableButton("Unicat", 250, 1.75f, static_cast<float>(nCatUni)))
                     {
@@ -2439,6 +2488,9 @@ int main()
                 const bool catDevilUpgradesUnlocked = catDevilUnlocked && nCatDevil >= 2 && nCatAstro >= 1;
                 if (catDevilUnlocked)
                 {
+                    std::sprintf(tooltipBuffer,
+                                 "Devilcats transform bubbles into bombs that explode when popped. Bubbles affected by "
+                                 "the explosion are worth x10 more! Bomb explosion range can be upgraded.");
                     std::sprintf(labelBuffer, "%llu devilcats", nCatDevil);
                     if (makePurchasableButton("Devilcat", 15000.f, 1.6f, static_cast<float>(nCatDevil)))
                     {
@@ -2453,6 +2505,7 @@ int main()
                         }
                     }
 
+                    std::sprintf(tooltipBuffer, "Increase bomb explosion radius.");
                     std::sprintf(labelBuffer, "x%.2f", static_cast<double>(game.psvExplosionRadiusMult.currentValue()));
                     makePurchasableButtonPSV("- Explosion radius", game.psvExplosionRadiusMult);
 
@@ -2470,6 +2523,10 @@ int main()
                 const bool astroCatUpgradesUnlocked = astroCatUnlocked && nCatDevil >= 9 && nCatAstro >= 5;
                 if (astroCatUnlocked)
                 {
+                    std::sprintf(tooltipBuffer,
+                                 "Astrocats periodically fly across the map, popping bubbles they hit with a huge x20 "
+                                 "money multiplier!\n\nThey can be permanently upgraded with prestige points to "
+                                 "inspire cats watching them fly past to pop bubbles faster.");
                     std::sprintf(labelBuffer, "%llu astrocats", nCatAstro);
                     if (makePurchasableButton("astrocat", 150000.f, 1.5f, static_cast<float>(nCatAstro)))
                     {
@@ -2643,6 +2700,13 @@ int main()
                     ImGui::Separator();
 
 
+                    std::sprintf(tooltipBuffer,
+                                 "WARNING: this will reset your progress!\n\nPrestige to increase bubble value "
+                                 "permanently and obtain prestige points. Prestige points can be used to unlock "
+                                 "powerful permanent upgrades.\n\nYou will sacrifice all your cats, bubbles, and "
+                                 "money, but you will keep your prestige points and permanent upgrades, and the value "
+                                 "of bubbles will be permanently increased.\n\nDo not be afraid to prestige -- it is "
+                                 "what enables you to progress further!");
                     std::sprintf(labelBuffer, "current bubble value x%zu", getScaledReward(BubbleType::Normal));
 
                     const auto [times,
@@ -2702,6 +2766,10 @@ int main()
 
                     buttonHueMod = 190.f;
 
+                    std::sprintf(tooltipBuffer,
+                                 "Manually popping a bubble now also pops nearby bubbles automatically!\n\nNote that "
+                                 "combo multiplier still only increases once per successful click.\n\nNote: this "
+                                 "effect can be toggled at will.");
                     std::sprintf(labelBuffer, "");
                     if (makePurchasablePPButtonOneTime("Multipop click", 1u, game.multiPopPurchased))
                         doTip("Popping a bubble now also pops\nnearby bubbles automatically!",
@@ -2709,6 +2777,7 @@ int main()
 
                     if (game.multiPopPurchased)
                     {
+                        std::sprintf(tooltipBuffer, "Increase the range of the multipop effect.");
                         std::sprintf(labelBuffer, "%.2fpx", static_cast<double>(game.getComputedMultiPopRange()));
                         makePrestigePurchasablePPButtonPSV("- range", game.psvMultiPopRange);
 
@@ -2721,6 +2790,9 @@ int main()
 
                     ImGui::Separator();
 
+                    std::sprintf(tooltipBuffer,
+                                 "Cats have graduated!\n\nThey still cannot resist their popping insticts, but they will "
+                                 "go for star bubbles and bombs first, ensuring they are not wasted!");
                     std::sprintf(labelBuffer, "");
                     if (makePurchasablePPButtonOneTime("Smart cats", 1u, game.smartCatsPurchased))
                         doTip("Cats will now prioritize popping\nspecial bubbles over basic ones!",
@@ -2728,6 +2800,11 @@ int main()
 
                     if (game.smartCatsPurchased)
                     {
+                        std::sprintf(tooltipBuffer,
+                                     "Embrace the glorious evolution!\n\nCats have ascended beyond their primal insticts "
+                                     "and will now resist popping bubbles, unless they are star bubbles or "
+                                     "bombs!\n\nNote: this effect can be toggled at will.");
+                        std::sprintf(labelBuffer, "");
                         if (makePurchasablePPButtonOneTime("- genius cats", 3u, game.geniusCatsPurchased))
                             doTip("Genius cats can ignore normal\nbubbles if instructed to!",
                                   /* maxPrestigeLevel */ UINT_MAX);
@@ -2744,6 +2821,9 @@ int main()
 
                     ImGui::Separator();
 
+                    std::sprintf(tooltipBuffer,
+                                 "A giant fan (off-screen) will produce an intense wind, making bubbles move and flow "
+                                 "much faster.\n\nNote: this effect can be toggled at will.");
                     std::sprintf(labelBuffer, "");
                     if (makePurchasablePPButtonOneTime("Giant fan", 2u, game.windPurchased))
                         doTip("Hold onto something!", /* maxPrestigeLevel */ UINT_MAX);
@@ -2759,6 +2839,9 @@ int main()
 
                     ImGui::Separator();
 
+                    std::sprintf(tooltipBuffer,
+                                 "Astrocats are now equipped with fancy patriotic flags, inspiring cats watching them "
+                                 "fly by to work faster!");
                     std::sprintf(labelBuffer, "");
                     if (makePurchasablePPButtonOneTime("Space propaganda", 3u, game.astroCatInspirePurchased))
                         doTip("Astrocats will inspire other cats\nto work faster when flying by!",
@@ -2766,6 +2849,7 @@ int main()
 
                     if (game.astroCatInspirePurchased)
                     {
+                        std::sprintf(tooltipBuffer, "Increase the duration of the inspiration effect.");
                         std::sprintf(labelBuffer,
                                      "%.2fs",
                                      static_cast<double>(game.getComputedInspirationDuration() / 1000.f));
@@ -3224,7 +3308,9 @@ int main()
 
             if (pos.y - bubble.radius > boundaries.y)
             {
-                pos.y             = -bubble.radius;
+                pos.x = getRndFloat(0.f, game.getMapLimit());
+                pos.y = -bubble.radius;
+
                 bubble.velocity.y = game.windEnabled ? 0.2f : 0.05f;
 
                 if (sf::base::fabs(bubble.velocity.x) > 0.04f)
@@ -3842,8 +3928,10 @@ int main()
         for (const auto& bubble : game.bubbles)
         {
             bubble.applyToSprite(tempSprite);
+
             tempSprite.textureRect = bubbleRects[static_cast<int>(bubble.type)];
             tempSprite.origin      = tempSprite.textureRect.size / 2.f;
+            tempSprite.scale *= bubble.type == BubbleType::Bomb ? 1.65f : 1.f;
 
             cpuDrawableBatch.add(tempSprite);
         }
@@ -3991,7 +4079,6 @@ int main()
 // - change bg when unlocking new cat type or prestiging?
 // - steam achievements
 // - find better word for "prestige"
-// - tooltips in menus
 // - change cat names
 // - smart cat name prefix
 // - pp point ideas: start with stuff unlocked, start with a bit of money, etc
@@ -4002,7 +4089,9 @@ int main()
 // - consider allowing menu to be outside game view when resizing or in separate widnow
 // - astrocats collide with each other when one flies but the other doesn't
 // - genius cats should also be able to only hit bombs
+// - milestone system with time per milestone, also achievements for speedrunning milestones
 
+// x - tooltips in menus
 // x - always use events to avoid out of focus keypresses
 // x - make astrocat unselectable during flight
 // x - pp upgrade "genius cats" always prioritize bombs
