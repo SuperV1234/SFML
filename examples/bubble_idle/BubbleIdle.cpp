@@ -1892,7 +1892,7 @@ int main()
         1u,  // Bomb
     };
 
-    const auto getScaledReward = [&](const BubbleType type)
+    const auto getScaledReward = [&](const BubbleType type) -> MoneyType
     { return rewardPerType[static_cast<SizeT>(type)] * static_cast<MoneyType>(game.psvBubbleValue.currentValue() + 1); };
 
     //
@@ -2149,7 +2149,7 @@ int main()
             bool result = false;
 
             const auto cost = static_cast<MoneyType>(globalCostMultiplier * costFunction(baseCost, count, growthFactor));
-            std::sprintf(buffer, "$%zu##%u", cost, widgetId++);
+            std::sprintf(buffer, "$%llu##%u", cost, widgetId++);
 
             ImGui::BeginDisabled(game.money < cost);
 
@@ -2175,7 +2175,7 @@ int main()
             if (maxedOut)
                 std::sprintf(buffer, "MAX");
             else
-                std::sprintf(buffer, "$%zu##%u", cost, widgetId++);
+                std::sprintf(buffer, "$%llu##%u", cost, widgetId++);
 
             ImGui::BeginDisabled(maxedOut || game.money < cost);
 
@@ -2204,7 +2204,7 @@ int main()
             else if (cost == 0u)
                 std::sprintf(buffer, "N/A");
             else
-                std::sprintf(buffer, "$%zu##%u", cost, widgetId++);
+                std::sprintf(buffer, "$%llu##%u", cost, widgetId++);
 
             ImGui::BeginDisabled(maxedOut || game.money < cost || cost == 0u);
 
@@ -2410,7 +2410,7 @@ int main()
                                  "upgraded. Their behavior can be permanently upgraded with prestige points.\n\nCats "
                                  "can be dragged around to position them strategically.\n\nNo, cats cannot be removed "
                                  "once purchased, you monster.");
-                    std::sprintf(labelBuffer, "%llu cats", nCatNormal);
+                    std::sprintf(labelBuffer, "%zu cats", nCatNormal);
                     if (makePurchasableButton("Cat", 35, 1.7f, static_cast<float>(nCatNormal)))
                     {
                         spawnCat(gameView, CatType::Normal, {0.f, 0.f});
@@ -2461,7 +2461,7 @@ int main()
                     std::sprintf(tooltipBuffer,
                                  "Unicats transform bubbles into star bubbles, which are worth x25 more!\n\nHave your "
                                  "cats pop them for you, or pop them near the end of a combo for huge rewards!");
-                    std::sprintf(labelBuffer, "%llu unicats", nCatUni);
+                    std::sprintf(labelBuffer, "%zu unicats", nCatUni);
                     if (makePurchasableButton("Unicat", 250, 1.75f, static_cast<float>(nCatUni)))
                     {
                         spawnCat(gameView, CatType::Uni, {0.f, -100.f});
@@ -2491,7 +2491,7 @@ int main()
                     std::sprintf(tooltipBuffer,
                                  "Devilcats transform bubbles into bombs that explode when popped. Bubbles affected by "
                                  "the explosion are worth x10 more! Bomb explosion range can be upgraded.");
-                    std::sprintf(labelBuffer, "%llu devilcats", nCatDevil);
+                    std::sprintf(labelBuffer, "%zu devilcats", nCatDevil);
                     if (makePurchasableButton("Devilcat", 15000.f, 1.6f, static_cast<float>(nCatDevil)))
                     {
                         spawnCat(gameView, CatType::Devil, {0.f, 100.f});
@@ -2527,7 +2527,7 @@ int main()
                                  "Astrocats periodically fly across the map, popping bubbles they hit with a huge x20 "
                                  "money multiplier!\n\nThey can be permanently upgraded with prestige points to "
                                  "inspire cats watching them fly past to pop bubbles faster.");
-                    std::sprintf(labelBuffer, "%llu astrocats", nCatAstro);
+                    std::sprintf(labelBuffer, "%zu astrocats", nCatAstro);
                     if (makePurchasableButton("astrocat", 150000.f, 1.5f, static_cast<float>(nCatAstro)))
                     {
                         spawnCat(gameView, CatType::Astro, {-64.f, 0.f});
@@ -2736,13 +2736,13 @@ int main()
 
                     const auto currentMult = static_cast<SizeT>(game.psvBubbleValue.currentValue()) + 1;
 
-                    ImGui::Text("(next prestige: $%llu)", nextCost);
+                    ImGui::Text("(next prestige: $%zu)", nextCost);
 
                     if (maxCost == 0u)
                         ImGui::Text("- not enough money to prestige");
                     else
                     {
-                        ImGui::Text("- increase bubble value from x%llu to x%llu\n- obtain %llu prestige points",
+                        ImGui::Text("- increase bubble value from x%zu to x%zu\n- obtain %zu prestige points",
                                     currentMult,
                                     currentMult + times,
                                     times);
@@ -2791,7 +2791,8 @@ int main()
                     ImGui::Separator();
 
                     std::sprintf(tooltipBuffer,
-                                 "Cats have graduated!\n\nThey still cannot resist their popping insticts, but they will "
+                                 "Cats have graduated!\n\nThey still cannot resist their popping insticts, but they "
+                                 "will "
                                  "go for star bubbles and bombs first, ensuring they are not wasted!");
                     std::sprintf(labelBuffer, "");
                     if (makePurchasablePPButtonOneTime("Smart cats", 1u, game.smartCatsPurchased))
@@ -2801,7 +2802,8 @@ int main()
                     if (game.smartCatsPurchased)
                     {
                         std::sprintf(tooltipBuffer,
-                                     "Embrace the glorious evolution!\n\nCats have ascended beyond their primal insticts "
+                                     "Embrace the glorious evolution!\n\nCats have ascended beyond their primal "
+                                     "insticts "
                                      "and will now resist popping bubbles, unless they are star bubbles or "
                                      "bombs!\n\nNote: this effect can be toggled at will.");
                         std::sprintf(labelBuffer, "");
@@ -3243,7 +3245,7 @@ int main()
             }
 
             auto& tp = textParticles.emplace_back(makeTextParticle(position, combo));
-            std::snprintf(tp.buffer, sizeof(tp.buffer), "+$%zu", reward);
+            std::snprintf(tp.buffer, sizeof(tp.buffer), "+$%llu", reward);
 
             sounds.pop.setPosition({position.x, position.y});
             sounds.pop.setPitch(remap(static_cast<float>(combo), 1, 10, 1.f, 2.f));
@@ -3269,7 +3271,7 @@ int main()
                     if (bubble.type == BubbleType::Bomb)
                         return ControlFlow::Continue;
 
-                    const SizeT newReward = getScaledReward(bubble.type) * 10u;
+                    const MoneyType newReward = getScaledReward(bubble.type) * 10u;
 
                     game.statsTotal.explosionRevenue += newReward;
                     game.statsSession.explosionRevenue += newReward;
@@ -3552,7 +3554,7 @@ int main()
 
                 const auto astroPopAction = [&](Bubble& bubble)
                 {
-                    const SizeT newReward = getScaledReward(bubble.type) * 20u;
+                    const MoneyType newReward = getScaledReward(bubble.type) * 20u;
 
                     game.statsTotal.flightRevenue += newReward;
                     game.statsSession.flightRevenue += newReward;
