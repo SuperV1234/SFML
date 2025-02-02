@@ -960,7 +960,7 @@ struct Sounds
 
     ////////////////////////////////////////////////////////////
     LoadedSound pop{"pop.ogg"};
-    LoadedSound reversePop{"reversepop.ogg"};
+    LoadedSound reversePop{"reversePop.ogg"};
     LoadedSound shine{"shine.ogg"};
     LoadedSound click{"click2.ogg"};
     LoadedSound byteMeow{"bytemeow.ogg"};
@@ -1748,6 +1748,7 @@ int main()
     sf::RenderWindow window(
         {.size           = resolutionUInt,
          .title          = "BubbleByte " BUBBLEBYTE_VERSION_STR,
+         .resizable      = false, // TODO: reconsider
          .vsync          = true,
          .frametimeLimit = 144u,
          .contextSettings = {.antiAliasingLevel = sf::base::min(16u, sf::RenderTexture::getMaximumAntiAliasingLevel())}});
@@ -2272,7 +2273,7 @@ int main()
             if (maxedOut)
                 std::sprintf(buffer, "MAX");
             else
-                std::sprintf(buffer, "%zu PPs##%u", prestigePointsCost, widgetId++);
+                std::sprintf(buffer, "%llu PPs##%u", prestigePointsCost, widgetId++);
 
             ImGui::BeginDisabled(maxedOut || game.prestigePoints < prestigePointsCost);
 
@@ -2707,7 +2708,7 @@ int main()
                                  "money, but you will keep your prestige points and permanent upgrades, and the value "
                                  "of bubbles will be permanently increased.\n\nDo not be afraid to prestige -- it is "
                                  "what enables you to progress further!");
-                    std::sprintf(labelBuffer, "current bubble value x%zu", getScaledReward(BubbleType::Normal));
+                    std::sprintf(labelBuffer, "current bubble value x%llu", getScaledReward(BubbleType::Normal));
 
                     const auto [times,
                                 maxCost,
@@ -2736,7 +2737,7 @@ int main()
 
                     const auto currentMult = static_cast<SizeT>(game.psvBubbleValue.currentValue()) + 1;
 
-                    ImGui::Text("(next prestige: $%zu)", nextCost);
+                    ImGui::Text("(next prestige: $%llu)", nextCost);
 
                     if (maxCost == 0u)
                         ImGui::Text("- not enough money to prestige");
