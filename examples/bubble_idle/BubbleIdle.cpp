@@ -213,6 +213,7 @@ struct [[nodiscard]] Countdown
             return false;
         }
 
+        value = 0.f;
         return true;
     }
 
@@ -271,6 +272,7 @@ struct [[nodiscard]] LoopingTimer
             return false;
         }
 
+        value = target;
         return true;
     }
 };
@@ -1236,6 +1238,10 @@ struct Game
     Stats statsSession;
 
     //
+    // Other flags
+    bool prestigeTipShown = false;
+
+    //
     // Settings
     float masterVolume          = 100.f;
     float musicVolume           = 100.f;
@@ -1684,6 +1690,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
 
     statsTotal,
     statsSession,
+
+    prestigeTipShown,
 
     masterVolume,
     musicVolume,
@@ -2260,7 +2268,7 @@ int main()
 
             playSound(sounds.byteMeow);
             tipString = str;
-            tipTimer  = 4500.f;
+            tipTimer  = 5000.f;
         };
 
         ImGui::SetNextWindowPos({resolution.x - 15.f, 15.f}, 0, {1.f, 0.f});
@@ -2306,7 +2314,7 @@ int main()
                 if (makePurchasableButtonOneTime("Combo", 15, game.comboPurchased))
                 {
                     combo = 0;
-                    doTip("Pop bubbles in quick successions to\nkeep your combo up and make money!");
+                    doTip("Pop bubbles in quick succession to\nkeep your combo up and make money!");
                 }
 
                 if (game.comboPurchased)
@@ -2412,10 +2420,8 @@ int main()
                         if (nCatUni == 0)
                         {
                             doTip(
-                                "Unicats transform bubbles in star bubbles,\nwhich are worth much more!\nPop "
-                                "them "
-                                "at "
-                                "the end of a combo for huge gains!");
+                                "Unicats transform bubbles in star bubbles,\nworth much more!\n"
+                                "Pop them at the end of a combo!");
                         }
                     }
 
@@ -2441,9 +2447,8 @@ int main()
                         if (nCatDevil == 0)
                         {
                             doTip(
-                                "Devilcats transform bubbles in bombs!\nPop a bomb to explode all nearby "
-                                "bubbles\nwith "
-                                "a huge x10 money multiplier!",
+                                "Devilcats transform bubbles in bombs!\nExplode them to pop nearby "
+                                "bubbles\nwith a x10 money multiplier!",
                                 /* maxPrestigeLevel */ 1);
                         }
                     }
@@ -2473,9 +2478,8 @@ int main()
                         if (nCatAstro == 0)
                         {
                             doTip(
-                                "Astrocats periodically take flight across\nthe entire map, with a huge\nx20 "
-                                "money "
-                                "multiplier!",
+                                "Astrocats periodically fly across\nthe entire map, with a huge\nx20 "
+                                "money multiplier!",
                                 /* maxPrestigeLevel */ 1);
                         }
                     }
@@ -2617,15 +2621,23 @@ int main()
 
             if (game.isBubbleValueUnlocked())
             {
+                if (!game.prestigeTipShown)
+                {
+                    game.prestigeTipShown = true;
+                    doTip(
+                        "Prestige to increase bubble value\nand unlock permanent upgrades!\n"
+                        "Your progress will be reset!");
+                }
+
                 if (ImGui::BeginTabItem(" Prestige "))
                 {
                     ImGui::SetWindowFontScale(normalFontScale);
-                    ImGui::Text("Prestige will:");
+                    ImGui::Text("Prestige to:");
 
                     ImGui::SetWindowFontScale(0.75f);
                     ImGui::Text("- increase bubble value permanently");
                     ImGui::Text("- reset all your other progress");
-                    ImGui::Text("- award you prestige points");
+                    ImGui::Text("- obtain prestige points");
 
                     ImGui::SetWindowFontScale(normalFontScale);
                     ImGui::Separator();
@@ -3638,6 +3650,10 @@ int main()
                     if (!smartActionSuccess)
                         forEachBubbleInRadius({cx, cy}, range, action);
                 }
+                else
+                {
+                    forEachBubbleInRadius({cx, cy}, range, action);
+                }
             }
             else
             {
@@ -3925,8 +3941,8 @@ int main()
             {
                 float fade = 255.f;
 
-                if (tipTimer > 4000.f)
-                    fade = remap(tipTimer, 4000.f, 4500.f, 255.f, 0.f);
+                if (tipTimer > 4500.f)
+                    fade = remap(tipTimer, 4500.f, 5000.f, 255.f, 0.f);
                 else if (tipTimer < 500.f)
                     fade = remap(tipTimer, 0.f, 500.f, 0.f, 255.f);
 
@@ -3984,6 +4000,9 @@ int main()
 // - make bombs less affected by wind
 // - balance until 3rd prestige + 2 astrocats seems pretty good
 // - consider allowing menu to be outside game view when resizing or in separate widnow
+// - astrocats collide with each other when one flies but the other doesn't
+// - genius cats should also be able to only hit bombs
+
 // x - always use events to avoid out of focus keypresses
 // x - make astrocat unselectable during flight
 // x - pp upgrade "genius cats" always prioritize bombs

@@ -56808,6 +56808,7 @@
             "wobbleTimer": 5.978011131286621
         }
     ],
+    "prestigeTipShown": true,
     "comboPurchased": true,
     "geniusCatIgnoreNormalBubbles": false,
     "geniusCatsPurchased": false,
