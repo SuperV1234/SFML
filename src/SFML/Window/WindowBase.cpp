@@ -173,7 +173,7 @@ void WindowBase::setMaximumSize(const Vector2u& maximumSize)
 {
     [[maybe_unused]] const auto validateMaximumSize = [&]
     {
-        if (!!m_impl->getMinimumSize().hasValue())
+        if (!m_impl->getMinimumSize().hasValue())
             return true;
 
         return maximumSize.x >= m_impl->getMinimumSize()->x && maximumSize.y >= m_impl->getMinimumSize()->y;

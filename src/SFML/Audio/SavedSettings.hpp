@@ -25,6 +25,14 @@ namespace sf::priv
 ////////////////////////////////////////////////////////////
 struct SavedSettings
 {
+    static inline constexpr float floatMax =
+#ifndef __FLT_MAX__
+        FLT_MAX
+#else
+        __FLT_MAX__
+#endif
+        ;
+
     float    pitch{1.f};
     float    pan{0.f};
     float    volume{1.f};
@@ -36,19 +44,14 @@ struct SavedSettings
     float    dopplerFactor{1.f};
     int      positioning{0 /* ma_positioning_absolute */};
     float    minDistance{1.f};
-    float    maxDistance{
-#ifndef __FLT_MAX__
-        FLT_MAX
-#else
-        __FLT_MAX__
-#endif
-    };
-    float          minGain{0.f};
-    float          maxGain{1.f};
-    float          rollOff{1.f};
-    bool           playing{false};
-    bool           looping{false};
-    Listener::Cone cone{radians(6.283185f), radians(6.283185f), 0.f};
+    float    maxDistance{floatMax};
+    float    minGain{0.f};
+    float    maxGain{1.f};
+    float    rollOff{1.f};
+    bool     playing{false};
+    bool     looping{false};
+
+    Listener::Cone cone{radians(6.283185f), radians(6.283185f), 1.f};
 
     ////////////////////////////////////////////////////////////
     explicit SavedSettings() = default;

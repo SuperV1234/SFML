@@ -8,6 +8,10 @@
 #include <CommonTraits.hpp>
 #include <SystemUtil.hpp>
 
+#include <cfloat>
+#include <climits>
+
+
 namespace
 {
 class SoundSource : public sf::SoundSource
@@ -35,7 +39,29 @@ public:
         return {};
     }
 };
+
 } // namespace
+
+#define SFML_TEST_CHECK_DEFAULT_VALUES(xSoundSource)                      \
+    CHECK((xSoundSource).getPitch() == 1.f);                              \
+    CHECK((xSoundSource).getPan() == 0.f);                                \
+    CHECK((xSoundSource).getVolume() == 100.f);                           \
+    CHECK((xSoundSource).isSpatializationEnabled());                      \
+    CHECK((xSoundSource).getPosition() == sf::Vector3{0.f, 0.f, 0.f});    \
+    CHECK((xSoundSource).getDirection() == sf::Vector3f{0.f, 0.f, -1.f}); \
+    CHECK((xSoundSource).getCone().innerAngle == sf::radians(6.283185f)); \
+    CHECK((xSoundSource).getCone().outerAngle == sf::radians(6.283185f)); \
+    CHECK((xSoundSource).getCone().outerGain == 1.f);                     \
+    CHECK((xSoundSource).getVelocity() == sf::Vector3f{});                \
+    CHECK((xSoundSource).getDopplerFactor() == 1.f);                      \
+    CHECK((xSoundSource).getDirectionalAttenuationFactor() == 1.f);       \
+    CHECK(!(xSoundSource).isRelativeToListener());                        \
+    CHECK((xSoundSource).getMinDistance() == 1.f);                        \
+    CHECK((xSoundSource).getMaxDistance() == FLT_MAX);                    \
+    CHECK((xSoundSource).getMinGain() == 0);                              \
+    CHECK((xSoundSource).getMaxGain() == 1.f);                            \
+    CHECK((xSoundSource).getAttenuation() == 1.f);                        \
+    CHECK((xSoundSource).getStatus() == sf::SoundSource::Status::Stopped);
 
 TEST_CASE("[Audio] sf::SoundSource" * doctest::skip(skipAudioDeviceTests))
 {
@@ -53,25 +79,7 @@ TEST_CASE("[Audio] sf::SoundSource" * doctest::skip(skipAudioDeviceTests))
     SECTION("Construction")
     {
         const SoundSource soundSource;
-        CHECK(soundSource.getPitch() == 1.f);
-        CHECK(soundSource.getPan() == 0);
-        CHECK(soundSource.getVolume() == 0);
-        CHECK(!soundSource.isSpatializationEnabled());
-        CHECK(soundSource.getPosition() == sf::Vector3f());
-        CHECK(soundSource.getDirection() == sf::Vector3f());
-        CHECK(soundSource.getCone().innerAngle == sf::degrees(0));
-        CHECK(soundSource.getCone().innerAngle == sf::degrees(0));
-        CHECK(soundSource.getCone().outerGain == 0);
-        CHECK(soundSource.getVelocity() == sf::Vector3f());
-        CHECK(soundSource.getDopplerFactor() == 0);
-        CHECK(soundSource.getDirectionalAttenuationFactor() == 0);
-        CHECK(!soundSource.isRelativeToListener());
-        CHECK(soundSource.getMinDistance() == 0);
-        CHECK(soundSource.getMaxDistance() == 0);
-        CHECK(soundSource.getMinGain() == 0);
-        CHECK(soundSource.getMaxGain() == 0);
-        CHECK(soundSource.getAttenuation() == 0);
-        CHECK(soundSource.getStatus() == sf::SoundSource::Status::Stopped);
+        SFML_TEST_CHECK_DEFAULT_VALUES(soundSource);
     }
 
     SECTION("Copy semantics")
@@ -81,164 +89,148 @@ TEST_CASE("[Audio] sf::SoundSource" * doctest::skip(skipAudioDeviceTests))
         SECTION("Construction")
         {
             const SoundSource soundSourceCopy(soundSource); // NOLINT(performance-unnecessary-copy-initialization)
-            CHECK(soundSourceCopy.getPitch() == 0);
-            CHECK(soundSourceCopy.getPan() == 0);
-            CHECK(soundSourceCopy.getVolume() == 0);
-            CHECK(!soundSourceCopy.isSpatializationEnabled());
-            CHECK(soundSourceCopy.getPosition() == sf::Vector3f());
-            CHECK(soundSourceCopy.getDirection() == sf::Vector3f());
-            CHECK(soundSourceCopy.getCone().innerAngle == sf::degrees(0));
-            CHECK(soundSourceCopy.getCone().innerAngle == sf::degrees(0));
-            CHECK(soundSourceCopy.getCone().outerGain == 0);
-            CHECK(soundSourceCopy.getVelocity() == sf::Vector3f());
-            CHECK(soundSourceCopy.getDopplerFactor() == 0);
-            CHECK(soundSourceCopy.getDirectionalAttenuationFactor() == 0);
-            CHECK(!soundSourceCopy.isRelativeToListener());
-            CHECK(soundSourceCopy.getMinDistance() == 0);
-            CHECK(soundSourceCopy.getMaxDistance() == 0);
-            CHECK(soundSourceCopy.getMinGain() == 0);
-            CHECK(soundSourceCopy.getMaxGain() == 0);
-            CHECK(soundSourceCopy.getAttenuation() == 0);
-            CHECK(soundSourceCopy.getStatus() == sf::SoundSource::Status::Stopped);
+            SFML_TEST_CHECK_DEFAULT_VALUES(soundSourceCopy);
         }
 
         SECTION("Assignment")
         {
             SoundSource soundSourceCopy;
             soundSourceCopy = soundSource;
-            CHECK(soundSourceCopy.getPitch() == 0);
-            CHECK(soundSourceCopy.getPan() == 0);
-            CHECK(soundSourceCopy.getVolume() == 0);
-            CHECK(!soundSourceCopy.isSpatializationEnabled());
-            CHECK(soundSourceCopy.getPosition() == sf::Vector3f());
-            CHECK(soundSourceCopy.getDirection() == sf::Vector3f());
-            CHECK(soundSourceCopy.getCone().innerAngle == sf::degrees(0));
-            CHECK(soundSourceCopy.getCone().innerAngle == sf::degrees(0));
-            CHECK(soundSourceCopy.getCone().outerGain == 0);
-            CHECK(soundSourceCopy.getVelocity() == sf::Vector3f());
-            CHECK(soundSourceCopy.getDopplerFactor() == 0);
-            CHECK(soundSourceCopy.getDirectionalAttenuationFactor() == 0);
-            CHECK(!soundSourceCopy.isRelativeToListener());
-            CHECK(soundSourceCopy.getMinDistance() == 0);
-            CHECK(soundSourceCopy.getMaxDistance() == 0);
-            CHECK(soundSourceCopy.getMinGain() == 0);
-            CHECK(soundSourceCopy.getMaxGain() == 0);
-            CHECK(soundSourceCopy.getAttenuation() == 0);
-            CHECK(soundSourceCopy.getStatus() == sf::SoundSource::Status::Stopped);
+            SFML_TEST_CHECK_DEFAULT_VALUES(soundSourceCopy);
         }
     }
 
     SECTION("Set/get pitch")
     {
         SoundSource soundSource;
-        soundSource.setPitch(42);
-        CHECK(soundSource.getPitch() == 0);
+        soundSource.setPitch(42.f);
+        CHECK(soundSource.getPitch() == 42.f);
     }
 
     SECTION("Set/get pan")
     {
         SoundSource soundSource;
-        soundSource.setPan(1);
-        CHECK(soundSource.getPan() == 0);
+
+        soundSource.setPan(1.f);
+        CHECK(soundSource.getPan() == 1.f);
     }
 
     SECTION("Set/get volume")
     {
         SoundSource soundSource;
+
+        soundSource.setVolume(0.f);
+        CHECK(soundSource.getVolume() == 0.f);
+
         soundSource.setVolume(50.f);
         CHECK(soundSource.getVolume() == 50.f);
+
+        soundSource.setVolume(100.f);
+        CHECK(soundSource.getVolume() == 100.f);
     }
 
     SECTION("Set/get spatialization enabled")
     {
         SoundSource soundSource;
+
         soundSource.setSpatializationEnabled(true);
-        CHECK(!soundSource.isSpatializationEnabled());
+        CHECK(soundSource.isSpatializationEnabled());
     }
 
     SECTION("Set/get position")
     {
         SoundSource soundSource;
+
         soundSource.setPosition({1, 2, 3});
-        CHECK(soundSource.getPosition() == sf::Vector3f());
+        CHECK(soundSource.getPosition() == sf::Vector3f{1, 2, 3});
     }
 
     SECTION("Set/get direction")
     {
         SoundSource soundSource;
+
         soundSource.setDirection({4, 5, 6});
-        CHECK(soundSource.getDirection() == sf::Vector3f());
+        CHECK(soundSource.getDirection() == sf::Vector3f{4, 5, 6});
     }
 
     SECTION("Set/get cone")
     {
         SoundSource soundSource;
+
         soundSource.setCone({sf::radians(1), sf::radians(2), 3});
-        CHECK(soundSource.getCone().innerAngle == sf::degrees(0));
-        CHECK(soundSource.getCone().outerAngle == sf::degrees(0));
-        CHECK(soundSource.getCone().outerGain == 0);
+        CHECK(soundSource.getCone().innerAngle == sf::radians(1));
+        CHECK(soundSource.getCone().outerAngle == sf::radians(2));
+        CHECK(soundSource.getCone().outerGain == 3);
     }
 
     SECTION("Set/get velocity")
     {
         SoundSource soundSource;
+
         soundSource.setVelocity({7, 8, 9});
-        CHECK(soundSource.getVelocity() == sf::Vector3f());
+        CHECK(soundSource.getVelocity() == sf::Vector3f{7, 8, 9});
     }
 
     SECTION("Set/get doppler factor")
     {
         SoundSource soundSource;
+
         soundSource.setDopplerFactor(1);
-        CHECK(soundSource.getDopplerFactor() == 0);
+        CHECK(soundSource.getDopplerFactor() == 1);
     }
 
     SECTION("Set/get directional attenuation factor")
     {
         SoundSource soundSource;
+
         soundSource.setDirectionalAttenuationFactor(1);
-        CHECK(soundSource.getDirectionalAttenuationFactor() == 0);
+        CHECK(soundSource.getDirectionalAttenuationFactor() == 1);
     }
 
     SECTION("Set/get relative to listener")
     {
         SoundSource soundSource;
+
         soundSource.setRelativeToListener(true);
-        CHECK(!soundSource.isRelativeToListener());
+        CHECK(soundSource.isRelativeToListener());
     }
 
     SECTION("Set/get min distance")
     {
         SoundSource soundSource;
+
         soundSource.setMinDistance(12.34f);
-        CHECK(soundSource.getMinDistance() == 0);
+        CHECK(soundSource.getMinDistance() == 12.34f);
     }
 
     SECTION("Set/get max distance")
     {
         SoundSource soundSource;
+
         soundSource.setMaxDistance(12.34f);
-        CHECK(soundSource.getMaxDistance() == 0);
+        CHECK(soundSource.getMaxDistance() == 12.34f);
     }
 
     SECTION("Set/get min gain")
     {
         SoundSource soundSource;
+
         soundSource.setMinGain(12.34f);
-        CHECK(soundSource.getMinGain() == 0);
+        CHECK(soundSource.getMinGain() == 12.34f);
     }
 
     SECTION("Set/get max gain")
     {
         SoundSource soundSource;
         soundSource.setMaxGain(12.34f);
-        CHECK(soundSource.getMaxGain() == 0);
+        CHECK(soundSource.getMaxGain() == 12.34f);
     }
 
     SECTION("Set/get attenuation")
     {
         SoundSource soundSource;
+
         soundSource.setAttenuation(10);
-        CHECK(soundSource.getAttenuation() == 0);
+        CHECK(soundSource.getAttenuation() == 10);
     }
 }

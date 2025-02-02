@@ -103,19 +103,26 @@ TEST_CASE("[Audio] sf::SoundStream" * doctest::skip(skipAudioDeviceTests))
     SECTION("Set/get pan")
     {
         TestSoundStream soundStream;
-        soundStream.setPan(1);
-        CHECK(soundStream.getPan() == 1);
-        soundStream.setPan(2);
-        CHECK(soundStream.getPan() == 1);
-        soundStream.setPan(-2);
-        CHECK(soundStream.getPan() == -1);
+        soundStream.setPan(1.f);
+        CHECK(soundStream.getPan() == 1.f);
+        soundStream.setPan(2.f);
+        CHECK(soundStream.getPan() == 2.f);
+        soundStream.setPan(-2.f);
+        CHECK(soundStream.getPan() == -2.f);
     }
 
     SECTION("Set/get volume")
     {
         TestSoundStream soundStream;
-        soundStream.setVolume(50);
-        CHECK(soundStream.getVolume() == 50);
+
+        soundStream.setVolume(0.f);
+        CHECK(soundStream.getVolume() == 0.f);
+
+        soundStream.setVolume(50.f);
+        CHECK(soundStream.getVolume() == 50.f);
+
+        soundStream.setVolume(100.f);
+        CHECK(soundStream.getVolume() == 100.f);
     }
 
     SECTION("Set/get spatialization enabled")

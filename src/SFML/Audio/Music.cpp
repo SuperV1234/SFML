@@ -18,29 +18,28 @@
 
 #include <mutex>
 
+// TODO P1: PR digit separator usage upstream
 
 namespace
 {
 ////////////////////////////////////////////////////////////
-[[nodiscard]] sf::Time samplesToTime(unsigned int sampleRate, unsigned int channelCount, sf::base::U64 samples)
+[[nodiscard]] constexpr sf::Time samplesToTime(unsigned int sampleRate, unsigned int channelCount, sf::base::U64 samples)
 {
-    auto position = sf::Time::Zero;
-
     // Make sure we don't divide by 0
-    if (sampleRate != 0 && channelCount != 0)
-        position = sf::microseconds(static_cast<sf::base::I64>((samples * 1000000) / (channelCount * sampleRate)));
+    if (sampleRate == 0u || channelCount == 0u)
+        return sf::Time::Zero;
 
-    return position;
+    return sf::microseconds(static_cast<sf::base::I64>((samples * 1'000'000u) / (channelCount * sampleRate)));
 }
 
 ////////////////////////////////////////////////////////////
-[[nodiscard]] sf::base::U64 timeToSamples(unsigned int sampleRate, unsigned int channelCount, sf::Time position)
+[[nodiscard]] constexpr sf::base::U64 timeToSamples(unsigned int sampleRate, unsigned int channelCount, sf::Time position)
 {
     // Always ROUND, no unchecked truncation, hence the addition in the numerator.
     // This avoids most precision errors arising from "samples => Time => samples" conversions
     // Original rounding calculation is ((Micros * Freq * Channels) / 1000000) + 0.5
     // We refactor it to keep sf::base::I64 as the data type throughout the whole operation.
-    return ((static_cast<sf::base::U64>(position.asMicroseconds()) * sampleRate * channelCount) + 500000) / 1000000;
+    return ((static_cast<sf::base::U64>(position.asMicroseconds()) * sampleRate * channelCount) + 500'000u) / 1'000'000u;
 }
 
 } // namespace
@@ -227,45 +226,52 @@ base::Optional<base::U64> Music::onLoop()
 ////////////////////////////////////////////////////////////
 Music::TimeSpan Music::getLoopPoints() const
 {
-    return TimeSpan{samplesToTime(getSampleRate(), getChannelCount(), m_impl->loopSpan.offset),
-                    samplesToTime(getSampleRate(), getChannelCount(), m_impl->loopSpan.length)};
+    const auto sampleRate   = getSampleRate();
+    const auto channelCount = getChannelCount();
+
+    return TimeSpan{samplesToTime(sampleRate, channelCount, m_impl->loopSpan.offset),
+                    samplesToTime(sampleRate, channelCount, m_impl->loopSpan.length)};
 }
 
 
 ////////////////////////////////////////////////////////////
 void Music::setLoopPoints(TimeSpan timePoints)
 {
-    Span<base::U64> samplePoints{timeToSamples(getSampleRate(), getChannelCount(), timePoints.offset),
-                                 timeToSamples(getSampleRate(), getChannelCount(), timePoints.length)};
+    const auto sampleRate       = getSampleRate();
+    const auto channelCount     = getChannelCount();
+    const auto fileChannelCount = m_impl->file.getSampleCount();
 
-    // Check our state. This averts a divide-by-zero. GetChannelCount() is cheap enough to use often
-    if (getChannelCount() == 0 || m_impl->file.getSampleCount() == 0)
+    Span<base::U64> samplePoints{timeToSamples(sampleRate, channelCount, timePoints.offset),
+                                 timeToSamples(sampleRate, channelCount, timePoints.length)};
+
+    // Check our state. This averts a divide-by-zero.
+    if (channelCount == 0u || fileChannelCount == 0u)
     {
         priv::err() << "Music is not in a valid state to assign Loop Points.";
         return;
     }
 
     // Round up to the next even sample if needed
-    samplePoints.offset += (getChannelCount() - 1);
-    samplePoints.offset -= (samplePoints.offset % getChannelCount());
-    samplePoints.length += (getChannelCount() - 1);
-    samplePoints.length -= (samplePoints.length % getChannelCount());
+    samplePoints.offset += (channelCount - 1u);
+    samplePoints.offset -= (samplePoints.offset % channelCount);
+    samplePoints.length += (channelCount - 1u);
+    samplePoints.length -= (samplePoints.length % channelCount);
 
     // Validate
-    if (samplePoints.offset >= m_impl->file.getSampleCount())
+    if (samplePoints.offset >= fileChannelCount)
     {
         priv::err() << "LoopPoints offset val must be in range [0, Duration).";
         return;
     }
 
-    if (samplePoints.length == 0)
+    if (samplePoints.length == 0u)
     {
         priv::err() << "LoopPoints length val must be nonzero.";
         return;
     }
 
     // Clamp End Point
-    samplePoints.length = base::min(samplePoints.length, m_impl->file.getSampleCount() - samplePoints.offset);
+    samplePoints.length = base::min(samplePoints.length, fileChannelCount - samplePoints.offset);
 
     // If this change has no effect, we can return without touching anything
     if (samplePoints.offset == m_impl->loopSpan.offset && samplePoints.length == m_impl->loopSpan.length)

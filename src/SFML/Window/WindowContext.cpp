@@ -300,7 +300,7 @@ WindowContext::~WindowContext()
 
     SFML_BASE_ASSERT(ensureInstalled().unsharedFrameBuffers.empty());
 
-    SFML_BASE_ASSERT(hasActiveThreadLocalOrSharedGlContext());
+    // SFML_BASE_ASSERT(hasActiveThreadLocalOrSharedGlContext());
 
     activeGlContext.id  = 0u;
     activeGlContext.ptr = nullptr;

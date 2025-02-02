@@ -237,6 +237,8 @@ Sound::Sound(Sound&& rhs) noexcept : m_impl(SFML_BASE_MOVE(rhs.m_impl))
 
     // Update self-referential owner pointer.
     m_impl->owner = this;
+
+    SFML_UPDATE_LIFETIME_DEPENDANT(SoundBuffer, Sound, this, m_impl->buffer);
 }
 
 
@@ -261,6 +263,7 @@ Sound& Sound::operator=(Sound&& rhs) noexcept
         m_impl->owner = this;
     }
 
+    SFML_UPDATE_LIFETIME_DEPENDANT(SoundBuffer, Sound, this, m_impl->buffer);
     return *this;
 }
 

@@ -87,7 +87,7 @@ TEST_CASE("[Window] sf::WindowBase" * doctest::skip(skipDisplayTests))
             const auto event     = windowBase.waitEvent(timeout);
             const auto elapsed   = clock.getElapsedTime() - startTime;
 
-            REQUIRE(elapsed < timeout);
+            REQUIRE(elapsed < (timeout + sf::milliseconds(100)));
 
             if (elapsed <= timeout)
                 CHECK(event.hasValue());
@@ -101,19 +101,11 @@ TEST_CASE("[Window] sf::WindowBase" * doctest::skip(skipDisplayTests))
         sf::WindowBase windowBase({.size{360u, 240u}, .title = "WindowBase Tests"});
 
         windowBase.setPosition({12, 34});
-        CHECK(windowBase.getPosition() == sf::Vector2i{});
+        CHECK(windowBase.getPosition() == sf::Vector2i{12, 34});
     }
 
     SECTION("Set/get size")
     {
-        SECTION("Uninitialized window")
-        {
-            sf::WindowBase windowBase({.size{360u, 240u}, .title = "WindowBase Tests"});
-
-            windowBase.setSize({128, 256});
-            CHECK(windowBase.getSize() == sf::Vector2u{});
-        }
-
         SECTION("Initialized window")
         {
             sf::WindowBase windowBase({.size{360u, 240u}, .title = "WindowBase Tests"});

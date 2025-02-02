@@ -72,7 +72,19 @@ template <typename Iter, typename Predicate>
     return false;
 }
 
-// TODO P1: add countIf
+
+////////////////////////////////////////////////////////////
+template <typename Iter, typename Predicate>
+[[nodiscard, gnu::always_inline, gnu::pure]] constexpr SizeT countIf(Iter rangeBegin, Iter rangeEnd, Predicate&& predicate)
+{
+    SizeT result = 0u;
+
+    for (; rangeBegin != rangeEnd; ++rangeBegin)
+        if (predicate(*rangeBegin))
+            ++result;
+
+    return result;
+}
 
 
 ////////////////////////////////////////////////////////////

@@ -165,6 +165,8 @@ TEST_CASE("[Audio] sf::Music" * doctest::skip(skipAudioDeviceTests))
 
         SECTION("Offset too long")
         {
+            music = sf::Music::openFromFile("Audio/killdeer.wav").value();
+
             music.setLoopPoints({sf::seconds(1'000), sf::milliseconds(10)});
             const auto [offset, length] = music.getLoopPoints();
             CHECK(offset == sf::seconds(0));
