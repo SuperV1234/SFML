@@ -69,11 +69,13 @@ sfml_set_stdlib(sfml-test-main)
 
 sfml_set_option(SFML_RUN_DISPLAY_TESTS ON BOOL "ON to run tests that require a display, OFF to ignore it")
 if(SFML_RUN_DISPLAY_TESTS)
+    add_definitions(-DSFML_RUN_DISPLAY_TESTS)
     target_compile_definitions(sfml-test-main PRIVATE SFML_RUN_DISPLAY_TESTS)
 endif()
 
 sfml_set_option(SFML_RUN_AUDIO_DEVICE_TESTS ON BOOL "ON to run tests that require an audio device, OFF to ignore it")
 if(SFML_RUN_AUDIO_DEVICE_TESTS)
+    add_definitions(-DSFML_RUN_AUDIO_DEVICE_TESTS)
     target_compile_definitions(sfml-test-main PRIVATE SFML_RUN_AUDIO_DEVICE_TESTS)
 endif()
 

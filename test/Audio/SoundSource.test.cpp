@@ -53,7 +53,7 @@ TEST_CASE("[Audio] sf::SoundSource" * doctest::skip(skipAudioDeviceTests))
     SECTION("Construction")
     {
         const SoundSource soundSource;
-        CHECK(soundSource.getPitch() == 0);
+        CHECK(soundSource.getPitch() == 1.f);
         CHECK(soundSource.getPan() == 0);
         CHECK(soundSource.getVolume() == 0);
         CHECK(!soundSource.isSpatializationEnabled());
@@ -145,8 +145,8 @@ TEST_CASE("[Audio] sf::SoundSource" * doctest::skip(skipAudioDeviceTests))
     SECTION("Set/get volume")
     {
         SoundSource soundSource;
-        soundSource.setVolume(0.5f);
-        CHECK(soundSource.getVolume() == 0);
+        soundSource.setVolume(50.f);
+        CHECK(soundSource.getVolume() == 50.f);
     }
 
     SECTION("Set/get spatialization enabled")

@@ -235,7 +235,7 @@ void SoundSource::setPlayingOffset(Time playingOffset)
 ////////////////////////////////////////////////////////////
 float SoundSource::getPitch() const
 {
-    return 0.f;
+    return m_impl->savedSettings.pitch;
 }
 
 
@@ -249,7 +249,7 @@ float SoundSource::getPan() const
 ////////////////////////////////////////////////////////////
 float SoundSource::getVolume() const
 {
-    return m_impl->savedSettings.volume;
+    return m_impl->savedSettings.volume * 100.f;
 }
 
 
