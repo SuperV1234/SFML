@@ -2312,6 +2312,8 @@ int main()
         style.FrameRounding             = 10.f;
         style.WindowRounding            = 5.f;
 
+        ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_IsTouchScreen;
+
         ImGui::Begin("##menu",
                      nullptr,
                      ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize |
@@ -2996,6 +2998,9 @@ int main()
             if (const auto* e = event->getIf<sf::Event::TouchBegan>())
             {
                 fingerPositions[e->finger].emplace(e->position.toVector2f());
+
+                if (!clickPosition.hasValue())
+                    clickPosition.emplace(e->position.toVector2f());
             }
             else if (const auto* e = event->getIf<sf::Event::TouchEnded>())
             {
@@ -3059,9 +3064,12 @@ int main()
 
         //
         // Number of fingers
-        const auto countFingersDown = sf::base::countIf(fingerPositions.begin(),
-                                                        fingerPositions.end(),
-                                                        [](const auto& fingerPos) { return fingerPos.hasValue(); });
+        std::vector<sf::Vector2f> downFingers;
+        for (const auto maybeFinger : fingerPositions)
+            if (maybeFinger.hasValue())
+                downFingers.push_back(*maybeFinger);
+
+        const auto countFingersDown = downFingers.size();
 
         //
         // Map scrolling via keyboard and touch
@@ -3136,7 +3144,10 @@ int main()
              .size   = resolution};
 
         // TODO: if windows is resized this needs to be adapted
-        const auto mousePos = window.mapPixelToCoords(sf::Mouse::getPosition(window), gameView);
+        const auto windowSpaceMouseOrFingerPos = countFingersDown == 1u ? downFingers[0].toVector2i()
+                                                                        : sf::Mouse::getPosition(window);
+
+        const auto mousePos = window.mapPixelToCoords(windowSpaceMouseOrFingerPos, gameView);
 
         //
         // Update listener position
@@ -3446,7 +3457,7 @@ int main()
                 handleCatCollision(deltaTimeMs, game.cats[i], game.cats[j]);
             }
 
-        if (mBtnDown(sf::Mouse::Button::Left)) // TODO: touch
+        if (mBtnDown(sf::Mouse::Button::Left) || (countFingersDown == 1))
         {
             if (draggedCat)
             {

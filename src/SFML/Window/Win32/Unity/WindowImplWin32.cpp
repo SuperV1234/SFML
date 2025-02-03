@@ -7,6 +7,7 @@
 #include "SFML/Window/JoystickImpl.hpp"
 #include "SFML/Window/VideoMode.hpp"
 #include "SFML/Window/Win32/WindowImplWin32.hpp"
+#include "SFML/Window/WindowBase.hpp"
 #include "SFML/Window/WindowImpl.hpp"
 #include "SFML/Window/WindowSettings.hpp"
 
@@ -21,6 +22,7 @@
 #include "SFML/Base/SizeT.hpp"
 #include "SFML/Base/TrivialVector.hpp"
 
+#include <_mingw_stat64.h>
 #include <dbt.h>
 #include <unordered_map>
 #include <winuser.h>
@@ -123,18 +125,59 @@ void initRawMouse(HWND handle)
 }
 
 // TODO P0:
-std::unordered_map<UINT32, unsigned int> touchIdToIndexMap;
-unsigned int                             nextIndex = 0u;
-
-unsigned int getNormalizedIndex(UINT32 touchId)
+struct TouchInfo
 {
-    if (touchIdToIndexMap.find(touchId) == touchIdToIndexMap.end())
-        touchIdToIndexMap[touchId] = nextIndex++;
+    unsigned int     normalizedIndex;
+    sf::Vector2i     position;
+    sf::WindowHandle handle;
+};
 
-    return touchIdToIndexMap[touchId];
-}
+bool                                  touchIndexPool[10]{};
+std::unordered_map<UINT32, TouchInfo> touchMap;
 
 } // namespace
+
+namespace sf::priv::InputImpl
+{
+////////////////////////////////////////////////////////////
+bool isTouchDown(unsigned int finger)
+{
+    for (const auto& [index, info] : touchMap)
+    {
+        if (info.normalizedIndex == finger)
+            return true;
+    }
+
+    return false;
+}
+
+////////////////////////////////////////////////////////////
+Vector2i getTouchPosition(unsigned int finger)
+{
+    for (const auto& [index, info] : touchMap)
+    {
+        if (info.normalizedIndex == finger)
+            return info.position;
+    }
+
+    return {};
+}
+
+////////////////////////////////////////////////////////////
+Vector2i getTouchPosition(unsigned int finger, const WindowBase& window)
+{
+    // TODO P0: is window used correctly?
+
+    for (const auto& [index, info] : touchMap)
+    {
+        if (info.normalizedIndex == finger && info.handle == window.getNativeHandle())
+            return info.position;
+    }
+
+    return {};
+}
+
+} // namespace sf::priv::InputImpl
 
 namespace sf::priv
 {
@@ -301,9 +344,6 @@ WindowHandle WindowImplWin32::getNativeHandle() const
 ////////////////////////////////////////////////////////////
 void WindowImplWin32::processEvents()
 {
-    touchIdToIndexMap.clear();
-    nextIndex = 0u;
-    
     // We process the window events only if we own it
     if (!m_callback)
     {
@@ -1041,17 +1081,56 @@ void WindowImplWin32::processEvent(UINT message, WPARAM wParam, LPARAM lParam)
                     POINT pt = {pointerInfo.ptPixelLocation.x, pointerInfo.ptPixelLocation.y};
                     ScreenToClient(m_handle, &pt);
 
+                    const sf::Vector2i touchPos{pt.x, pt.y};
+
+                    // Get normalized index
+                    const auto findFirstNormalizedIndex = [&]
+                    {
+                        for (base::SizeT i = 0; i < 10; ++i)
+                            if (!touchIndexPool[i])
+                                return static_cast<int>(i);
+
+                        sf::priv::err() << "No available touch index\n";
+                        return -1;
+                    };
+
                     switch (message) // 'msg' is the current message being processed
                     {
                         case WM_POINTERDOWN:
-                            pushEvent(sf::Event::TouchBegan{getNormalizedIndex(pointerId), {pt.x, pt.y}});
+                        {
+                            SFML_BASE_ASSERT(!touchMap.contains(pointerId));
+
+                            const int normalizedIndex = findFirstNormalizedIndex();
+                            if (normalizedIndex == -1)
+                                break;
+
+                            const auto fingerIdx = static_cast<unsigned int>(normalizedIndex);
+
+                            touchIndexPool[normalizedIndex] = true;
+                            touchMap.emplace(pointerId, TouchInfo{fingerIdx, touchPos, m_handle});
+
+                            pushEvent(sf::Event::TouchBegan{fingerIdx, touchPos});
                             break;
+                        }
                         case WM_POINTERUPDATE:
-                            pushEvent(sf::Event::TouchMoved{getNormalizedIndex(pointerId), {pt.x, pt.y}});
+                        {
+                            SFML_BASE_ASSERT(touchMap.contains(pointerId));
+                            const auto [fingerIdx, pos, handle] = touchMap[pointerId];
+
+                            pushEvent(sf::Event::TouchMoved{fingerIdx, touchPos});
                             break;
+                        }
                         case WM_POINTERUP:
-                            pushEvent(sf::Event::TouchEnded{getNormalizedIndex(pointerId), {pt.x, pt.y}});
+                        {
+                            SFML_BASE_ASSERT(touchMap.contains(pointerId));
+                            const auto [fingerIdx, pos, handle] = touchMap[pointerId];
+
+                            touchIndexPool[fingerIdx] = false;
+                            touchMap.erase(pointerId);
+
+                            pushEvent(sf::Event::TouchEnded{fingerIdx, touchPos});
                             break;
+                        }
                     }
                 }
             }

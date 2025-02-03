@@ -711,29 +711,32 @@ void setMousePosition(Vector2i position, const WindowBase& relativeTo)
 
 
 ////////////////////////////////////////////////////////////
-bool isTouchDown(unsigned int /* finger */)
-{
-    // TODO P1: implement via WM_ pointer messages
-    // Not applicable
-    return false;
-}
+// TODO P0:
+// bool isTouchDown(unsigned int /* finger */)
+// {
+//     // TODO P1: implement via WM_ pointer messages
+//     // Not applicable
+//     return false;
+// }
 
 
 ////////////////////////////////////////////////////////////
-Vector2i getTouchPosition(unsigned int /* finger */)
-{
-    // TODO P1: implement via WM_ pointer messages
-    // Not applicable
-    return {};
-}
+// TODO P0:
+// Vector2i getTouchPosition(unsigned int /* finger */)
+// {
+//     // TODO P1: implement via WM_ pointer messages
+//     // Not applicable
+//     return {};
+// }
 
 
 ////////////////////////////////////////////////////////////
-Vector2i getTouchPosition(unsigned int /* finger */, const WindowBase& /* relativeTo */)
-{
-    // TODO P1: implement via WM_ pointer messages
-    // Not applicable
-    return {};
-}
+// TODO P0:
+// Vector2i getTouchPosition(unsigned int /* finger */, const WindowBase& /* relativeTo */)
+// {
+//     // TODO P1: implement via WM_ pointer messages
+//     // Not applicable
+//     return {};
+// }
 
 } // namespace sf::priv::InputImpl

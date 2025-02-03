@@ -616,7 +616,18 @@ struct [[nodiscard]] ImGuiPerWindowContext
     {
         ImGuiIO& io = ::ImGui::GetIO();
 
-        if (event.is<Event::FocusGained>())
+        if (!windowHasFocus && window->hasFocus())
+        {
+            io.AddFocusEvent(true);
+            windowHasFocus = true;
+        }
+        else if (windowHasFocus && !window->hasFocus())
+        {
+            io.AddFocusEvent(false);
+            windowHasFocus = false;
+        }
+
+        if (!windowHasFocus && event.is<Event::FocusGained>())
         {
             io.AddFocusEvent(true);
             windowHasFocus = true;
@@ -626,7 +637,7 @@ struct [[nodiscard]] ImGuiPerWindowContext
         if (!windowHasFocus)
             return;
 
-        if (event.is<Event::FocusLost>())
+        if (windowHasFocus && event.is<Event::FocusLost>())
         {
             io.AddFocusEvent(false);
             windowHasFocus = false;
@@ -637,7 +648,9 @@ struct [[nodiscard]] ImGuiPerWindowContext
         }
         else if (const auto* eMouseMoved = event.getIf<Event::MouseMoved>())
         {
+            io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
             io.AddMousePosEvent(static_cast<float>(eMouseMoved->position.x), static_cast<float>(eMouseMoved->position.y));
+
             mouseMoved = true;
         }
         else if (const auto* mouseButtonPressed = event.getIf<Event::MouseButtonPressed>())
@@ -646,6 +659,8 @@ struct [[nodiscard]] ImGuiPerWindowContext
             if (button >= 0 && button < 3)
             {
                 mousePressed[static_cast<int>(mouseButtonPressed->button)] = true;
+
+                io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
                 io.AddMouseButtonEvent(button, true);
             }
         }
@@ -653,7 +668,17 @@ struct [[nodiscard]] ImGuiPerWindowContext
         {
             const int button = static_cast<int>(mouseButtonReleased->button);
             if (button >= 0 && button < 3)
+            {
+                io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
                 io.AddMouseButtonEvent(button, false);
+            }
+        }
+        else if (const auto* eTouchMoved = event.getIf<Event::TouchMoved>())
+        {
+            io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
+            io.AddMousePosEvent(static_cast<float>(eTouchMoved->position.x), static_cast<float>(eTouchMoved->position.y));
+
+            mouseMoved = false;
         }
         else if (const auto* touchBegan = event.getIf<Event::TouchBegan>())
         {
@@ -664,6 +689,9 @@ struct [[nodiscard]] ImGuiPerWindowContext
             {
                 touchDown[button]      = true;
                 touchPositions[button] = touchBegan->position;
+
+                io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
+                io.AddMouseButtonEvent(static_cast<int>(button), true);
             }
         }
         else if (const auto* touchEnded = event.getIf<Event::TouchEnded>())
@@ -675,6 +703,9 @@ struct [[nodiscard]] ImGuiPerWindowContext
             {
                 touchDown[button]      = false;
                 touchPositions[button] = {};
+
+                io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
+                io.AddMouseButtonEvent(static_cast<int>(button), false);
             }
         }
         else if (const auto* mouseWheelScrolled = event.getIf<Event::MouseWheelScrolled>())
@@ -808,7 +839,7 @@ struct [[nodiscard]] ImGuiPerWindowContext
 
             for (unsigned int i = 0; i < 3; i++)
             {
-                io.MouseDown[i] = touchDown[i] || Touch::isDown(i) || mousePressed[i] ||
+                io.MouseDown[i] = Touch::isDown(i) || touchDown[i] || mousePressed[i] ||
                                   Mouse::isButtonPressed(static_cast<Mouse::Button>(i));
 
                 mousePressed[i] = false;
