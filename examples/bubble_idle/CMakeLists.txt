@@ -1,5 +1,5 @@
 # all source files
-set(SRC BubbleIdle.cpp)
+set(SRC BubbleIdle.cpp Serialization.cpp)
 
 # define the bubble_idle target
 sfml_add_example(bubble_idle GUI_APP

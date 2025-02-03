@@ -1,0 +1,17 @@
+{
+    "masterVolume": 38.0,
+    "minimapScale": 20.0,
+    "musicVolume": 27.0,
+    "playAudioInBackground": true,
+    "playComboEndSound": true,
+    "statsLifetime": {
+        "bubblesHandPopped": 652,
+        "bubblesHandPoppedRevenue": 20654,
+        "bubblesPopped": 14072,
+        "bubblesPoppedRevenue": 110428,
+        "explosionRevenue": 0,
+        "flightRevenue": 0,
+        "secondsPlayed": 501
+    },
+    "tipsEnabled": true
+}

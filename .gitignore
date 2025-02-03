@@ -23,3 +23,6 @@ examples/batching/imgui.ini
 compile_commands.json
 old/out.txt
 old/x.x
+*.bak0
+*.bak1
+*.bak2
