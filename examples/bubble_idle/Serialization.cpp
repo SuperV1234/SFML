@@ -1,3 +1,4 @@
+#include "Aliases.hpp"
 #include "Common.hpp"
 #include "json.hpp"
 
@@ -229,6 +230,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
 
     prestigeTipShown);
 
+namespace
+{
 ////////////////////////////////////////////////////////////
 void forceCopyFile(const std::filesystem::path& from, const std::filesystem::path& to)
 {
@@ -253,6 +256,8 @@ try
 {
     std::cout << "Failed to backup '" << filename << "' (" << ex.what() << ")\n";
 }
+
+} // namespace
 
 ////////////////////////////////////////////////////////////
 extern void saveProfileToFile(const Profile& profile)

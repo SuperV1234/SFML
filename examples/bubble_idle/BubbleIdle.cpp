@@ -1,4 +1,7 @@
+#include "Aliases.hpp"
 #include "Common.hpp"
+#include "Constants.hpp"
+#include "RNG.hpp"
 
 #include "SFML/ImGui/ImGui.hpp"
 
@@ -1287,13 +1290,13 @@ int main()
 
                     if (game.mapPurchased)
                     {
-                        if (game.getMapLimit() < boundaries.x - resolution.x)
+                        if (game.getMapLimit() < boundaries.x - gameScreenSize.x)
                         {
                             std::sprintf(tooltipBuffer, "Extend the map further by one screen.");
                             std::sprintf(labelBuffer,
                                          "%.2f%%",
                                          static_cast<double>(remap(game.getMapLimit(), 0.f, boundaries.x, 0.f, 100.f) + 10.f));
-                            if (makePurchasableButton("- Extend map", 100.f, 4.85f, game.getMapLimit() / resolution.x))
+                            if (makePurchasableButton("- Extend map", 100.f, 4.85f, game.getMapLimit() / gameScreenSize.x))
                             {
                                 ++game.mapLimitIncreases;
                                 game.mapPurchased = true;
@@ -2153,17 +2156,17 @@ int main()
         // Scrolling
         scroll = sf::base::clamp(scroll,
                                  0.f,
-                                 sf::base::min(game.getMapLimit() / 2.f - resolution.x / 2.f,
-                                               (boundaries.x - resolution.x) / 2.f));
+                                 sf::base::min(game.getMapLimit() / 2.f - gameScreenSize.x / 2.f,
+                                               (boundaries.x - gameScreenSize.x) / 2.f));
 
         actualScroll = exponentialApproach(actualScroll, scroll, deltaTimeMs, 75.f);
 
         const sf::View gameView //
-            {.center = {sf::base::clamp(resolution.x / 2.f + actualScroll * 2.f,
-                                        resolution.x / 2.f,
-                                        boundaries.x - resolution.x / 2.f),
-                        resolution.y / 2.f},
-             .size   = resolution};
+            {.center = {sf::base::clamp(gameScreenSize.x / 2.f + actualScroll * 2.f,
+                                        gameScreenSize.x / 2.f,
+                                        boundaries.x - gameScreenSize.x / 2.f),
+                        gameScreenSize.y / 2.f},
+             .size   = gameScreenSize};
 
         // TODO: if windows is resized this needs to be adapted
         const auto windowSpaceMouseOrFingerPos = countFingersDown == 1u ? downFingers[0].toVector2i()
@@ -2182,8 +2185,8 @@ int main()
         //
         // Target bubble count
         const auto targetBubbleCountPerScreen = static_cast<SizeT>(
-            game.psvBubbleCount.currentValue() / (boundaries.x / resolution.x));
-        const auto nScreens          = static_cast<SizeT>(game.getMapLimit() / resolution.x) + 1;
+            game.psvBubbleCount.currentValue() / (boundaries.x / gameScreenSize.x));
+        const auto nScreens          = static_cast<SizeT>(game.getMapLimit() / gameScreenSize.x) + 1;
         const auto targetBubbleCount = targetBubbleCountPerScreen * nScreens;
 
         //
@@ -3259,7 +3262,6 @@ int main()
 }
 
 // TODO IDEAS:
-// - decouple resolution and "map chunk size"
 // - make window non resizable or make game scale with window size proportionally
 // - leveling cat (2000-2500 pops is a good milestone for 1st lvl up, 5000 for 2nd, 10000 for 3rd), level up should increase reward by 2...1.75...1.5, etc
 // - maybe unlock leveling via prestige
@@ -3279,6 +3281,7 @@ int main()
 // - milestone system with time per milestone, also achievements for speedrunning milestones
 // - map expansion witches
 
+// x - decouple resolution and "map chunk size"
 // x - genius cats should also be able to only hit bombs
 // x - tooltips in menus
 // x - always use events to avoid out of focus keypresses

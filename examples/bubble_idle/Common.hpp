@@ -1,8 +1,11 @@
 #pragma once
 
+#include "Aliases.hpp"
+#include "Constants.hpp"
 #include "GrowthFactors.hpp"
 #include "PSVData.hpp"
 #include "PSVDataConstants.hpp"
+#include "RNG.hpp"
 
 #include "SFML/ImGui/ImGui.hpp"
 
@@ -22,68 +25,18 @@
 #include "SFML/Base/Algorithm.hpp"
 #include "SFML/Base/Assert.hpp"
 #include "SFML/Base/Builtins/Assume.hpp"
-#include "SFML/Base/IntTypes.hpp"
 #include "SFML/Base/Math/Exp.hpp"
 #include "SFML/Base/Optional.hpp"
-#include "SFML/Base/SizeT.hpp"
 
 #include <imgui.h>
 
 #include <algorithm>
 #include <array>
 #include <limits>
-#include <random>
 
 #include <climits>
 #include <cstdio>
 
-
-////////////////////////////////////////////////////////////
-using sf::base::SizeT;
-using sf::base::U64;
-using sf::base::U8;
-
-////////////////////////////////////////////////////////////
-using MoneyType = U64;
-
-////////////////////////////////////////////////////////////
-constexpr sf::Vector2f resolution{1366.f, 768.f};
-constexpr auto         resolutionUInt = resolution.toVector2u();
-
-////////////////////////////////////////////////////////////
-constexpr sf::Vector2f boundaries{1366.f * 10.f, 768.f};
-
-////////////////////////////////////////////////////////////
-constexpr sf::Color colorBlueOutline{50u, 84u, 135u};
-
-////////////////////////////////////////////////////////////
-[[nodiscard, gnu::always_inline]] inline std::minstd_rand0& getRandomEngine()
-{
-    static std::minstd_rand0 randomEngine(std::random_device{}());
-    return randomEngine;
-}
-
-////////////////////////////////////////////////////////////
-[[nodiscard, gnu::always_inline, gnu::flatten]] inline float getRndFloat(const float min, const float max)
-{
-    SFML_BASE_ASSERT(min <= max);
-    SFML_BASE_ASSUME(min <= max);
-
-    return std::uniform_real_distribution<float>{min, max}(getRandomEngine());
-}
-
-////////////////////////////////////////////////////////////
-[[nodiscard, gnu::always_inline, gnu::flatten]] inline sf::Vector2f getRndVector2f(const sf::Vector2f mins,
-                                                                                   const sf::Vector2f maxs)
-{
-    return {getRndFloat(mins.x, maxs.x), getRndFloat(mins.y, maxs.y)};
-}
-
-////////////////////////////////////////////////////////////
-[[nodiscard, gnu::always_inline, gnu::flatten]] inline sf::Vector2f getRndVector2f(const sf::Vector2f maxs)
-{
-    return {getRndFloat(0.f, maxs.x), getRndFloat(0.f, maxs.y)};
-}
 
 ////////////////////////////////////////////////////////////
 [[nodiscard]] auto getShuffledCatNames(auto&& randomEngine)
@@ -579,13 +532,13 @@ struct [[nodiscard]] PurchasableScalingValue
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline float nextCost() const
     {
-        return computeGrowth(data->cost, static_cast<float>(nPurchases));
+        return data->cost.computeGrowth(static_cast<float>(nPurchases));
     }
 
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline float currentValue() const
     {
-        return computeGrowth(data->value, static_cast<float>(nPurchases));
+        return data->value.computeGrowth(static_cast<float>(nPurchases));
     }
 
     ////////////////////////////////////////////////////////////
@@ -603,7 +556,7 @@ struct [[nodiscard]] PurchasableScalingValue
         for (SizeT i = nPurchases; i < data->nMaxPurchases; ++i)
         {
             const auto currentCost = static_cast<MoneyType>(
-                computeGrowth(data->cost, static_cast<float>(i)) * globalMultiplier);
+                data->cost.computeGrowth(static_cast<float>(i)) * globalMultiplier);
 
             // Check if we can afford to buy the next upgrade
             if (cumulative + currentCost > money)
@@ -616,7 +569,7 @@ struct [[nodiscard]] PurchasableScalingValue
 
             // Calculate the cumulative cost for the next potential purchase
             const auto nextCostCandidate = static_cast<MoneyType>(
-                computeGrowth(data->cost, static_cast<float>(i + 1)) * globalMultiplier);
+                data->cost.computeGrowth(static_cast<float>(i + 1)) * globalMultiplier);
             result.nextCost = cumulative + nextCostCandidate;
         }
 
@@ -624,7 +577,7 @@ struct [[nodiscard]] PurchasableScalingValue
         if (result.times == 0 && nPurchases < data->nMaxPurchases)
         {
             result.nextCost = static_cast<MoneyType>(
-                computeGrowth(data->cost, static_cast<float>(nPurchases)) * globalMultiplier);
+                data->cost.computeGrowth(static_cast<float>(nPurchases)) * globalMultiplier);
         }
 
         return result;
@@ -794,7 +747,7 @@ struct Game
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline float getMapLimit() const
     {
-        return resolution.x * static_cast<float>(mapLimitIncreases + 1u);
+        return gameScreenSize.x * static_cast<float>(mapLimitIncreases + 1u);
     }
 
     ////////////////////////////////////////////////////////////

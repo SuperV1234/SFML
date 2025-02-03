@@ -11,12 +11,10 @@ struct [[nodiscard]] GrowthFactors
     float exponential    = 1.f;
     float flat           = 0.f;
     float finalMult      = 1.f;
-};
 
-////////////////////////////////////////////////////////////
-[[nodiscard, gnu::pure, gnu::always_inline]] inline float computeGrowth(const GrowthFactors& factors, const float n)
-{
-    return ((factors.initial + n * factors.multiplicative) * std::pow(factors.exponential, n) + factors.linear * n +
-            factors.flat) *
-           factors.finalMult;
-}
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::pure, gnu::always_inline]] inline float computeGrowth(const float n) const
+    {
+        return ((initial + n * multiplicative) * std::pow(exponential, n) + linear * n + flat) * finalMult;
+    }
+};
