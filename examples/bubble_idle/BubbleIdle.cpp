@@ -1,11 +1,14 @@
 #include "Aliases.hpp"
 #include "Cat.hpp"
-#include "Common.hpp"
+#include "CatNames.hpp"
 #include "Constants.hpp"
+#include "Game.hpp"
 #include "MathUtils.hpp"
 #include "Particle.hpp"
+#include "Profile.hpp"
 #include "PurchasableScalingValue.hpp"
 #include "RNG.hpp"
+#include "Stats.hpp"
 #include "TextParticle.hpp"
 #include "TextShakeEffect.hpp"
 
@@ -448,15 +451,19 @@ enum class ControlFlow
 class SpatialGrid
 {
 private:
-    static inline constexpr float gridSize = 64.f;
-    static inline constexpr SizeT nCellsX  = static_cast<SizeT>(boundaries.x / gridSize) + 1;
-    static inline constexpr SizeT nCellsY  = static_cast<SizeT>(boundaries.y / gridSize) + 1;
+    static inline constexpr float gridSize    = 64.f;
+    static inline constexpr float invGridSize = 1.f / gridSize;
 
+    static inline constexpr SizeT nCellsX = static_cast<SizeT>(boundaries.x * invGridSize) + 1;
+    static inline constexpr SizeT nCellsY = static_cast<SizeT>(boundaries.y * invGridSize) + 1;
+
+    ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline static constexpr SizeT convert2DTo1D(const SizeT x, const SizeT y, const SizeT width)
     {
         return y * width + x;
     }
 
+    ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline constexpr auto computeGridRange(const sf::Vector2f center, const float radius) const
     {
         const float minX = center.x - radius;
@@ -469,10 +476,10 @@ private:
             SizeT xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx;
         };
 
-        return Result{static_cast<SizeT>(sf::base::max(0.f, minX / gridSize)),
-                      static_cast<SizeT>(sf::base::max(0.f, minY / gridSize)),
-                      static_cast<SizeT>(sf::base::clamp(maxX / gridSize, 0.f, static_cast<float>(nCellsX) - 1.f)),
-                      static_cast<SizeT>(sf::base::clamp(maxY / gridSize, 0.f, static_cast<float>(nCellsY) - 1.f))};
+        return Result{static_cast<SizeT>(sf::base::max(0.f, minX * invGridSize)),
+                      static_cast<SizeT>(sf::base::max(0.f, minY * invGridSize)),
+                      static_cast<SizeT>(sf::base::clamp(maxX * invGridSize, 0.f, static_cast<float>(nCellsX) - 1.f)),
+                      static_cast<SizeT>(sf::base::clamp(maxY * invGridSize, 0.f, static_cast<float>(nCellsY) - 1.f))};
     }
 
 
@@ -481,6 +488,7 @@ private:
     std::vector<SizeT> m_cellInsertionPositions; // Temporary copy of `cellStartIndices` to track insertion points
 
 public:
+    ////////////////////////////////////////////////////////////
     void forEachIndexInRadius(const sf::Vector2f center, const float radius, auto&& func)
     {
         const auto [xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx] = computeGridRange(center, radius);
@@ -502,6 +510,7 @@ public:
             }
     }
 
+    ////////////////////////////////////////////////////////////
     void forEachUniqueIndexPair(auto&& func)
     {
         for (SizeT ix = 0; ix < nCellsX; ++ix)
@@ -517,12 +526,14 @@ public:
             }
     }
 
+    ////////////////////////////////////////////////////////////
     void clear()
     {
         m_cellStartIndices.clear();
         m_cellStartIndices.resize(nCellsX * nCellsY + 1, 0); // +1 for prefix sum
     }
 
+    ////////////////////////////////////////////////////////////
     void populate(const auto& bubbles)
     {
         //
@@ -3291,6 +3302,7 @@ int main()
 // - astrocats collide with each other when one flies but the other doesn't
 // - milestone system with time per milestone, also achievements for speedrunning milestones
 // - map expansion witches
+// - map expansion special bubble find
 
 // x - decouple resolution and "map chunk size"
 // x - genius cats should also be able to only hit bombs

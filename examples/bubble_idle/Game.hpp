@@ -4,128 +4,20 @@
 #include "Bubble.hpp"
 #include "Cat.hpp"
 #include "Constants.hpp"
-#include "Countdown.hpp"
-#include "LoopingTimer.hpp"
+#include "Milestones.hpp"
 #include "PSVDataConstants.hpp"
-#include "ParticleData.hpp"
 #include "PurchasableScalingValue.hpp"
-#include "RNG.hpp"
-#include "TextShakeEffect.hpp"
+#include "Stats.hpp"
 
-#include "SFML/ImGui/ImGui.hpp"
-
-#include "SFML/Graphics/Color.hpp"
-#include "SFML/Graphics/DrawableBatch.hpp"
-#include "SFML/Graphics/Font.hpp"
-#include "SFML/Graphics/RenderTarget.hpp"
-#include "SFML/Graphics/Sprite.hpp"
-#include "SFML/Graphics/Text.hpp"
-
-#include "SFML/Window/Keyboard.hpp"
-
-#include "SFML/System/Angle.hpp"
-#include "SFML/System/Rect.hpp"
 #include "SFML/System/Vector2.hpp"
 
 #include "SFML/Base/Algorithm.hpp"
-#include "SFML/Base/Assert.hpp"
-#include "SFML/Base/Optional.hpp"
 
 #include <imgui.h>
-
-#include <algorithm>
-#include <array>
-#include <limits>
 
 #include <climits>
 #include <cstdio>
 
-
-////////////////////////////////////////////////////////////
-[[nodiscard]] auto getShuffledCatNames(auto&& randomEngine)
-{
-    std::array names{"Gorgonzola", "Provolino",  "Pistacchietto", "Ricottina",  "Mozzarellina",  "Tiramisu",
-                     "Cannolino",  "Biscottino", "Cannolina",     "Biscottina", "Pistacchietta", "Provolina",
-                     "Arancino",   "Limoncello", "Ciabatta",      "Focaccina",  "Amaretto",      "Pallino",
-                     "Birillo",    "Trottola",   "Baffo",         "Poldo",      "Fuffi",         "Birba",
-                     "Ciccio",     "Pippo",      "Tappo",         "Briciola",   "Braciola",      "Pulce",
-                     "Dante",      "Bolla",      "Fragolina",     "Luppolo",    "Sirena",        "Polvere",
-                     "Stellina",   "Lunetta",    "Briciolo",      "Fiammetta",  "Nuvoletta",     "Scintilla",
-                     "Piuma",      "Fulmine",    "Arcobaleno",    "Stelluccia", "Lucciola",      "Pepita",
-                     "Fiocco",     "Girandola",  "Bombetta",      "Fusillo",    "Cicciobello",   "Palloncino",
-                     "Joe Biden",  "Trump",      "Obama",         "De Luca",    "Salvini",       "Renzi",
-                     "Nutella",    "Vespa",      "Mandolino",     "Ferrari",    "Pavarotti",     "Espresso",
-                     "Sir",        "Nocciolina", "Fluffy",        "Costanzo",   "Mozart",        "DB",
-                     "Soniuccia",  "Pupi",       "Pupetta",       "Genitore 1", "Genitore 2",    "Stonks",
-                     "Carotina",   "Waffle",     "Pancake",       "Muffin",     "Cupcake",       "Donut",
-                     "Jinx",       "Miao",       "Arnold",        "Granita",    "Leone",         "Pangocciolo"};
-
-    std::shuffle(names.begin(), names.end(), randomEngine);
-    return names;
-}
-
-////////////////////////////////////////////////////////////
-struct [[nodiscard]] Stats
-{
-    U64 secondsPlayed            = 0u;
-    U64 bubblesPopped            = 0u;
-    U64 bubblesPoppedRevenue     = 0u;
-    U64 bubblesHandPopped        = 0u;
-    U64 bubblesHandPoppedRevenue = 0u;
-    U64 explosionRevenue         = 0u;
-    U64 flightRevenue            = 0u;
-};
-
-////////////////////////////////////////////////////////////
-static constexpr auto maxU64 = std::numeric_limits<U64>::max();
-
-////////////////////////////////////////////////////////////
-struct [[nodiscard]] Milestones
-{
-    U64 firstCat      = maxU64;
-    U64 firstUnicat   = maxU64;
-    U64 firstDevilcat = maxU64;
-    U64 firstAstrocat = maxU64;
-
-    U64 fiveCats      = maxU64;
-    U64 fiveUnicats   = maxU64;
-    U64 fiveDevilcats = maxU64;
-    U64 fiveAstrocats = maxU64;
-
-    U64 tenCats      = maxU64;
-    U64 tenUnicats   = maxU64;
-    U64 tenDevilcats = maxU64;
-    U64 tenAstrocats = maxU64;
-
-    U64 prestigeLevel1  = maxU64;
-    U64 prestigeLevel2  = maxU64;
-    U64 prestigeLevel3  = maxU64;
-    U64 prestigeLevel4  = maxU64;
-    U64 prestigeLevel5  = maxU64;
-    U64 prestigeLevel10 = maxU64;
-    U64 prestigeLevel15 = maxU64;
-    U64 prestigeLevel20 = maxU64;
-
-    U64 revenue10000      = maxU64;
-    U64 revenue100000     = maxU64;
-    U64 revenue1000000    = maxU64;
-    U64 revenue10000000   = maxU64;
-    U64 revenue100000000  = maxU64;
-    U64 revenue1000000000 = maxU64;
-};
-
-////////////////////////////////////////////////////////////
-struct [[nodiscard]] Profile
-{
-    float masterVolume          = 100.f;
-    float musicVolume           = 100.f;
-    bool  playAudioInBackground = true;
-    bool  playComboEndSound     = true;
-    float minimapScale          = 20.f;
-    bool  tipsEnabled           = true;
-
-    Stats statsLifetime;
-};
 
 ////////////////////////////////////////////////////////////
 struct Game

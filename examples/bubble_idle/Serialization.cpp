@@ -1,5 +1,10 @@
 #include "Aliases.hpp"
-#include "Common.hpp"
+#include "Bubble.hpp"
+#include "Cat.hpp"
+#include "Game.hpp"
+#include "Milestones.hpp"
+#include "Profile.hpp"
+#include "PurchasableScalingValue.hpp"
 #include "json.hpp"
 
 #include "SFML/System/Path.hpp"
