@@ -1,7 +1,13 @@
 #include "Aliases.hpp"
+#include "Cat.hpp"
 #include "Common.hpp"
 #include "Constants.hpp"
+#include "MathUtils.hpp"
+#include "Particle.hpp"
+#include "PurchasableScalingValue.hpp"
 #include "RNG.hpp"
+#include "TextParticle.hpp"
+#include "TextShakeEffect.hpp"
 
 #include "SFML/ImGui/ImGui.hpp"
 
@@ -99,25 +105,21 @@ struct [[nodiscard]] CollisionResolution
     const float        iMassMult,
     const float        jMassMult)
 {
-    const sf::Vector2f diff        = jPosition - iPosition;
-    const float        squaredDiff = diff.lengthSquared();
+    const sf::Vector2f diff            = jPosition - iPosition;
+    const float        squaredDistance = diff.lengthSquared();
 
-    const sf::Vector2f radii{iRadius, jRadius};
-    const float        squaredRadiiSum = radii.lengthSquared();
+    const float sumRadii        = iRadius + jRadius;
+    const float squaredRadiiSum = sumRadii * sumRadii;
 
-    if (squaredDiff >= squaredRadiiSum)
+    if (squaredDistance >= squaredRadiiSum)
         return sf::base::nullOpt;
 
     // Calculate the overlap between the bubbles
-    const float distance = sf::base::sqrt(squaredDiff);    // Distance between centers
-    const float overlap  = (iRadius + jRadius) - distance; // Amount of overlap
+    const float distance = sf::base::sqrt(squaredDistance); // Distance between centers
+    const float overlap  = sumRadii - distance;             // Amount of overlap
 
-    // Define a "softness" factor to control how quickly the overlap is resolved
-    const float softnessFactor = 0.0015f * deltaTimeMs;
-
-    // Calculate the displacement needed to resolve the overlap
-    const sf::Vector2f normal       = diff == sf::Vector2f{} ? sf::Vector2f{1.f, 0.f} : diff.normalized();
-    const sf::Vector2f displacement = normal * overlap * softnessFactor;
+    // Calculate the normal between the bubbles
+    const sf::Vector2f normal = (distance == 0.f) ? sf::Vector2f{1.f, 0.f} : diff / distance;
 
     // Move the bubbles apart based on their masses (heavier bubbles move less)
     const float m1        = iRadius * iRadius * iMassMult; // Mass of bubble i (quadratic scaling)
@@ -131,16 +133,22 @@ struct [[nodiscard]] CollisionResolution
     sf::Vector2f velocityChangeJ;
 
     // Only apply impulse if bubbles are moving towards each other
-    if (vRelDotNormal > 0)
+    if (vRelDotNormal > 0.f)
     {
-        const float e = 0.65f; // Coefficient of restitution (1.0 = perfectly elastic)
-        const float j = -(1.f + e) * vRelDotNormal / ((1.f / m1) + (1.f / m2));
+        constexpr float e = 0.65f; // Coefficient of restitution (1.0 = perfectly elastic)
+        const float     j = -(1.f + e) * vRelDotNormal / ((1.f / m1) + (1.f / m2));
 
         const sf::Vector2f impulse = normal * j;
 
         velocityChangeI = impulse / m1;
         velocityChangeJ = -impulse / m2;
     }
+
+    // Define a "softness" factor to control how quickly the overlap is resolved
+    const float softnessFactor = 0.0005f * deltaTimeMs;
+
+    // Calculate the displacement needed to resolve the overlap
+    const sf::Vector2f displacement = normal * overlap * softnessFactor;
 
     return sf::base::makeOptional( //
         CollisionResolution{.iDisplacement   = -displacement * (m2 / totalMass),
@@ -157,8 +165,8 @@ bool handleBubbleCollision(const float deltaTimeMs, Bubble& iBubble, Bubble& jBu
                                         jBubble.position,
                                         iBubble.velocity,
                                         jBubble.velocity,
-                                        iBubble.radius,
-                                        jBubble.radius,
+                                        iBubble.getRadius(),
+                                        jBubble.getRadius(),
                                         iBubble.type == BubbleType::Bomb ? 5.f : 1.f,
                                         jBubble.type == BubbleType::Bomb ? 5.f : 1.f);
 
@@ -196,7 +204,6 @@ bool handleCatCollision(const float deltaTimeMs, Cat& iCat, Cat& jCat)
     return Bubble{.position = getRndVector2f({mapLimit, maxY}),
                   .velocity = getRndVector2f({-0.1f, -0.1f}, {0.1f, 0.1f}),
                   .scale    = scaleFactor,
-                  .radius   = 350.f * scaleFactor,
                   .rotation = 0.f,
                   .type     = BubbleType::Normal};
 }
@@ -524,7 +531,7 @@ public:
         for (auto& bubble : bubbles)
         {
             const auto [xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx] = computeGridRange(bubble.position,
-                                                                                                   bubble.radius);
+                                                                                                   bubble.getRadius());
 
             // For each cell the bubble covers, increment the count
             for (SizeT x = xCellStartIdx; x <= xCellEndIdx; ++x)
@@ -555,7 +562,7 @@ public:
         {
             const auto& bubble                                                  = bubbles[i];
             const auto [xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx] = computeGridRange(bubble.position,
-                                                                                                   bubble.radius);
+                                                                                                   bubble.getRadius());
 
             // Insert the bubble index into all overlapping cells
             for (SizeT x = xCellStartIdx; x <= xCellEndIdx; ++x)
@@ -2304,7 +2311,7 @@ int main()
                     self(self, byHand, bubble.type, newReward, 1, bubble.position, /* popSoundOverlap */ false);
                     addReward(newReward);
                     bubble = makeRandomBubble(game.getMapLimit(), 0.f);
-                    bubble.position.y -= bubble.radius;
+                    bubble.position.y -= bubble.getRadius();
 
                     return ControlFlow::Continue;
                 };
@@ -2328,15 +2335,17 @@ int main()
 
             pos += bubble.velocity * deltaTimeMs;
 
-            if (pos.x - bubble.radius > game.getMapLimit())
-                pos.x = -bubble.radius;
-            else if (pos.x + bubble.radius < 0.f)
-                pos.x = game.getMapLimit() + bubble.radius;
+            const float radius = bubble.getRadius();
 
-            if (pos.y - bubble.radius > boundaries.y)
+            if (pos.x - radius > game.getMapLimit())
+                pos.x = -radius;
+            else if (pos.x + radius < 0.f)
+                pos.x = game.getMapLimit() + radius;
+
+            if (pos.y - radius > boundaries.y)
             {
                 pos.x = getRndFloat(0.f, game.getMapLimit());
-                pos.y = -bubble.radius;
+                pos.y = -radius;
 
                 bubble.velocity.y = game.windEnabled ? 0.2f : 0.05f;
 
@@ -2345,8 +2354,8 @@ int main()
 
                 bubble.type = BubbleType::Normal;
             }
-            else if (pos.y + bubble.radius < 0.f)
-                pos.y = boundaries.y + bubble.radius;
+            else if (pos.y + radius < 0.f)
+                pos.y = boundaries.y + radius;
 
             bubble.velocity.y += 0.00005f * deltaTimeMs;
         }
@@ -2362,7 +2371,7 @@ int main()
             popBubble(popBubble, byHand, bubble.type, reward, combo, bubble.position, popSoundOverlap);
             addReward(reward);
             bubble = makeRandomBubble(game.getMapLimit(), 0.f);
-            bubble.position.y -= bubble.radius;
+            bubble.position.y -= bubble.getRadius();
         };
 
         bool anyBubblePoppedByClicking = false;
@@ -2373,7 +2382,7 @@ int main()
 
             const auto clickAction = [&](Bubble& bubble)
             {
-                if ((clickPos - bubble.position).length() > bubble.radius)
+                if ((clickPos - bubble.position).length() > bubble.getRadius())
                     return ControlFlow::Continue;
 
                 anyBubblePoppedByClicking = true;
@@ -2530,7 +2539,9 @@ int main()
             const auto maxCooldown = game.getComputedCooldownByCatType(cat.type);
             const auto range       = game.getComputedRangeByCatType(cat.type);
 
-            auto diff = cat.pawPosition - cat.drawPosition - sf::Vector2f{-25.f, 25.f};
+            const auto drawPosition = cat.getDrawPosition();
+
+            auto diff = cat.pawPosition - drawPosition - sf::Vector2f{-25.f, 25.f};
             cat.pawPosition -= diff * 0.01f * deltaTimeMs;
             cat.pawRotation = cat.pawRotation.rotatedTowards(sf::degrees(-45.f), deltaTimeMs * 0.005f);
 
@@ -2555,7 +2566,7 @@ int main()
             {
                 if (getRndFloat(0.f, 1.f) > 0.5f)
                     particles.push_back(
-                        {.data = {.position = cat.drawPosition + sf::Vector2f{getRndFloat(-catRadius, +catRadius), catRadius},
+                        {.data = {.position = drawPosition + sf::Vector2f{getRndFloat(-catRadius, +catRadius), catRadius},
                                   .velocity      = getRndVector2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
                                   .scale         = getRndFloat(0.08f, 0.27f) * 0.2f,
                                   .accelerationY = -0.002f,
@@ -2568,7 +2579,7 @@ int main()
 
             if (cat.type == CatType::Astro && cat.astroState.hasValue())
             {
-                auto& [startX, velocityX, wrapped, particleTimer] = *cat.astroState;
+                auto& [startX, velocityX, particleTimer, wrapped] = *cat.astroState;
 
                 particleTimer += deltaTimeMs;
 
@@ -2577,7 +2588,7 @@ int main()
                     sounds.rocket.setPosition({cx, cy});
                     playSound(sounds.rocket, /* overlap */ false);
 
-                    spawnParticles(1, cat.drawPosition + sf::Vector2f{56.f, 45.f}, ParticleType::Fire, 1.5f, 0.25f, 0.65f);
+                    spawnParticles(1, drawPosition + sf::Vector2f{56.f, 45.f}, ParticleType::Fire, 1.5f, 0.25f, 0.65f);
                     particleTimer = 0.f;
                 }
 
@@ -2596,7 +2607,7 @@ int main()
                               /* popSoundOverlap */ getRndFloat(0.f, 1.f) > 0.75f);
                     addReward(newReward);
                     bubble = makeRandomBubble(game.getMapLimit(), 0.f);
-                    bubble.position.y -= bubble.radius;
+                    bubble.position.y -= bubble.getRadius();
 
                     cat.textStatusShakeEffect.bump(1.5f);
 
@@ -2647,8 +2658,8 @@ int main()
 
             if (cat.type == CatType::Witch) // TODO: change
             {
-                int  witchHits = 0;
-                bool pawSet    = false;
+                sf::base::U32 witchHits = 0u;
+                bool          pawSet    = false;
 
                 for (auto& otherCat : game.cats)
                 {
@@ -3050,7 +3061,7 @@ int main()
             }
 
             cpuDrawableBatch.add(
-                sf::Sprite{.position    = cat.drawPosition,
+                sf::Sprite{.position    = cat.getDrawPosition(),
                            .scale       = {0.2f, 0.2f},
                            .origin      = catTxr.size / 2.f,
                            .rotation    = sf::radians(catRotation),
