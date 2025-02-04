@@ -1,8 +1,10 @@
+#include "Serialization.hpp"
+
 #include "Aliases.hpp"
 #include "Bubble.hpp"
 #include "Cat.hpp"
-#include "Game.hpp"
 #include "Milestones.hpp"
+#include "Playthrough.hpp"
 #include "Profile.hpp"
 #include "PurchasableScalingValue.hpp"
 #include "json.hpp"
@@ -193,11 +195,14 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
-    Game,
+    Playthrough,
     psvComboStartTime,
+    psvMapExtension,
     psvBubbleCount,
     psvBubbleValue,
     psvExplosionRadiusMult,
+
+    psvPerCatType,
 
     psvCooldownMultsPerCatType,
 
@@ -212,7 +217,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
 
     comboPurchased,
     mapPurchased,
-    mapLimitIncreases,
 
     multiPopPurchased,
     smartCatsPurchased,
@@ -265,7 +269,7 @@ try
 } // namespace
 
 ////////////////////////////////////////////////////////////
-extern void saveProfileToFile(const Profile& profile)
+void saveProfileToFile(const Profile& profile)
 try
 {
     doRotatingBackup("profile.json");
@@ -276,7 +280,7 @@ try
 }
 
 ////////////////////////////////////////////////////////////
-extern void loadProfileFromFile(Profile& profile)
+void loadProfileFromFile(Profile& profile)
 try
 {
     nlohmann::json::parse(std::ifstream{"profile.json"}).get_to(profile);
@@ -286,22 +290,22 @@ try
 }
 
 ////////////////////////////////////////////////////////////
-extern void saveGameToFile(const Game& game)
+void savePlaythroughToFile(const Playthrough& playthrough)
 try
 {
-    doRotatingBackup("game.json");
-    std::ofstream("game.json") << nlohmann::json(game).dump(4);
+    doRotatingBackup("playthrough.json");
+    std::ofstream("playthrough.json") << nlohmann::json(playthrough).dump(4);
 } catch (const std::exception& ex)
 {
-    std::cout << "Failed to save game to file (" << ex.what() << ")\n";
+    std::cout << "Failed to save playthrough to file (" << ex.what() << ")\n";
 }
 
 ////////////////////////////////////////////////////////////
-extern void loadGameFromFile(Game& game)
+void loadPlaythroughFromFile(Playthrough& playthrough)
 try
 {
-    nlohmann::json::parse(std::ifstream{"game.json"}).get_to(game);
+    nlohmann::json::parse(std::ifstream{"playthrough.json"}).get_to(playthrough);
 } catch (const std::exception& ex)
 {
-    std::cout << "Failed to load game from file (" << ex.what() << ")\n";
+    std::cout << "Failed to load playthrough from file (" << ex.what() << ")\n";
 }

@@ -12,8 +12,13 @@ enum class [[nodiscard]] BubbleType : U8
 {
     Normal = 0u,
     Star   = 1u,
-    Bomb   = 2u
+    Bomb   = 2u,
+
+    Count
 };
+
+////////////////////////////////////////////////////////////
+inline constexpr auto nBubbleTypes = static_cast<sf::base::SizeT>(BubbleType::Count);
 
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] Bubble

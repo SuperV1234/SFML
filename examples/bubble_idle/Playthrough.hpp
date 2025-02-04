@@ -11,8 +11,6 @@
 
 #include "SFML/System/Vector2.hpp"
 
-#include "SFML/Base/Algorithm.hpp"
-
 #include <imgui.h>
 
 #include <climits>
@@ -20,14 +18,21 @@
 
 
 ////////////////////////////////////////////////////////////
-struct Game
+struct Playthrough
 {
     //
     // PSV instances
     PurchasableScalingValue psvComboStartTime{&PSVDataConstants::comboStartTime};
+    PurchasableScalingValue psvMapExtension{&PSVDataConstants::mapExtension};
     PurchasableScalingValue psvBubbleCount{&PSVDataConstants::bubbleCount};
-    PurchasableScalingValue psvBubbleValue{&PSVDataConstants::bubbleValue};
+    PurchasableScalingValue psvBubbleValue{&PSVDataConstants::bubbleValue}; // prestige
     PurchasableScalingValue psvExplosionRadiusMult{&PSVDataConstants::explosionRadiusMult};
+
+    PurchasableScalingValue psvPerCatType[nCatTypes]{{&PSVDataConstants::catNormal},
+                                                     {&PSVDataConstants::catUni},
+                                                     {&PSVDataConstants::catDevil},
+                                                     {&PSVDataConstants::catWitch},
+                                                     {&PSVDataConstants::catAstro}};
 
     PurchasableScalingValue psvCooldownMultsPerCatType[nCatTypes]{{&PSVDataConstants::catNormalCooldownMult},
                                                                   {&PSVDataConstants::catUniCooldownMult},
@@ -56,15 +61,14 @@ struct Game
 
     //
     // Purchases
-    bool comboPurchased    = false;
-    bool mapPurchased      = false;
-    U64  mapLimitIncreases = 0u;
+    bool comboPurchased = false;
+    bool mapPurchased   = false;
 
     //
     // Permanent purchases
     bool multiPopPurchased        = false;
     bool smartCatsPurchased       = false;
-    bool geniusCatsPurchased      = false;
+    bool geniusCatsPurchased      = false; // if true, `smartCatsPurchased` must be true
     bool windPurchased            = false;
     bool astroCatInspirePurchased = false;
 
@@ -95,8 +99,12 @@ struct Game
     void onPrestige(const U64 prestigeCount)
     {
         psvComboStartTime.nPurchases      = 0u;
+        psvMapExtension.nPurchases        = 0u;
         psvBubbleCount.nPurchases         = 0u;
         psvExplosionRadiusMult.nPurchases = 0u;
+
+        for (auto& psv : psvPerCatType)
+            psv.nPurchases = 0u;
 
         for (auto& psv : psvCooldownMultsPerCatType)
             psv.nPurchases = 0u;
@@ -107,9 +115,8 @@ struct Game
         money = 0u;
         prestigePoints += prestigeCount;
 
-        comboPurchased    = false;
-        mapPurchased      = false;
-        mapLimitIncreases = 0u;
+        comboPurchased = false;
+        mapPurchased   = false;
 
         windEnabled = false;
 
@@ -117,9 +124,33 @@ struct Game
     }
 
     ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline]] inline SizeT getMapLimitIncreases() const
+    {
+        return static_cast<SizeT>(mapPurchased) + psvMapExtension.nPurchases;
+    }
+
+    ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline float getMapLimit() const
     {
-        return gameScreenSize.x * static_cast<float>(mapLimitIncreases + 1u);
+        return gameScreenSize.x * static_cast<float>(getMapLimitIncreases() + 1u);
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] constexpr MoneyType getBaseRewardByBubbleType(const BubbleType type) const
+    {
+        constexpr MoneyType baseRewards[nBubbleTypes]{
+            1u,  // Normal
+            25u, // Star
+            1u,  // Bomb
+        };
+
+        return baseRewards[static_cast<U8>(type)];
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] constexpr MoneyType getComputedRewardByBubbleType(const BubbleType type) const
+    {
+        return getBaseRewardByBubbleType(type) * static_cast<MoneyType>(psvBubbleValue.currentValue() + 1.f);
     }
 
     ////////////////////////////////////////////////////////////
@@ -148,6 +179,12 @@ struct Game
         };
 
         return baseRanges[static_cast<U8>(type)];
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline]] inline PurchasableScalingValue& getPSVByCatType(const CatType catType)
+    {
+        return psvPerCatType[static_cast<U8>(catType)];
     }
 
     ////////////////////////////////////////////////////////////
@@ -195,13 +232,12 @@ struct Game
     ////////////////////////////////////////////////////////////
     [[nodiscard]] SizeT getCatCountByType(const CatType type) const
     {
-        return sf::base::countIf(cats.begin(), cats.end(), [type](const Cat& cat) { return cat.type == type; });
+        return psvPerCatType[static_cast<U8>(type)].nPurchases;
     }
 
     ////////////////////////////////////////////////////////////
     [[nodiscard]] float getComputedGlobalCostMultiplier() const
     {
-        // TODO: optimize/cache the counts
         const auto nCatNormal = getCatCountByType(CatType::Normal);
         const auto nCatUni    = getCatCountByType(CatType::Uni);
         const auto nCatDevil  = getCatCountByType(CatType::Devil);

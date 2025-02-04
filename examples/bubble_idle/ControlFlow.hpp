@@ -1,0 +1,9 @@
+#pragma once
+
+
+////////////////////////////////////////////////////////////
+enum class ControlFlow : bool
+{
+    Continue,
+    Break
+};
