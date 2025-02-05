@@ -13,10 +13,10 @@ inline constexpr PSVData comboStartTime //
      .value         = {.initial = 0.55f, .linear = 0.04f, .exponential = 1.02f}};
 
 inline constexpr PSVData mapExtension //
-    {.nMaxPurchases = 8u, .cost = {.initial = 100.f, .exponential = 4.85f}, .value = {}};
+    {.nMaxPurchases = 8u, .cost = {.initial = 2500.f, .exponential = 3.f}, .value = {}};
 
 inline constexpr PSVData shrineActivation //
-    {.nMaxPurchases = 9u, .cost = {.initial = 200.f, .exponential = 4.85f}, .value = {}};
+    {.nMaxPurchases = 9u, .cost = {.initial = 1000.f, .exponential = 3.5f}, .value = {}};
 
 inline constexpr PSVData bubbleCount //
     {.nMaxPurchases = 30u,
@@ -86,6 +86,18 @@ inline constexpr PSVData catWitchRangeDiv //
      .cost          = {.initial = 5'500'000.f, .exponential = 1.85f, .flat = -2500.f},
      .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
 
+// TODO test
+inline constexpr PSVData catWizard //
+    {.nMaxPurchases = 64u, .cost = {.initial = 1000000.f, .exponential = 1.5}, .value = {}};
+
+// TODO test
+inline constexpr PSVData catWizardCooldownMult //
+    {.nMaxPurchases = 1u, .cost = {.initial = 1.f}, .value = {.initial = 1.f}};
+
+// TODO test
+inline constexpr PSVData catWizardRangeDiv //
+    {.nMaxPurchases = 1u, .cost = {.initial = 1.f}, .value = {.initial = 1.f}};
+
 inline constexpr PSVData catAstro //
     {.nMaxPurchases = 64u, .cost = {.initial = 150000.f, .exponential = 1.5}, .value = {}};
 
@@ -105,6 +117,18 @@ inline constexpr PSVData multiPopRange //
      .value         = {.initial = 64.0f, .linear = 8.0f}};
 
 inline constexpr PSVData inspireDurationMult //
+    {.nMaxPurchases = 20u,
+     .cost          = {.initial = 1.f, .linear = 1.f, .exponential = 1.5f},
+     .value         = {.initial = 1.f, .linear = 0.2f}};
+
+// TODO: put real numbers
+inline constexpr PSVData manaCooldownMult //
+    {.nMaxPurchases = 20u,
+     .cost          = {.initial = 1.f, .linear = 1.f, .exponential = 1.5f},
+     .value         = {.initial = 1.f, .exponential = 0.8f}};
+
+// TODO: put real numbers
+inline constexpr PSVData manaMaxMult //
     {.nMaxPurchases = 20u,
      .cost          = {.initial = 1.f, .linear = 1.f, .exponential = 1.5f},
      .value         = {.initial = 1.f, .linear = 0.2f}};

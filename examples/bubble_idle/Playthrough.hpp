@@ -7,6 +7,7 @@
 #include "Milestones.hpp"
 #include "PSVDataConstants.hpp"
 #include "PurchasableScalingValue.hpp"
+#include "Shrine.hpp"
 #include "Stats.hpp"
 
 #include "SFML/System/Vector2.hpp"
@@ -20,6 +21,28 @@
 ////////////////////////////////////////////////////////////
 struct Playthrough
 {
+    ////////////////////////////////////////////////////////////
+    static inline constexpr float baseCooldowns[nCatTypes]{
+        1000.f,  // Normal
+        3000.f,  // Uni
+        7000.f,  // Devil
+        2000.f,  // Witch
+        10000.f, // Astro
+
+        1.f, // Wizard
+    };
+
+    ////////////////////////////////////////////////////////////
+    static inline constexpr float baseRanges[nCatTypes]{
+        96.f,  // Normal
+        64.f,  // Uni
+        48.f,  // Devil
+        256.f, // Witch
+        48.f,  // Astro
+
+        384.f, // Wizard
+    };
+
     //
     // PSV instances
     PurchasableScalingValue psvComboStartTime{&PSVDataConstants::comboStartTime};
@@ -29,28 +52,39 @@ struct Playthrough
     PurchasableScalingValue psvBubbleValue{&PSVDataConstants::bubbleValue}; // prestige
     PurchasableScalingValue psvExplosionRadiusMult{&PSVDataConstants::explosionRadiusMult};
 
-    PurchasableScalingValue psvPerCatType[nCatTypes]{{&PSVDataConstants::catNormal},
-                                                     {&PSVDataConstants::catUni},
-                                                     {&PSVDataConstants::catDevil},
-                                                     {&PSVDataConstants::catWitch},
-                                                     {&PSVDataConstants::catAstro}};
+    PurchasableScalingValue psvPerCatType[nCatTypes]{
+        {&PSVDataConstants::catNormal},
+        {&PSVDataConstants::catUni},
+        {&PSVDataConstants::catDevil},
+        {&PSVDataConstants::catWitch},
+        {&PSVDataConstants::catAstro},
+        {&PSVDataConstants::catWizard},
+    };
 
-    PurchasableScalingValue psvCooldownMultsPerCatType[nCatTypes]{{&PSVDataConstants::catNormalCooldownMult},
-                                                                  {&PSVDataConstants::catUniCooldownMult},
-                                                                  {&PSVDataConstants::catDevilCooldownMult},
-                                                                  {&PSVDataConstants::catWitchCooldownMult},
-                                                                  {&PSVDataConstants::catAstroCooldownMult}};
+    PurchasableScalingValue psvCooldownMultsPerCatType[nCatTypes]{
+        {&PSVDataConstants::catNormalCooldownMult},
+        {&PSVDataConstants::catUniCooldownMult},
+        {&PSVDataConstants::catDevilCooldownMult},
+        {&PSVDataConstants::catWitchCooldownMult},
+        {&PSVDataConstants::catAstroCooldownMult},
+        {&PSVDataConstants::catWizardCooldownMult}, // TODO: unused? or change to PP
+    };
 
-    PurchasableScalingValue psvRangeDivsPerCatType[nCatTypes]{{&PSVDataConstants::catNormalRangeDiv},
-                                                              {&PSVDataConstants::catUniRangeDiv},
-                                                              {&PSVDataConstants::catDevilRangeDiv},
-                                                              {&PSVDataConstants::catWitchRangeDiv},
-                                                              {&PSVDataConstants::catAstroRangeDiv}};
+    PurchasableScalingValue psvRangeDivsPerCatType[nCatTypes]{
+        {&PSVDataConstants::catNormalRangeDiv},
+        {&PSVDataConstants::catUniRangeDiv},
+        {&PSVDataConstants::catDevilRangeDiv},
+        {&PSVDataConstants::catWitchRangeDiv},
+        {&PSVDataConstants::catAstroRangeDiv},
+        {&PSVDataConstants::catWizardRangeDiv}, // TODO: unused? or change to PP
+    };
 
     //
     // Permanent PSV instances
-    PurchasableScalingValue psvMultiPopRange{&PSVDataConstants::multiPopRange};
-    PurchasableScalingValue psvInspireDurationMult{&PSVDataConstants::inspireDurationMult};
+    PurchasableScalingValue psvPPMultiPopRange{&PSVDataConstants::multiPopRange};
+    PurchasableScalingValue psvPPInspireDurationMult{&PSVDataConstants::inspireDurationMult};
+    PurchasableScalingValue psvPPManaCooldownMult{&PSVDataConstants::manaCooldownMult}; // TODO: add button
+    PurchasableScalingValue psvPPManaMaxMult{&PSVDataConstants::manaMaxMult};           // TODO: add button
 
     //
     // Currencies
@@ -64,6 +98,12 @@ struct Playthrough
     // Purchases
     bool comboPurchased = false;
     bool mapPurchased   = false;
+
+    //
+    // Shrine rewards
+    bool          magicUnlocked = false;
+    float         manaTimer     = 0.f;
+    sf::base::U64 mana          = 0u;
 
     //
     // Permanent purchases
@@ -96,12 +136,34 @@ struct Playthrough
     //
     // Other flags
     bool prestigeTipShown = false;
+    bool shrinesSpawned   = false;
+
+    ////////////////////////////////////////////////////////////
+    void spawnAllShrinesIfNeeded()
+    {
+        if (shrinesSpawned)
+            return;
+
+        shrinesSpawned = true;
+
+        for (SizeT i = 0u; i < 9u; ++i)
+        {
+            shrines.emplace_back(Shrine{
+                .position              = resolution / 2.f + sf::Vector2f{resolution.x * (i + 1u), 0.f},
+                .tcActivation          = {},
+                .tcDeath               = {},
+                .textStatusShakeEffect = {},
+                .type                  = static_cast<ShrineType>(i),
+            });
+        }
+    }
 
     ////////////////////////////////////////////////////////////
     void onPrestige(const PrestigePointsType prestigeCount)
     {
         psvComboStartTime.nPurchases      = 0u;
         psvMapExtension.nPurchases        = 0u;
+        psvShrineActivation.nPurchases    = 0u;
         psvBubbleCount.nPurchases         = 0u;
         psvExplosionRadiusMult.nPurchases = 0u;
 
@@ -120,11 +182,17 @@ struct Playthrough
         comboPurchased = false;
         mapPurchased   = false;
 
+        magicUnlocked = false;
+        manaTimer     = 0.f;
+        mana          = 0u;
+
         windEnabled = false;
 
         // bubbles, cats, and shrines are cleaned in the game loop
 
         statsSession = {};
+
+        shrinesSpawned = false;
     }
 
     ////////////////////////////////////////////////////////////
@@ -158,31 +226,28 @@ struct Playthrough
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] constexpr float getBaseCooldownByCatType(const CatType type) const
+    [[nodiscard]] constexpr MoneyType getBaseRequiredRewardByShrineType(const ShrineType type) const
     {
-        constexpr float baseCooldowns[nCatTypes]{
-            1000.f, // Normal
-            3000.f, // Uni
-            7000.f, // Devil
-            2000.f, // Witch
-            10000.f // Astro
+        constexpr MoneyType baseRequiredRewards[nShrineTypes]{
+            1'0 /*00*/,    // Magic
+            1'000,         // Clicking
+            1'000,         // Automation
+            10'000,        // Repulsion
+            100'000,       // Attraction
+            1'000'000,     // Decay
+            10'000'000,    // Chaos
+            100'000'000,   // Transmutation
+            1'000'000'000, // Victory
         };
 
-        return baseCooldowns[static_cast<U8>(type)];
+        return baseRequiredRewards[static_cast<U8>(type)];
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] constexpr float getBaseRangeByCatType(const CatType type) const
+    [[nodiscard, gnu::always_inline]] inline MoneyType getComputedRequiredRewardByShrineType(const ShrineType type) const
     {
-        constexpr float baseRanges[nCatTypes]{
-            96.f,  // Normal
-            64.f,  // Uni
-            48.f,  // Devil
-            256.f, // Witch
-            48.f   // Astro
-        };
-
-        return baseRanges[static_cast<U8>(type)];
+        return static_cast<MoneyType>(
+            static_cast<float>(getBaseRequiredRewardByShrineType(type)) * getComputedGlobalCostMultiplier());
     }
 
     ////////////////////////////////////////////////////////////
@@ -206,13 +271,13 @@ struct Playthrough
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline float getComputedCooldownByCatType(const CatType catType)
     {
-        return getBaseCooldownByCatType(catType) * getCooldownMultPSVByCatType(catType).currentValue();
+        return baseCooldowns[static_cast<U8>(catType)] * getCooldownMultPSVByCatType(catType).currentValue();
     }
 
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline float getComputedRangeByCatType(const CatType catType)
     {
-        return getBaseRangeByCatType(catType) / getRangeDivPSVByCatType(catType).currentValue();
+        return baseRanges[static_cast<U8>(catType)] / getRangeDivPSVByCatType(catType).currentValue();
     }
 
     ////////////////////////////////////////////////////////////
@@ -224,13 +289,25 @@ struct Playthrough
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline float getComputedInspirationDuration() const
     {
-        return 1500.f * psvInspireDurationMult.currentValue();
+        return 1500.f * psvPPInspireDurationMult.currentValue();
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline]] inline float getComputedManaCooldown() const
+    {
+        return 10000.f * psvPPManaCooldownMult.currentValue();
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline]] inline sf::base::U64 getComputedMaxMana() const
+    {
+        return static_cast<sf::base::U64>(20.f * psvPPManaMaxMult.currentValue());
     }
 
     ////////////////////////////////////////////////////////////
     [[nodiscard]] float getComputedMultiPopRange() const
     {
-        return psvMultiPopRange.currentValue();
+        return psvPPMultiPopRange.currentValue();
     }
 
     ////////////////////////////////////////////////////////////

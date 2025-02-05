@@ -3,10 +3,12 @@
 #include "Aliases.hpp"
 #include "Bubble.hpp"
 #include "Cat.hpp"
+#include "Countdown.hpp"
 #include "Milestones.hpp"
 #include "Playthrough.hpp"
 #include "Profile.hpp"
 #include "PurchasableScalingValue.hpp"
+#include "Shrine.hpp"
 #include "json.hpp"
 
 #include "SFML/System/Path.hpp"
@@ -26,6 +28,33 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Vector2f, x, y);
 } // namespace sf
 
 
+namespace sf::base
+{
+////////////////////////////////////////////////////////////
+template <typename T>
+// NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
+void to_json(nlohmann::json& j, const Optional<T>& p)
+{
+    if (p.hasValue())
+        j = p.value();
+    else
+        j = nullptr;
+}
+
+////////////////////////////////////////////////////////////
+template <typename T>
+// NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
+void from_json(const nlohmann::json& j, Optional<T>& p)
+{
+    if (j.is_null())
+        p.reset();
+    else
+        p.emplace(j.get<T>());
+}
+
+} // namespace sf::base
+
+
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Bubble, position, velocity, scale, rotation, type);
@@ -36,10 +65,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Cat, type, position, rangeOffset, wobbleTimer
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Shrine, position, wobbleTimer, dying, deathTime, requiredReward, collectedReward);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Shrine, position, wobbleTimer, tcActivation, tcDeath, collectedReward, type);
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-function"
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
 void to_json(nlohmann::json& j, const Countdown& p)
@@ -68,6 +95,20 @@ void from_json(const nlohmann::json& j, TargetedCountdown& p)
 {
     p.value         = j[0];
     p.startingValue = j[1];
+}
+
+////////////////////////////////////////////////////////////
+// NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
+void to_json(nlohmann::json& j, const OptionalTargetedCountdown& p)
+{
+    to_json(j, p.asBase());
+}
+
+////////////////////////////////////////////////////////////
+// NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
+void from_json(const nlohmann::json& j, OptionalTargetedCountdown& p)
+{
+    from_json(j, p.asBase());
 }
 
 ////////////////////////////////////////////////////////////
@@ -133,7 +174,6 @@ void from_json(const nlohmann::json& j, PurchasableScalingValue (&p)[N])
     p[3].nPurchases = j[3];
     p[4].nPurchases = j[4];
 }
-#pragma clang diagnostic pop
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
@@ -213,8 +253,10 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
 
     psvRangeDivsPerCatType,
 
-    psvMultiPopRange,
-    psvInspireDurationMult,
+    psvPPMultiPopRange,
+    psvPPInspireDurationMult,
+    psvPPManaCooldownMult,
+    psvPPManaMaxMult,
 
     money,
 
@@ -222,6 +264,10 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
 
     comboPurchased,
     mapPurchased,
+
+    magicUnlocked,
+    manaTimer,
+    mana,
 
     multiPopPurchased,
     smartCatsPurchased,
@@ -243,7 +289,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     statsSession,
     milestones,
 
-    prestigeTipShown);
+    prestigeTipShown,
+    shrinesSpawned);
 
 namespace
 {

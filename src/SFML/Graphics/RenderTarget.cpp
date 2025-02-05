@@ -222,6 +222,41 @@ enum : bool
     streamToGPU(isOpenGLES ? GL_ELEMENT_ARRAY_BUFFER : bufferId, indexData, sizeof(sf::IndexType) * indexCount);
 }
 
+////////////////////////////////////////////////////////////
+void setupVertexAttribPointers()
+{
+#define SFML_PRIV_OFFSETOF(...) reinterpret_cast<const void*>(SFML_BASE_OFFSETOF(__VA_ARGS__))
+
+    // Hardcoded layout location `0u` for `sf_a_position`
+    glCheck(glEnableVertexAttribArray(0u));
+    glCheck(glVertexAttribPointer(/*      index */ 0u,
+                                  /*       size */ 2,
+                                  /*       type */ GL_FLOAT,
+                                  /* normalized */ GL_FALSE,
+                                  /*     stride */ sizeof(sf::Vertex),
+                                  /*     offset */ SFML_PRIV_OFFSETOF(sf::Vertex, position)));
+
+    // Hardcoded layout location `1u` for `sf_a_color`
+    glCheck(glEnableVertexAttribArray(1u));
+    glCheck(glVertexAttribPointer(/*      index */ 1u,
+                                  /*       size */ 4,
+                                  /*       type */ GL_UNSIGNED_BYTE,
+                                  /* normalized */ GL_TRUE,
+                                  /*     stride */ sizeof(sf::Vertex),
+                                  /*     offset */ SFML_PRIV_OFFSETOF(sf::Vertex, color)));
+
+    // Hardcoded layout location `2u` for `sf_a_texCoord`
+    glCheck(glEnableVertexAttribArray(2u));
+    glCheck(glVertexAttribPointer(/*      index */ 2u,
+                                  /*       size */ 2,
+                                  /*       type */ GL_FLOAT,
+                                  /* normalized */ GL_FALSE,
+                                  /*     stride */ sizeof(sf::Vertex),
+                                  /*     offset */ SFML_PRIV_OFFSETOF(sf::Vertex, texCoords)));
+
+#undef SFML_PRIV_OFFSETOF
+}
+
 } // namespace RenderTargetImpl
 } // namespace
 
@@ -257,42 +292,6 @@ struct [[nodiscard]] StatesCache
 
 
 ////////////////////////////////////////////////////////////
-void setupVertexAttribPointers()
-{
-#define SFML_PRIV_OFFSETOF(...) reinterpret_cast<const void*>(SFML_BASE_OFFSETOF(__VA_ARGS__))
-
-    // Hardcoded layout location `0u` for `sf_a_position`
-    glCheck(glEnableVertexAttribArray(0u));
-    glCheck(glVertexAttribPointer(/*      index */ 0u,
-                                  /*       size */ 2,
-                                  /*       type */ GL_FLOAT,
-                                  /* normalized */ GL_FALSE,
-                                  /*     stride */ sizeof(Vertex),
-                                  /*     offset */ SFML_PRIV_OFFSETOF(Vertex, position)));
-
-    // Hardcoded layout location `1u` for `sf_a_color`
-    glCheck(glEnableVertexAttribArray(1u));
-    glCheck(glVertexAttribPointer(/*      index */ 1u,
-                                  /*       size */ 4,
-                                  /*       type */ GL_UNSIGNED_BYTE,
-                                  /* normalized */ GL_TRUE,
-                                  /*     stride */ sizeof(Vertex),
-                                  /*     offset */ SFML_PRIV_OFFSETOF(Vertex, color)));
-
-    // Hardcoded layout location `2u` for `sf_a_texCoord`
-    glCheck(glEnableVertexAttribArray(2u));
-    glCheck(glVertexAttribPointer(/*      index */ 2u,
-                                  /*       size */ 2,
-                                  /*       type */ GL_FLOAT,
-                                  /* normalized */ GL_FALSE,
-                                  /*     stride */ sizeof(Vertex),
-                                  /*     offset */ SFML_PRIV_OFFSETOF(Vertex, texCoords)));
-
-#undef SFML_PRIV_OFFSETOF
-}
-
-
-////////////////////////////////////////////////////////////
 struct RenderTarget::Impl
 {
     explicit Impl(const View& theView) :
@@ -324,7 +323,7 @@ struct RenderTarget::Impl
         theVAOGroup.bind();
         cache.lastVaoGroup = theVAOGroup.getId();
 
-        setupVertexAttribPointers();
+        RenderTargetImpl::setupVertexAttribPointers();
     }
 };
 
@@ -673,7 +672,7 @@ void RenderTarget::draw(const VertexBuffer& vertexBuffer, base::SizeT firstVerte
     vertexBuffer.bind();
 
     // Always enable texture coordinates (needed because different buffer is bound)
-    setupVertexAttribPointers();
+    RenderTargetImpl::setupVertexAttribPointers();
 
     drawPrimitives(vertexBuffer.getPrimitiveType(), firstVertex, vertexCount);
 

@@ -2450,8 +2450,8 @@
         0
     ],
     "psvExplosionRadiusMult": 0,
-    "psvInspireDurationMult": 0,
-    "psvMultiPopRange": 0,
+    "psvPPInspireDurationMult": 0,
+    "psvPPMultiPopRange": 0,
     "psvRangeDivsPerCatType": [
         0,
         0,

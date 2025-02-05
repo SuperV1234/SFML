@@ -15,7 +15,13 @@ enum class [[nodiscard]] ParticleType : sf::base::U8
     Star   = 1u,
     Fire   = 2u,
     Hex    = 3u,
+    Shrine = 4u,
+
+    Count
 };
+
+////////////////////////////////////////////////////////////
+inline constexpr auto nParticleTypes = static_cast<sf::base::SizeT>(ParticleType::Count);
 
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] Particle

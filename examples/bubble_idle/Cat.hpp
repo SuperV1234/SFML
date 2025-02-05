@@ -21,11 +21,19 @@ enum class [[nodiscard]] CatType : sf::base::U8
     Witch  = 3u,
     Astro  = 4u,
 
+    Wizard = 5u,
+
     Count
 };
 
 ////////////////////////////////////////////////////////////
 inline constexpr auto nCatTypes = static_cast<sf::base::SizeT>(CatType::Count);
+
+////////////////////////////////////////////////////////////
+[[nodiscard]] inline constexpr bool isUniqueCatType(const CatType catType) noexcept
+{
+    return catType == CatType::Wizard;
+}
 
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] Cat
@@ -105,6 +113,12 @@ struct [[nodiscard]] Cat
     {
         return type == CatType::Astro && astroState.hasValue();
     }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline]] inline bool hasUniqueType() const noexcept
+    {
+        return isUniqueCatType(type);
+    }
 };
 
 ////////////////////////////////////////////////////////////
@@ -122,52 +136,3 @@ struct [[nodiscard]] Cat
                .type                  = catType,
                .astroState            = {}};
 }
-
-
-////////////////////////////////////////////////////////////
-struct [[nodiscard]] Shrine
-{
-    sf::Vector2f position;
-
-    LoopingTimer wobbleTimer{};
-
-    float mainOpacity = 255.f;
-
-    bool  dying     = false;
-    float deathTime = 5000.f;
-
-    TextShakeEffect textStatusShakeEffect;
-
-    sf::base::U64 requiredReward;
-
-    sf::base::U64 collectedReward = 0u;
-
-    ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline float getDeathProgress() const
-    {
-        return 1.f - (deathTime / 5000.f);
-    }
-
-    ////////////////////////////////////////////////////////////
-    [[gnu::always_inline]] inline void update(const float deltaTime)
-    {
-        if (dying)
-            deathTime -= deltaTime;
-
-        textStatusShakeEffect.update(deltaTime);
-        (void)wobbleTimer.updateAndLoop(deltaTime * 0.002f + getDeathProgress() * 0.2f, sf::base::tau);
-    }
-
-    ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline sf::Vector2f getDrawPosition() const
-    {
-        return position + sf::Vector2f{std::cos(wobbleTimer.value) * (7.5f + getDeathProgress() * 128.f),
-                                       std::sin(wobbleTimer.value) * (14.f + getDeathProgress() * 128.f)};
-    }
-
-    ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline float getRange() const
-    {
-        return 256.f * (1.f - getDeathProgress());
-    }
-};

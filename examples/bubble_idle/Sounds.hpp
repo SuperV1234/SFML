@@ -60,6 +60,10 @@ struct Sounds
     LoadedSound prestige{"prestige.ogg"};
     LoadedSound launch{"launch.ogg"};
     LoadedSound rocket{"rocket.ogg"};
+    LoadedSound earthquake{"earthquake.ogg"};
+    LoadedSound earthquakeFast{"earthquakefast.ogg"};
+    LoadedSound woosh{"woosh.ogg"};
+    LoadedSound cast0{"cast0.ogg"};
 
     ////////////////////////////////////////////////////////////
     std::vector<sf::Sound> soundsBeingPlayed;
@@ -67,9 +71,9 @@ struct Sounds
     ////////////////////////////////////////////////////////////
     explicit Sounds()
     {
-        const auto setupWorldSound = [&](auto& sound)
+        const auto setupWorldSound = [&](auto& sound, const float attenuationMult = 1.f)
         {
-            sound.setAttenuation(0.0025f);
+            sound.setAttenuation(0.0025f * attenuationMult);
             sound.setSpatializationEnabled(true);
         };
 
@@ -87,6 +91,10 @@ struct Sounds
         setupWorldSound(hex);
         setupWorldSound(launch);
         setupWorldSound(rocket);
+        setupWorldSound(earthquake, /* attenuationMult */ 0.1f);
+        setupWorldSound(earthquakeFast, /* attenuationMult */ 0.1f);
+        setupWorldSound(woosh, /* attenuationMult */ 0.1f);
+        setupWorldSound(cast0, /* attenuationMult */ 0.1f);
 
         setupUISound(click);
         setupUISound(byteMeow);

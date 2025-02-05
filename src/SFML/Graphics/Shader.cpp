@@ -643,7 +643,7 @@ base::Optional<Shader::UniformLocation> Shader::getUniformLocation(base::StringV
     }
 
     // Use thread-local string buffer to get a null-terminated uniform name
-    thread_local std::string uniformNameBuffer;
+    static thread_local std::string uniformNameBuffer;
     uniformNameBuffer.clear();
     uniformNameBuffer.assign(uniformName.data(), uniformName.size());
 
@@ -722,28 +722,28 @@ void Shader::setUniform(UniformLocation location, const Glsl::Ivec4& v) const
 ////////////////////////////////////////////////////////////
 void Shader::setUniform(UniformLocation location, bool x) const
 {
-    return setUniform(location, static_cast<int>(x));
+    setUniform(location, static_cast<int>(x));
 }
 
 
 ////////////////////////////////////////////////////////////
 void Shader::setUniform(UniformLocation location, Glsl::Bvec2 v) const
 {
-    return setUniform(location, v.to<Glsl::Ivec2>());
+    setUniform(location, v.to<Glsl::Ivec2>());
 }
 
 
 ////////////////////////////////////////////////////////////
 void Shader::setUniform(UniformLocation location, const Glsl::Bvec3& v) const
 {
-    return setUniform(location, v.to<Glsl::Ivec3>());
+    setUniform(location, v.to<Glsl::Ivec3>());
 }
 
 
 ////////////////////////////////////////////////////////////
 void Shader::setUniform(UniformLocation location, const Glsl::Bvec4& v) const
 {
-    return setUniform(location, Glsl::Ivec4(v));
+    setUniform(location, Glsl::Ivec4(v));
 }
 
 

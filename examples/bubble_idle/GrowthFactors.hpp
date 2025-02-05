@@ -6,12 +6,12 @@
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] GrowthFactors
 {
-    float initial;
-    float linear         = 0.f;
-    float multiplicative = 0.f;
-    float exponential    = 1.f;
-    float flat           = 0.f;
-    float finalMult      = 1.f;
+    const float initial;
+    const float linear         = 0.f;
+    const float multiplicative = 0.f;
+    const float exponential    = 1.f;
+    const float flat           = 0.f;
+    const float finalMult      = 1.f;
 
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::pure, gnu::always_inline]] inline float computeGrowth(const float n) const

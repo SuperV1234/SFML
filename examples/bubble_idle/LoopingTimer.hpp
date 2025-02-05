@@ -46,4 +46,10 @@ struct [[nodiscard]] TargetedLoopingTimer : LoopingTimer
     {
         return LoopingTimer::updateAndStop(deltaTimeMs, target);
     }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline]] float getProgress() const
+    {
+        return value / target;
+    }
 };
