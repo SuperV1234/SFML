@@ -15,6 +15,9 @@ inline constexpr PSVData comboStartTime //
 inline constexpr PSVData mapExtension //
     {.nMaxPurchases = 8u, .cost = {.initial = 100.f, .exponential = 4.85f}, .value = {}};
 
+inline constexpr PSVData shrineActivation //
+    {.nMaxPurchases = 9u, .cost = {.initial = 200.f, .exponential = 4.85f}, .value = {}};
+
 inline constexpr PSVData bubbleCount //
     {.nMaxPurchases = 30u,
      .cost          = {.initial = 75.f, .linear = 1500.f, .exponential = 2.5f},

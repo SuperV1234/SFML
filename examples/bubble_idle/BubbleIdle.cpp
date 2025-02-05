@@ -67,6 +67,7 @@
 #include <string>
 #include <vector>
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -150,7 +151,7 @@ struct [[nodiscard]] CollisionResolution
     }
 
     // Define a "softness" factor to control how quickly the overlap is resolved
-    const float softnessFactor = 0.0005f * deltaTimeMs;
+    const float softnessFactor = 0.00075f * deltaTimeMs;
 
     // Calculate the displacement needed to resolve the overlap
     const sf::Vector2f displacement = normal * overlap * softnessFactor;
@@ -198,6 +199,18 @@ bool handleCatCollision(const float deltaTimeMs, Cat& iCat, Cat& jCat)
     iCat.position += result->iDisplacement;
     jCat.position += result->jDisplacement;
 
+    return true;
+}
+
+////////////////////////////////////////////////////////////
+bool handleCatShrineCollision(const float deltaTimeMs, Cat& cat, Shrine& shrine)
+{
+    const auto result = handleCollision(deltaTimeMs, cat.position, shrine.position, {}, {}, cat.getRadius(), 64.f, 1.f, 1.f);
+
+    if (!result.hasValue())
+        return false;
+
+    cat.position += result->iDisplacement;
     return true;
 }
 
@@ -305,7 +318,7 @@ void drawSplashScreen(sf::RenderWindow& window, const sf::Texture& txLogo, const
                  .scale       = {0.7f, 0.7f},
                  .origin      = txLogo.getSize().toVector2f() / 2.f,
                  .textureRect = txLogo.getRect(),
-                 .color       = sf::Color::White.withAlpha(static_cast<U8>(fade))},
+                 .color       = sf::Color::White.withAlpha(static_cast<sf::base::U8>(fade))},
                 txLogo);
 }
 
@@ -388,6 +401,7 @@ struct Main
     sf::FloatRect txrAstroCat;
     sf::FloatRect txrAstroCatWithFlag;
     sf::FloatRect txrBomb;
+    sf::FloatRect txrShrine;
 
     ////////////////////////////////////////////////////////////
     Profile profile;
@@ -611,7 +625,7 @@ struct Main
     static inline constexpr float normalFontScale    = 1.f;
     static inline constexpr float subBulletFontScale = 0.8f;
     static inline constexpr float toolTipFontScale   = 0.65f;
-    static inline constexpr float windowWidth        = 420.f;
+    static inline constexpr float windowWidth        = 425.f;
     static inline constexpr float buttonWidth        = 150.f;
 
     ////////////////////////////////////////////////////////////
@@ -801,7 +815,7 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] bool makePurchasablePPButtonOneTime(const char* label, const U64 prestigePointsCost, bool& done)
+    [[nodiscard]] bool makePurchasablePPButtonOneTime(const char* label, const PrestigePointsType prestigePointsCost, bool& done)
     {
         return makePurchasableButtonOneTimeByCurrency(label,
                                                       done,
@@ -816,7 +830,7 @@ struct Main
         return makePSVButtonExByCurrency(label,
                                          psv,
                                          /* times */ 1u,
-                                         /* cost */ static_cast<U64>(psv.nextCost()),
+                                         /* cost */ static_cast<PrestigePointsType>(psv.nextCost()),
                                          /* availability */ pt.prestigePoints,
                                          "%llu PPs##%u");
     }
@@ -875,18 +889,23 @@ struct Main
 
     void uiTabBar(const sf::View& gameView)
     {
-        if (ImGui::BeginTabItem(" X "))
+        if (ImGui::BeginTabItem("X"))
             ImGui::EndTabItem();
 
         static auto selectOnce = ImGuiTabItemFlags_SetSelected;
-        if (ImGui::BeginTabItem(" Shop ", nullptr, selectOnce))
+        if (ImGui::BeginTabItem("Shop", nullptr, selectOnce))
         {
             selectOnce = {};
             uiTabBarShop(gameView);
             ImGui::EndTabItem();
         }
 
-        if (pt.isBubbleValueUnlocked())
+        if (ImGui::BeginTabItem("Magic"))
+        {
+            ImGui::EndTabItem();
+        }
+
+        // if (pt.isBubbleValueUnlocked())
         {
             if (!pt.prestigeTipShown)
             {
@@ -894,20 +913,20 @@ struct Main
                 doTip("Prestige to increase bubble value\nand unlock permanent upgrades!");
             }
 
-            if (ImGui::BeginTabItem(" Prestige "))
+            if (ImGui::BeginTabItem("Prestige"))
             {
                 uiTabBarPrestige();
                 ImGui::EndTabItem();
             }
         }
 
-        if (ImGui::BeginTabItem(" Stats "))
+        if (ImGui::BeginTabItem("Stats"))
         {
             uiTabBarStats();
             ImGui::EndTabItem();
         }
 
-        if (ImGui::BeginTabItem(" Settings "))
+        if (ImGui::BeginTabItem("Options"))
         {
             uiTabBarSettings();
             ImGui::EndTabItem();
@@ -953,6 +972,11 @@ struct Main
             {
                 scroll = 0.f;
                 doTip("You can scroll the map with right click\nor by dragging with two fingers!");
+
+                // TODO: shrines should always be spawned, but locked until purchased
+                pt.shrines.emplace_back(Shrine{.position = sf::Vector2f{gameScreenSize.x, 0.f} + gameScreenSize / 2.f,
+                                               .textStatusShakeEffect = {},
+                                               .requiredReward        = 1000u});
             }
 
             if (pt.mapPurchased)
@@ -960,14 +984,19 @@ struct Main
                 std::sprintf(tooltipBuffer, "Extend the map further by one screen.");
                 std::sprintf(labelBuffer, "%.2f%%", static_cast<double>(pt.getMapLimit() / boundaries.x * 100.f));
                 makePSVButton("- Extend map", pt.psvMapExtension);
+
+                ImGui::BeginDisabled(pt.psvShrineActivation.nPurchases > pt.psvMapExtension.nPurchases);
+                std::sprintf(tooltipBuffer, "TODO: shrine tooltip");
+                std::sprintf(labelBuffer, "%zu shrines active", pt.psvShrineActivation.nPurchases);
+                makePSVButton("- Activate next shrine", pt.psvShrineActivation);
+                ImGui::EndDisabled();
             }
 
             ImGui::Separator();
 
             std::sprintf(tooltipBuffer,
                          "Increase the total number of bubbles. Scales with map size.\n\nMore bubbles, "
-                         "more "
-                         "money!");
+                         "more money!");
             std::sprintf(labelBuffer, "%zu bubbles", static_cast<SizeT>(pt.psvBubbleCount.currentValue()));
             makePSVButton("More bubbles", pt.psvBubbleCount);
 
@@ -1454,9 +1483,9 @@ struct Main
             ImGui::SetColumnWidth(0, windowWidth / 2.f);
             ImGui::SetColumnWidth(1, windowWidth / 2.f);
 
-            const auto secondsToDisplay = U64{stats.secondsPlayed % 60u};
-            const auto minutesToDisplay = U64{(stats.secondsPlayed / 60u) % 60u};
-            const auto hoursToDisplay   = U64{stats.secondsPlayed / 3600u};
+            const auto secondsToDisplay = sf::base::U64{stats.secondsPlayed % 60u};
+            const auto minutesToDisplay = sf::base::U64{(stats.secondsPlayed / 60u) % 60u};
+            const auto hoursToDisplay   = sf::base::U64{stats.secondsPlayed / 3600u};
             ImGui::Text("Time played: %lluh %llum %llus", hoursToDisplay, minutesToDisplay, secondsToDisplay);
 
             ImGui::Spacing();
@@ -1511,17 +1540,17 @@ struct Main
             {
                 ImGui::SetWindowFontScale(0.75f);
 
-                const auto doMilestone = [&](const char* name, const U64 value)
+                const auto doMilestone = [&](const char* name, const sf::base::U64 value)
                 {
-                    if (value == std::numeric_limits<U64>::max())
+                    if (value == std::numeric_limits<sf::base::U64>::max())
                     {
                         ImGui::Text("%s: N/A", name);
                         return;
                     }
 
-                    const auto secondsToDisplay = U64{value % 60u};
-                    const auto minutesToDisplay = U64{(value / 60u) % 60u};
-                    const auto hoursToDisplay   = U64{value / 3600u};
+                    const auto secondsToDisplay = sf::base::U64{value % 60u};
+                    const auto minutesToDisplay = sf::base::U64{(value / 60u) % 60u};
+                    const auto hoursToDisplay   = sf::base::U64{value / 3600u};
 
                     ImGui::Text("%s: %lluh %llum %llus", name, hoursToDisplay, minutesToDisplay, secondsToDisplay);
                 };
@@ -1692,6 +1721,28 @@ struct Main
         const auto reward = static_cast<MoneyType>(sf::base::ceil(
             static_cast<float>(xPt.getComputedRewardByBubbleType(bubble.type)) * getComboValueMult(xCombo)));
 
+        for (Shrine& shrine : pt.shrines)
+        {
+            const auto diff = bubble.position - shrine.position;
+
+            // if bubble is not in shrine range, continue
+            if (diff.length() > shrine.getRange())
+                continue;
+
+            shrine.collectedReward += reward;
+            shrine.textStatusShakeEffect.bump(1.5f);
+
+            particles.emplace_back(ParticleData{.position      = bubble.position,
+                                                .velocity      = -diff.normalized() * 0.5f,
+                                                .scale         = 1.5f,
+                                                .accelerationY = 0.f,
+                                                .opacity       = 1.f,
+                                                .opacityDecay = 0.00135f + (shrine.getRange() - diff.length()) / 22000.f,
+                                                .rotation = 0.f,
+                                                .torque   = 0.f},
+                                   ParticleType::Bubble);
+        }
+
         popBubble(byHand, bubble.type, reward, xCombo, bubble.position, popSoundOverlap);
         addReward(reward);
         bubble = makeRandomBubble(xPt.getMapLimit(), 0.f);
@@ -1766,6 +1817,7 @@ struct Main
         }
     }
 
+    ////////////////////////////////////////////////////////////
     void gameLoopUpdateCatActions(const float deltaTimeMs)
     {
         for (Cat& cat : pt.cats)
@@ -2043,9 +2095,9 @@ struct Main
     ////////////////////////////////////////////////////////////
     void gameLoopUpdateMilestones()
     {
-        const auto updateMilestone = [&](const char* name, U64& milestone, bool showTip = true)
+        const auto updateMilestone = [&](const char* name, sf::base::U64& milestone, bool showTip = true)
         {
-            const U64 oldMilestone = milestone;
+            const auto oldMilestone = milestone;
 
             milestone = sf::base::min(milestone, pt.statsTotal.secondsPlayed);
 
@@ -2279,6 +2331,66 @@ struct Main
             catTextStatus.position = cat.position + sf::Vector2f{0.f, 68.f};
             catTextStatus.origin   = catTextStatus.getLocalBounds().size / 2.f;
             cat.textStatusShakeEffect.applyToText(catTextStatus);
+            cpuDrawableBatch.add(catTextStatus);
+        };
+    }
+
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopDrawShrines()
+    {
+        sf::CircleShape shrineRadiusCircle{{
+            .outlineTextureRect = txrWhiteDot,
+            .fillColor          = sf::Color::Transparent,
+            .outlineThickness   = 1.f,
+            .pointCount         = 32,
+        }};
+
+        //
+        //
+        // TODO: move up to avoid reallocation
+        sf::Text catTextName{fontSuperBakery,
+                             {.characterSize    = 24u,
+                              .fillColor        = sf::Color::White,
+                              .outlineColor     = colorBlueOutline,
+                              .outlineThickness = 1.5f}};
+
+        sf::Text catTextStatus{fontSuperBakery,
+                               {.characterSize    = 16u,
+                                .fillColor        = sf::Color::White,
+                                .outlineColor     = colorBlueOutline,
+                                .outlineThickness = 1.f}};
+
+        for (Shrine& shrine : pt.shrines)
+        {
+            cpuDrawableBatch.add(
+                sf::Sprite{.position = shrine.getDrawPosition(),
+                           .scale    = sf::Vector2f{0.2f, 0.2f} * (1.f - shrine.getDeathProgress()) +
+                                    sf::Vector2f{shrine.textStatusShakeEffect.grow, shrine.textStatusShakeEffect.grow} * 0.05f,
+                           .origin      = txrShrine.size / 2.f,
+                           .textureRect = txrShrine});
+
+            const auto range = shrine.getRange();
+
+            // TODO P1: make it possible to draw a circle directly via batching without any of this stuff,
+            // no need to preallocate a circle shape before, have a reusable vertex buffer in the batch itself
+            shrineRadiusCircle.position = shrine.position;
+            shrineRadiusCircle.origin   = {range, range};
+            shrineRadiusCircle.setRadius(range);
+            shrineRadiusCircle.setOutlineColor(
+                sf::Color::Black.withAlpha(static_cast<U8>(255.f * (1.f - shrine.getDeathProgress()))));
+            cpuDrawableBatch.add(shrineRadiusCircle);
+
+            catTextName.setString("Shrine");
+            catTextName.position = shrine.position + sf::Vector2f{0.f, 48.f};
+            catTextName.origin   = catTextName.getLocalBounds().size / 2.f;
+            cpuDrawableBatch.add(catTextName);
+
+            catTextStatus.setString(
+                "$" + std::to_string(shrine.collectedReward) + " / $" + std::to_string(shrine.requiredReward));
+            catTextStatus.position = shrine.position + sf::Vector2f{0.f, 68.f};
+            catTextStatus.origin   = catTextStatus.getLocalBounds().size / 2.f;
+            shrine.textStatusShakeEffect.applyToText(catTextStatus);
             cpuDrawableBatch.add(catTextStatus);
         };
     }
@@ -2560,6 +2672,15 @@ struct Main
                     spawnParticles(24, cPos, ParticleType::Star, 1.f, 0.5f);
                     playReversePopAt(cPos);
                 }
+
+                if (inPrestigeTransition && !pt.shrines.empty())
+                {
+                    const auto cPos = pt.shrines.back().position;
+                    pt.shrines.pop_back();
+
+                    spawnParticles(24, cPos, ParticleType::Star, 1.f, 0.5f);
+                    playReversePopAt(cPos);
+                }
             }
 
             if (bubbleSpawnTimer.updateAndLoop(deltaTimeMs))
@@ -2595,7 +2716,7 @@ struct Main
             }
 
             // End prestige transition
-            if (inPrestigeTransition && pt.cats.empty() && pt.bubbles.empty())
+            if (inPrestigeTransition && pt.cats.empty() && pt.shrines.empty() && pt.bubbles.empty())
             {
                 inPrestigeTransition = false;
                 pt.money             = 0u;
@@ -2721,6 +2842,12 @@ struct Main
                 handleCatCollision(deltaTimeMs, pt.cats[i], pt.cats[j]);
             }
 
+        //
+        // Cat vs shrine collisions
+        for (Cat& cat : pt.cats)
+            for (Shrine& shrine : pt.shrines)
+                handleCatShrineCollision(deltaTimeMs, cat, shrine);
+
         if (mBtnDown(sf::Mouse::Button::Left) || (countFingersDown == 1))
         {
             if (draggedCat)
@@ -2764,6 +2891,57 @@ struct Main
         }
 
         gameLoopUpdateCatActions(deltaTimeMs);
+
+        // TODO: move to its own fn
+        for (Shrine& shrine : pt.shrines)
+        {
+            shrine.update(deltaTimeMs);
+
+            forEachBubbleInRadius(shrine.position,
+                                  shrine.getRange(),
+                                  [&](Bubble& bubble)
+                                  {
+                                      const auto diff = (shrine.position - bubble.position);
+
+                                      // magnetism
+                                      // bubble.velocity += diff * 0.0000005f * deltaTimeMs;
+
+                                      // repulsion
+                                      // if (diff.length() < 128.f)
+                                      //     bubble.velocity -= diff * 0.0000025f * deltaTimeMs;
+
+                                      // scattering
+                                      // bubble.velocity.x += (diff.x * 0.0000055f * deltaTimeMs);
+
+                                      // other ideas:
+                                      // - turns all bubbles into normal bubbles
+                                      // - periodically pushes cats/bubbles away
+                                      // - debuffs/buffs clicks/cats/combos/stars/etc
+                                      // - only gets rewards from stars/bombs
+
+                                      return ControlFlow::Continue;
+                                  });
+
+            if (shrine.collectedReward >= shrine.requiredReward)
+            {
+                shrine.dying = true;
+
+                // TODO: change particle
+                spawnParticles(static_cast<SizeT>(5 + 48 * shrine.getDeathProgress()),
+                               shrine.getDrawPosition(),
+                               ParticleType::Fire,
+                               sf::base::max(0.25f, 1.f - shrine.getDeathProgress()),
+                               0.75f);
+            }
+        }
+
+        if (std::erase_if(pt.shrines, [](const Shrine& shrine) { return shrine.getRange() <= 0.f; }) > 0u)
+        {
+            // TODO: change sound
+            // TODO: handle shrine death rewards
+            playSound(sounds.explosion, /* overlap */ true);
+        }
+
 
         const auto updateParticleLike = [&](auto& particleLikeVec)
         {
@@ -2812,6 +2990,7 @@ struct Main
 
         cpuDrawableBatch.clear();
 
+        gameLoopDrawShrines();
         gameLoopDrawBubbles();
         gameLoopDrawCats(mousePos);
         gameLoopDrawParticles();
@@ -2939,6 +3118,7 @@ struct Main
     txrAstroCat{addImgResourceToAtlas("astromeow.png")},
     txrAstroCatWithFlag{addImgResourceToAtlas("astromeowwithflag.png")},
     txrBomb{addImgResourceToAtlas("bomb.png")},
+    txrShrine{addImgResourceToAtlas("shrine.png")},
 
     // UI Text
     moneyText{fontSuperBakery,
@@ -2982,7 +3162,8 @@ struct Main
     catDragPressDuration{0.f},
 
     // Splash screen state
-    splashCountdown{.startingValue = 1750.f},
+    splashCountdown{.startingValue = 0.f},
+    // splashCountdown{.startingValue = 1750.f}, // TODO:
 
     // Tip state
     tipTimer{0.f}
@@ -3022,6 +3203,9 @@ struct Main
         // Startup (splash screen and meow)
         splashCountdown.reset();
         playSound(sounds.byteMeow);
+
+        // TODO: spawn test shrine
+        pt.shrines.emplace_back(Shrine{.position = resolution / 2.f, .textStatusShakeEffect = {}, .requiredReward = 10u});
 
         //
         //

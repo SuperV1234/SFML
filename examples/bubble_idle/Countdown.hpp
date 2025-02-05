@@ -2,7 +2,7 @@
 
 
 ////////////////////////////////////////////////////////////
-struct [[nodiscard]] Countdown
+struct [[nodiscard]] Countdown // TODO: turn to free funcs
 {
     float value = 0.f;
 

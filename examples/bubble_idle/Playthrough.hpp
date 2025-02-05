@@ -24,6 +24,7 @@ struct Playthrough
     // PSV instances
     PurchasableScalingValue psvComboStartTime{&PSVDataConstants::comboStartTime};
     PurchasableScalingValue psvMapExtension{&PSVDataConstants::mapExtension};
+    PurchasableScalingValue psvShrineActivation{&PSVDataConstants::shrineActivation};
     PurchasableScalingValue psvBubbleCount{&PSVDataConstants::bubbleCount};
     PurchasableScalingValue psvBubbleValue{&PSVDataConstants::bubbleValue}; // prestige
     PurchasableScalingValue psvExplosionRadiusMult{&PSVDataConstants::explosionRadiusMult};
@@ -57,7 +58,7 @@ struct Playthrough
 
     //
     // Permanent currencies
-    U64 prestigePoints = 0u;
+    PrestigePointsType prestigePoints = 0u;
 
     //
     // Purchases
@@ -84,6 +85,7 @@ struct Playthrough
     // Object state
     std::vector<Bubble> bubbles;
     std::vector<Cat>    cats;
+    std::vector<Shrine> shrines;
 
     //
     // Statistics
@@ -96,7 +98,7 @@ struct Playthrough
     bool prestigeTipShown = false;
 
     ////////////////////////////////////////////////////////////
-    void onPrestige(const U64 prestigeCount)
+    void onPrestige(const PrestigePointsType prestigeCount)
     {
         psvComboStartTime.nPurchases      = 0u;
         psvMapExtension.nPurchases        = 0u;
@@ -119,6 +121,8 @@ struct Playthrough
         mapPurchased   = false;
 
         windEnabled = false;
+
+        // bubbles, cats, and shrines are cleaned in the game loop
 
         statsSession = {};
     }

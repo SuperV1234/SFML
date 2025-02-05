@@ -34,6 +34,10 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Bubble, position, velocity, scale, rotation, 
 // NOLINTNEXTLINE(modernize-use-constraints)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Cat, type, position, rangeOffset, wobbleTimer, cooldownTimer, inspiredCountdown, nameIdx, hits);
 
+////////////////////////////////////////////////////////////
+// NOLINTNEXTLINE(modernize-use-constraints)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Shrine, position, wobbleTimer, dying, deathTime, requiredReward, collectedReward);
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-function"
 ////////////////////////////////////////////////////////////
@@ -198,6 +202,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     Playthrough,
     psvComboStartTime,
     psvMapExtension,
+    psvShrineActivation,
     psvBubbleCount,
     psvBubbleValue,
     psvExplosionRadiusMult,
@@ -232,6 +237,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
 
     bubbles,
     cats,
+    shrines,
 
     statsTotal,
     statsSession,
