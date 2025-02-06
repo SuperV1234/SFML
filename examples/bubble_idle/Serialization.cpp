@@ -61,7 +61,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Bubble, position, velocity, scale, rotation, 
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Cat, type, position, rangeOffset, wobbleTimer, cooldownTimer, inspiredCountdown, nameIdx, hits);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Cat, type, position, rangeOffset, wobbleTimer, cooldownTimer, hue, inspiredCountdown, nameIdx, hits);
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)

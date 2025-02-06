@@ -1,5 +1,6 @@
 #pragma once
 
+#include "HueColor.hpp"
 #include "ParticleData.hpp"
 #include "RNG.hpp"
 
@@ -27,6 +28,8 @@ inline constexpr auto nParticleTypes = static_cast<sf::base::SizeT>(ParticleType
 struct [[nodiscard]] Particle
 {
     ParticleData data;
+    float        hue = 0.f;
+
     ParticleType type;
 
     ////////////////////////////////////////////////////////////
@@ -39,7 +42,7 @@ struct [[nodiscard]] Particle
     [[gnu::always_inline]] inline void applyToSprite(sf::Sprite& sprite) const
     {
         data.applyToTransformable(sprite);
-        sprite.color.a = data.opacityAsAlpha();
+        sprite.color = hueColor(hue, data.opacityAsAlpha());
     }
 };
 
@@ -49,7 +52,8 @@ struct [[nodiscard]] Particle
     const ParticleType particleType,
     const float        scaleMult,
     const float        speedMult,
-    const float        opacity = 1.f)
+    const float        opacity = 1.f,
+    const float        hue     = 0.f)
 {
     return {.data = {.position      = position,
                      .velocity      = getRndVector2f({-0.75f, -0.75f}, {0.75f, 0.75f}) * speedMult,
@@ -59,5 +63,6 @@ struct [[nodiscard]] Particle
                      .opacityDecay  = getRndFloat(0.00025f, 0.0015f),
                      .rotation      = getRndFloat(0.f, sf::base::tau),
                      .torque        = getRndFloat(-0.002f, 0.002f)},
+            .hue  = hue,
             .type = particleType};
 }

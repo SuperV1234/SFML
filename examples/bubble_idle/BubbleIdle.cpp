@@ -5,6 +5,7 @@
 #include "Constants.hpp"
 #include "ControlFlow.hpp"
 #include "Countdown.hpp"
+#include "HueColor.hpp"
 #include "MathUtils.hpp"
 #include "Particle.hpp"
 #include "Playthrough.hpp"
@@ -82,12 +83,6 @@
 
 namespace
 {
-////////////////////////////////////////////////////////////
-[[nodiscard, gnu::always_inline]] inline constexpr sf::Color hueColor(const float hue, const U8 alpha)
-{
-    return sf::Color{1, 1, static_cast<U8>(hue / 360.f * 255.f), alpha};
-}
-
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] CollisionResolution
 {
@@ -516,6 +511,8 @@ struct Main
 
     ////////////////////////////////////////////////////////////
     sf::CircleShape circleShapeBuffer;
+    sf::Text        textNameBuffer;
+    sf::Text        textStatusBuffer;
 
     ////////////////////////////////////////////////////////////
     [[nodiscard]] SizeT getNextCatNameIdx()
@@ -528,6 +525,16 @@ struct Main
     {
         for (SizeT i = 0; i < n; ++i)
             particles.emplace_back(makeParticle(SFML_BASE_FORWARD(args)...));
+    }
+
+    ////////////////////////////////////////////////////////////
+    void spawnParticlesWithHue(const float hue, const SizeT n, auto&&... args)
+    {
+        for (SizeT i = 0; i < n; ++i)
+        {
+            auto& p = particles.emplace_back(makeParticle(SFML_BASE_FORWARD(args)...));
+            p.hue   = hue;
+        }
     }
 
     ////////////////////////////////////////////////////////////
@@ -637,11 +644,11 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    Cat& spawnCat(const sf::View& gameView, const CatType catType, const sf::Vector2f rangeOffset)
+    Cat& spawnCat(const sf::View& gameView, const CatType catType, const sf::Vector2f rangeOffset, const float hue)
     {
         const auto pos = window.mapPixelToCoords((resolution / 2.f).toVector2i(), gameView);
         spawnParticles(32, pos, ParticleType::Star, 0.5f, 0.75f);
-        return pt.cats.emplace_back(makeCat(catType, pos, rangeOffset, getNextCatNameIdx()));
+        return pt.cats.emplace_back(makeCat(catType, pos, rangeOffset, getNextCatNameIdx(), hue));
     }
 
     ////////////////////////////////////////////////////////////
@@ -1064,7 +1071,7 @@ struct Main
             std::sprintf(labelBuffer, "%zu cats", nCatNormal);
             if (makePSVButton("Cat", pt.getPSVByCatType(CatType::Normal)))
             {
-                spawnCat(gameView, CatType::Normal, {0.f, 0.f});
+                spawnCat(gameView, CatType::Normal, {0.f, 0.f}, /* hue */ getRndFloat(-20.f, 20.f));
 
                 if (nCatNormal == 0)
                 {
@@ -1114,7 +1121,7 @@ struct Main
             std::sprintf(labelBuffer, "%zu unicats", nCatUni);
             if (makePSVButton("Unicat", pt.getPSVByCatType(CatType::Uni)))
             {
-                spawnCat(gameView, CatType::Uni, {0.f, -100.f});
+                spawnCat(gameView, CatType::Uni, {0.f, -100.f}, /* hue */ getRndFloat(0.f, 360.f));
 
                 if (nCatUni == 0)
                 {
@@ -1143,7 +1150,7 @@ struct Main
             std::sprintf(labelBuffer, "%zu devilcats", nCatDevil);
             if (makePSVButton("Devilcat", pt.getPSVByCatType(CatType::Devil)))
             {
-                spawnCat(gameView, CatType::Devil, {0.f, 100.f});
+                spawnCat(gameView, CatType::Devil, {0.f, 100.f}, /* hue */ getRndFloat(-20.f, 20.f));
 
                 if (nCatDevil == 0)
                 {
@@ -1180,7 +1187,7 @@ struct Main
             std::sprintf(labelBuffer, "%zu astrocats", nCatAstro);
             if (makePSVButton("Astrocat", pt.getPSVByCatType(CatType::Astro)))
             {
-                spawnCat(gameView, CatType::Astro, {-64.f, 0.f});
+                spawnCat(gameView, CatType::Astro, {-64.f, 0.f}, /* hue */ getRndFloat(-20.f, 20.f));
 
                 if (nCatAstro == 0)
                 {
@@ -1858,8 +1865,14 @@ struct Main
             shrine.collectedReward += reward;
             shrine.textStatusShakeEffect.bump(1.5f);
 
-            spawnParticles(6, shrine.getDrawPosition(), ParticleType::Shrine, getRndFloat(0.6f, 1.f), 0.5f);
-            spawnParticles(6, shrine.getDrawPosition(), ParticleType::Fire, getRndFloat(0.25f, 0.6f), 0.75f);
+            spawnParticlesWithHue(shrine.getHue() + 40.f,
+                                  6,
+                                  shrine.getDrawPosition(),
+                                  ParticleType::Fire,
+                                  getRndFloat(0.25f, 0.6f),
+                                  0.75f);
+
+            spawnParticlesWithHue(shrine.getHue(), 6, shrine.getDrawPosition(), ParticleType::Shrine, getRndFloat(0.6f, 1.f), 0.5f);
 
             particles.emplace_back(ParticleData{.position      = bubble.position,
                                                 .velocity      = -diff.normalized() * 0.5f,
@@ -1869,6 +1882,7 @@ struct Main
                                                 .opacityDecay = 0.00135f + (shrine.getRange() - diff.length()) / 22000.f,
                                                 .rotation = 0.f,
                                                 .torque   = 0.f},
+                                   /* hue */ 0.f,
                                    ParticleType::Bubble);
         }
 
@@ -2068,7 +2082,22 @@ struct Main
                 continue;
 
             if (cat.type == CatType::Wizard)
+            {
+                if (getRndFloat(0.f, 1.f) > 0.5f)
+                    particles.push_back(
+                        {.data = {.position = drawPosition + sf::Vector2f{getRndFloat(-catRadius, +catRadius), catRadius},
+                                  .velocity      = getRndVector2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
+                                  .scale         = getRndFloat(0.08f, 0.27f) * 0.2f,
+                                  .accelerationY = -0.002f,
+                                  .opacity       = 255.f,
+                                  .opacityDecay  = getRndFloat(0.00025f, 0.0015f),
+                                  .rotation      = getRndFloat(0.f, sf::base::tau),
+                                  .torque        = getRndFloat(-0.002f, 0.002f)},
+                         .hue  = 225.f,
+                         .type = ParticleType::Star});
+
                 continue;
+            }
 
             if (cat.type == CatType::Astro)
             {
@@ -2347,17 +2376,8 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    void gameLoopDrawCats(const sf::Vector2f mousePos)
+    void gameLoopDrawCats(const float deltaTimeMs, const sf::Vector2f mousePos)
     {
-        //
-        //
-        // TODO: move up to avoid reallocation
-        sf::Text catTextName{fontSuperBakery,
-                             {.characterSize = 24u, .fillColor = sf::Color::White, .outlineThickness = 1.5f}};
-
-        sf::Text catTextStatus{fontSuperBakery,
-                               {.characterSize = 16u, .fillColor = sf::Color::White, .outlineThickness = 1.f}};
-
         const sf::FloatRect* const normalCatTxr = pt.geniusCatsPurchased  ? &txrGeniusCat
                                                   : pt.smartCatsPurchased ? &txrSmartCat
                                                                           : &txrCat;
@@ -2385,20 +2405,20 @@ struct Main
         };
 
         constexpr sf::Color colorsByType[nCatTypes]{
-            sf::Color::Blue,   // Normal
-            sf::Color::Purple, // Uni
-            sf::Color::Red,    // Devil
-            sf::Color::Green,  // Witch
-            sf::Color::White,  // Astro
+            {192u, 147u, 109u}, // Normal
+            {129u, 251u, 191u}, // Uni
+            {191u, 61u, 61u},   // Devil
+            {90u, 155u, 48u},   // Witch
+            sf::Color::White,   // Astro
 
-            sf::Color::Magenta, // Wizard
+            {123u, 108u, 191u}, // Wizard
         };
 
         constexpr const char* catActions[nCatTypes]{
             "Pops",    // Normal
             "Shines",  // Uni
             "IEDs",    // Devil
-            "Hexes",   // Wizard
+            "Hexes",   // Witch
             "Flights", // Astro
 
             "Spells", // Wizard
@@ -2406,8 +2426,10 @@ struct Main
 
         bool anyCatHovered = false;
 
-        for (auto& cat : pt.cats)
+        for (SizeT i = 0u; i < pt.cats.size(); ++i)
         {
+            Cat& cat = pt.cats[i];
+
             float opacityMod      = 1.f;
             U8    rangeInnerAlpha = 0u;
 
@@ -2416,7 +2438,7 @@ struct Main
             {
                 anyCatHovered   = true;
                 opacityMod      = 0.5f;
-                rangeInnerAlpha = 15u;
+                rangeInnerAlpha = 75u;
             }
 
             const auto& catTxr    = *catTxrsByType[static_cast<U8>(cat.type)];
@@ -2437,7 +2459,16 @@ struct Main
                     catRotation = 0.523599f;
             }
 
-            const auto range = pt.getComputedRangeByCatType(cat.type);
+            const auto range    = pt.getComputedRangeByCatType(cat.type);
+            const auto alpha    = static_cast<U8>(cat.mainOpacity * opacityMod);
+            const auto catColor = hueColor(cat.hue, alpha);
+
+            const auto circleAlpha = cat.cooldownTimer.value < 0.f
+                                         ? static_cast<U8>(0u)
+                                         : static_cast<U8>(cat.cooldownTimer.value / maxCooldown * 128.f);
+
+            const auto circleColor = colorsByType[static_cast<U8>(cat.type)].withHueMod(cat.hue).withLightness(0.75f);
+            const sf::Color outlineColor = circleColor.withLightness(0.25f);
 
             // TODO P1: make it possible to draw a circle directly via batching without any of this stuff,
             // no need to preallocate a circle shape before, have a reusable vertex buffer in the batch itself
@@ -2445,11 +2476,12 @@ struct Main
             circleShapeBuffer.origin   = {range, range};
             circleShapeBuffer.setPointCount(static_cast<unsigned int>(range / 3.f));
             circleShapeBuffer.setRadius(range);
-            circleShapeBuffer.setOutlineColor(colorsByType[static_cast<U8>(cat.type)].withAlpha(
-                cat.cooldownTimer.value < 0.f ? static_cast<U8>(0u)
-                                              : static_cast<U8>(cat.cooldownTimer.value / maxCooldown * 128.f)));
-            circleShapeBuffer.setFillColor(circleShapeBuffer.getFillColor().withAlpha(rangeInnerAlpha));
+            circleShapeBuffer.setOutlineColor(circleColor.withAlpha(rangeInnerAlpha == 0u ? circleAlpha : 255u));
+            circleShapeBuffer.setFillColor(circleShapeBuffer.getOutlineColor().withAlpha(rangeInnerAlpha));
             cpuDrawableBatch.add(circleShapeBuffer);
+
+            if (cat.type == CatType::Uni)
+                cat.hue += deltaTimeMs * 0.1f;
 
             cpuDrawableBatch.add(
                 sf::Sprite{.position    = cat.getDrawPosition(),
@@ -2457,7 +2489,7 @@ struct Main
                            .origin      = catTxr.size / 2.f,
                            .rotation    = sf::radians(catRotation),
                            .textureRect = catTxr,
-                           .color       = sf::Color::White.withAlpha(static_cast<U8>(cat.mainOpacity * opacityMod))});
+                           .color       = catColor});
 
             cpuDrawableBatch.add(
                 sf::Sprite{.position    = cat.pawPosition,
@@ -2465,42 +2497,26 @@ struct Main
                            .origin      = catPawTxr.size / 2.f,
                            .rotation    = cat.pawRotation,
                            .textureRect = catPawTxr,
-                           .color       = sf::Color::White.withAlpha(static_cast<U8>(cat.pawOpacity * opacityMod))});
+                           .color       = catColor});
 
-            catTextName.setString(shuffledCatNames[cat.nameIdx]);
-            catTextName.position = cat.position + sf::Vector2f{0.f, 48.f};
-            catTextName.origin   = catTextName.getLocalBounds().size / 2.f;
-            catTextName.setOutlineColor(cat.hasUniqueType() ? colorRedOutline : colorBlueOutline);
-            cpuDrawableBatch.add(catTextName);
+            textNameBuffer.setString(shuffledCatNames[cat.nameIdx]);
+            textNameBuffer.position = cat.position + sf::Vector2f{0.f, 48.f};
+            textNameBuffer.origin   = textNameBuffer.getLocalBounds().size / 2.f;
+            textNameBuffer.setOutlineColor(outlineColor);
+            cpuDrawableBatch.add(textNameBuffer);
 
-            catTextStatus.setString(std::to_string(cat.hits) + " " + catActions[static_cast<U8>(cat.type)]);
-            catTextStatus.position = cat.position + sf::Vector2f{0.f, 68.f};
-            catTextStatus.origin   = catTextStatus.getLocalBounds().size / 2.f;
-            catTextStatus.setOutlineColor(cat.hasUniqueType() ? colorRedOutline : colorBlueOutline);
-            cat.textStatusShakeEffect.applyToText(catTextStatus);
-            cpuDrawableBatch.add(catTextStatus);
+            textStatusBuffer.setString(std::to_string(cat.hits) + " " + catActions[static_cast<U8>(cat.type)]);
+            textStatusBuffer.position = cat.position + sf::Vector2f{0.f, 68.f};
+            textStatusBuffer.origin   = textStatusBuffer.getLocalBounds().size / 2.f;
+            textStatusBuffer.setOutlineColor(outlineColor);
+            cat.textStatusShakeEffect.applyToText(textStatusBuffer);
+            cpuDrawableBatch.add(textStatusBuffer);
         };
     }
 
     ////////////////////////////////////////////////////////////
     void gameLoopDrawShrines()
     {
-
-        //
-        //
-        // TODO: move up to avoid reallocation
-        sf::Text shrineTextName{fontSuperBakery,
-                                {.characterSize    = 24u,
-                                 .fillColor        = sf::Color::White,
-                                 .outlineColor     = colorBlueOutline,
-                                 .outlineThickness = 1.5f}};
-
-        sf::Text shrineTextStatus{fontSuperBakery,
-                                  {.characterSize    = 16u,
-                                   .fillColor        = sf::Color::White,
-                                   .outlineColor     = colorBlueOutline,
-                                   .outlineThickness = 1.f}};
-
         for (SizeT i = 0u; i < pt.shrines.size(); ++i)
         {
             Shrine&     shrine           = pt.shrines[i];
@@ -2512,7 +2528,7 @@ struct Main
                                     sf::Vector2f{shrine.textStatusShakeEffect.grow, shrine.textStatusShakeEffect.grow} * 0.025f,
                            .origin      = txrShrine.size / 2.f,
                            .textureRect = txrShrine,
-                           .color       = hueColor(sf::base::fmod(i * 97.f, 360.f),
+                           .color       = hueColor(shrine.getHue(),
                                              static_cast<U8>(remap(shrine.getActivationProgress(), 0.f, 1.f, 128.f, 255.f)))});
 
             const auto range = shrine.getRange();
@@ -2527,27 +2543,27 @@ struct Main
             circleShapeBuffer.setFillColor(sf::Color::Transparent);
             cpuDrawableBatch.add(circleShapeBuffer);
 
-            shrineTextName.setString(shrineNames[static_cast<U8>(shrine.type)]);
-            shrineTextName.position = shrine.position + sf::Vector2f{0.f, 48.f};
-            shrineTextName.origin   = shrineTextName.getLocalBounds().size / 2.f;
-            shrineTextName.scale    = sf::Vector2f{1.f, 1.f} * invDeathProgress;
-            cpuDrawableBatch.add(shrineTextName);
+            textNameBuffer.setString(shrineNames[static_cast<U8>(shrine.type)]);
+            textNameBuffer.position = shrine.position + sf::Vector2f{0.f, 48.f};
+            textNameBuffer.origin   = textNameBuffer.getLocalBounds().size / 2.f;
+            textNameBuffer.scale    = sf::Vector2f{1.f, 1.f} * invDeathProgress;
+            cpuDrawableBatch.add(textNameBuffer);
 
             if (shrine.isActive())
             {
-                shrineTextStatus.setString("$" + std::to_string(shrine.collectedReward) + " / $" +
+                textStatusBuffer.setString("$" + std::to_string(shrine.collectedReward) + " / $" +
                                            std::to_string(pt.getComputedRequiredRewardByShrineType(shrine.type)));
             }
             else
             {
-                shrineTextStatus.setString("Inactive");
+                textStatusBuffer.setString("Inactive");
             }
 
-            shrineTextStatus.position = shrine.position + sf::Vector2f{0.f, 68.f};
-            shrineTextStatus.origin   = shrineTextStatus.getLocalBounds().size / 2.f;
-            shrine.textStatusShakeEffect.applyToText(shrineTextStatus);
-            shrineTextStatus.scale *= invDeathProgress;
-            cpuDrawableBatch.add(shrineTextStatus);
+            textStatusBuffer.position = shrine.position + sf::Vector2f{0.f, 68.f};
+            textStatusBuffer.origin   = textStatusBuffer.getLocalBounds().size / 2.f;
+            shrine.textStatusShakeEffect.applyToText(textStatusBuffer);
+            textStatusBuffer.scale *= invDeathProgress;
+            cpuDrawableBatch.add(textStatusBuffer);
         };
     }
 
@@ -3066,17 +3082,19 @@ struct Main
 
                 if (cdStatus == CountdownStatusStop::Running)
                 {
-                    spawnParticles(static_cast<SizeT>(1 + 12 * (1.f - shrine.tcActivation->getProgress())),
-                                   shrine.getDrawPosition() + getRndVector2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
-                                   ParticleType::Fire,
-                                   sf::base::max(0.25f, 1.f - 1),
-                                   0.75f);
+                    spawnParticlesWithHue(shrine.getHue() + 40.f,
+                                          static_cast<SizeT>(1 + 12 * (1.f - shrine.tcActivation->getProgress())),
+                                          shrine.getDrawPosition() + getRndVector2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
+                                          ParticleType::Fire,
+                                          getRndFloat(0.25f, 1.f),
+                                          0.75f);
 
-                    spawnParticles(static_cast<SizeT>(4 + 36 * (1.f - shrine.tcActivation->getProgress())),
-                                   shrine.getDrawPosition() + getRndVector2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
-                                   ParticleType::Shrine,
-                                   sf::base::max(0.35f, 1.2f - 1),
-                                   0.5f);
+                    spawnParticlesWithHue(shrine.getHue(),
+                                          static_cast<SizeT>(4 + 36 * (1.f - shrine.tcActivation->getProgress())),
+                                          shrine.getDrawPosition() + getRndVector2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
+                                          ParticleType::Shrine,
+                                          getRndFloat(0.35f, 1.2f),
+                                          0.5f);
                 }
                 else if (cdStatus == CountdownStatusStop::JustFinished)
                 {
@@ -3135,7 +3153,7 @@ struct Main
                         playSound(sounds.woosh);
 
                         // TODO: handle shrine death rewards
-                        auto& c    = spawnCat(gameView, CatType::Wizard, {0.f, 0.f});
+                        auto& c    = spawnCat(gameView, CatType::Wizard, {0.f, 0.f}, /* hue */ 0.f);
                         c.position = shrine.position;
 
                         pt.magicUnlocked = true;
@@ -3144,17 +3162,19 @@ struct Main
                     }
                     else if (cdStatus == CountdownStatusStop::Running)
                     {
-                        spawnParticles(static_cast<SizeT>(1 + 12 * shrine.getDeathProgress()),
-                                       shrine.getDrawPosition() + getRndVector2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
-                                       ParticleType::Fire,
-                                       sf::base::max(0.25f, 1.f - shrine.getDeathProgress()),
-                                       0.75f);
+                        spawnParticlesWithHue(shrine.getHue() + 40.f,
+                                              static_cast<SizeT>(1 + 12 * shrine.getDeathProgress()),
+                                              shrine.getDrawPosition() + getRndVector2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
+                                              ParticleType::Fire,
+                                              sf::base::max(0.25f, 1.f - shrine.getDeathProgress()),
+                                              0.75f);
 
-                        spawnParticles(static_cast<SizeT>(4 + 36 * shrine.getDeathProgress()),
-                                       shrine.getDrawPosition() + getRndVector2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
-                                       ParticleType::Shrine,
-                                       sf::base::max(0.35f, 1.2f - shrine.getDeathProgress()),
-                                       0.5f);
+                        spawnParticlesWithHue(shrine.getHue(),
+                                              static_cast<SizeT>(4 + 36 * shrine.getDeathProgress()),
+                                              shrine.getDrawPosition() + getRndVector2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
+                                              ParticleType::Shrine,
+                                              sf::base::max(0.35f, 1.2f - shrine.getDeathProgress()),
+                                              0.5f);
                     }
                 }
             }
@@ -3246,7 +3266,7 @@ struct Main
         cpuDrawableBatch.clear();
 
         gameLoopDrawBubbles();
-        gameLoopDrawCats(mousePos);
+        gameLoopDrawCats(deltaTimeMs, mousePos);
         gameLoopDrawShrines();
         gameLoopDrawParticles();
         gameLoopDrawTextParticles();
@@ -3378,8 +3398,8 @@ void main()
     vec4 texColor = texture(sf_u_texture, texCoord);
 
     const vec2 flagTarget = vec2(1.0/255.0);
-    const vec2 epsilon = vec2(0.5/255.0);
-    bool hueDriven = all(lessThanEqual(sf_v_color.rg - flagTarget, epsilon));
+    const vec2 epsilon = vec2(0.001);
+    bool hueDriven = all(lessThanEqual(abs(sf_v_color.rg - flagTarget), epsilon));
 
     if (!hueDriven)
     {
@@ -3512,7 +3532,19 @@ void main()
     tipString{},
 
     // Shape buffers
-    circleShapeBuffer{{.outlineTextureRect = txrWhiteDot, .outlineThickness = 1.f}}
+    circleShapeBuffer{{.outlineTextureRect = txrWhiteDot, .outlineThickness = 1.f}},
+
+    // Text buffers
+    textNameBuffer{fontSuperBakery,
+                   {.characterSize    = 24u,
+                    .fillColor        = sf::Color::White,
+                    .outlineColor     = colorBlueOutline,
+                    .outlineThickness = 1.5f}},
+    textStatusBuffer{fontSuperBakery,
+                     {.characterSize    = 16u,
+                      .fillColor        = sf::Color::White,
+                      .outlineColor     = colorBlueOutline,
+                      .outlineThickness = 1.f}}
     {
         //
         // Profile

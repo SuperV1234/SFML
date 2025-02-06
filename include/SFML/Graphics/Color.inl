@@ -129,6 +129,24 @@ constexpr Color Color::withHueMod(const float hueMod) const
 
 
 ////////////////////////////////////////////////////////////
+constexpr Color Color::withSaturation(const float saturation) const
+{
+    auto hsl       = toHSL();
+    hsl.saturation = base::clamp(saturation, 0.f, 1.f);
+    return Color::fromHSLA(hsl, a);
+}
+
+
+////////////////////////////////////////////////////////////
+constexpr Color Color::withLightness(const float lightness) const
+{
+    auto hsl      = toHSL();
+    hsl.lightness = base::clamp(lightness, 0.f, 1.f);
+    return Color::fromHSLA(hsl, a);
+}
+
+
+////////////////////////////////////////////////////////////
 template <typename TVec4>
 constexpr Color Color::fromVec4(const TVec4& vec)
 {

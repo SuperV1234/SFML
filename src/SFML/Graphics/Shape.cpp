@@ -133,6 +133,9 @@ Color Shape::getOutlineColor() const
 ////////////////////////////////////////////////////////////
 void Shape::setOutlineThickness(float thickness)
 {
+    if (m_outlineThickness == thickness)
+        return;
+
     m_outlineThickness = thickness;
 
     const base::SizeT pointCount = m_vertices.size() - 2;

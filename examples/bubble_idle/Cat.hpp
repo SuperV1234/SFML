@@ -50,6 +50,8 @@ struct [[nodiscard]] Cat
     float mainOpacity = 255.f;
     float pawOpacity  = 255.f;
 
+    float hue = 0.f;
+
     Countdown inspiredCountdown;
 
     SizeT nameIdx;
@@ -122,7 +124,11 @@ struct [[nodiscard]] Cat
 };
 
 ////////////////////////////////////////////////////////////
-[[nodiscard]] inline Cat makeCat(const CatType catType, const sf::Vector2f& position, const sf::Vector2f rangeOffset, const SizeT nameIdx)
+[[nodiscard]] inline Cat makeCat(const CatType       catType,
+                                 const sf::Vector2f& position,
+                                 const sf::Vector2f  rangeOffset,
+                                 const SizeT         nameIdx,
+                                 const float         hue)
 {
     return Cat{.position              = position,
                .rangeOffset           = rangeOffset,
@@ -130,6 +136,7 @@ struct [[nodiscard]] Cat
                .cooldownTimer         = {},
                .pawPosition           = position,
                .pawRotation           = sf::radians(0.f),
+               .hue                   = hue,
                .inspiredCountdown     = {},
                .nameIdx               = nameIdx,
                .textStatusShakeEffect = {},

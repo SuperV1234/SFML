@@ -77,6 +77,18 @@ struct [[nodiscard]] SFML_GRAPHICS_API Color
     [[nodiscard, gnu::always_inline, gnu::pure]] constexpr Color withHueMod(float hueMod) const;
 
     ////////////////////////////////////////////////////////////
+    /// \brief TODO P1: docs
+    ///
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline, gnu::pure]] constexpr Color withSaturation(float saturation) const;
+
+    ////////////////////////////////////////////////////////////
+    /// \brief TODO P1: docs
+    ///
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline, gnu::pure]] constexpr Color withLightness(float lightness) const;
+
+    ////////////////////////////////////////////////////////////
     /// \brief Overload of the `operator==`
     ///
     /// This operator compares two colors and check if they are equal.

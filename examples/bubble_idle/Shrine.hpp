@@ -103,4 +103,10 @@ struct [[nodiscard]] Shrine
 
         return 256.f * (1.f - getDeathProgress());
     }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline]] inline float getHue() const
+    {
+        return sf::base::fmod(static_cast<float>(type) * 85.f, 360.f);
+    }
 };
