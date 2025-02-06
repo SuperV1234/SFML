@@ -11,6 +11,7 @@ struct [[nodiscard]] Profile
     bool  playAudioInBackground = true;
     bool  playComboEndSound     = true;
     float minimapScale          = 20.f;
+    float hudScale              = 1.f;
     bool  tipsEnabled           = true;
 
     Stats statsLifetime;

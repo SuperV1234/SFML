@@ -43,5 +43,5 @@ struct [[nodiscard]] Milestones
     MilestoneTimestamp revenue100000000  = maxMilestone;
     MilestoneTimestamp revenue1000000000 = maxMilestone;
 
-    // TODO: other milestones, achievements for fast milestones
+    // TODO P1: other milestones, achievements for fast milestones
 };

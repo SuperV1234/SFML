@@ -70,31 +70,31 @@ inline constexpr PSVData catDevilRangeDiv //
      .cost          = {.initial = 150'000.f, .exponential = 1.85f, .flat = 0.f},
      .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
 
-// TODO test
+// TODO P1: test
 inline constexpr PSVData catWitch //
     {.nMaxPurchases = 64u, .cost = {.initial = 1000000.f, .exponential = 1.5}, .value = {}};
 
-// TODO test
+// TODO P1: test
 inline constexpr PSVData catWitchCooldownMult //
     {.nMaxPurchases = 12u,
      .cost          = {.initial = 3'500'000.f, .exponential = 1.68f, .flat = -1500.f},
      .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
 
-// TODO test
+// TODO P1: test
 inline constexpr PSVData catWitchRangeDiv //
     {.nMaxPurchases = 9u,
      .cost          = {.initial = 5'500'000.f, .exponential = 1.85f, .flat = -2500.f},
      .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
 
-// TODO test
+// TODO P0: test
 inline constexpr PSVData catWizard //
     {.nMaxPurchases = 64u, .cost = {.initial = 1000000.f, .exponential = 1.5}, .value = {}};
 
-// TODO test
+// TODO P0: test
 inline constexpr PSVData catWizardCooldownMult //
     {.nMaxPurchases = 1u, .cost = {.initial = 1.f}, .value = {.initial = 1.f}};
 
-// TODO test
+// TODO P0: test
 inline constexpr PSVData catWizardRangeDiv //
     {.nMaxPurchases = 1u, .cost = {.initial = 1.f}, .value = {.initial = 1.f}};
 

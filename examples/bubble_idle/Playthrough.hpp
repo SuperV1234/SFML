@@ -8,6 +8,7 @@
 #include "Milestones.hpp"
 #include "PSVDataConstants.hpp"
 #include "PurchasableScalingValue.hpp"
+#include "RNG.hpp"
 #include "Shrine.hpp"
 #include "Stats.hpp"
 
@@ -21,6 +22,11 @@
 ////////////////////////////////////////////////////////////
 struct Playthrough
 {
+    //
+    // RNG stuff
+    RNG::SeedType seed;
+    SizeT         nextCatName = 0u;
+
     //
     // PSV instances
     PurchasableScalingValue psvComboStartTime{&PSVDataConstants::comboStartTime};
@@ -36,7 +42,7 @@ struct Playthrough
         {&PSVDataConstants::catDevil},
         {&PSVDataConstants::catWitch},
         {&PSVDataConstants::catAstro},
-        {&PSVDataConstants::catWizard},
+        {&PSVDataConstants::catWizard}, // TODO: unused?
     };
 
     PurchasableScalingValue psvCooldownMultsPerCatType[nCatTypes]{
@@ -199,7 +205,7 @@ struct Playthrough
     [[nodiscard, gnu::always_inline]] inline MoneyType getComputedRequiredRewardByShrineType(const ShrineType type) const
     {
         constexpr MoneyType baseRequiredRewards[nShrineTypes]{
-            1'0 /*00*/,    // Magic // TODO
+            1'0 /*00*/,    // Magic // TODO P0: decide on values, implement all magic spells
             1'000,         // Clicking
             1'000,         // Automation
             10'000,        // Repulsion

@@ -42,7 +42,7 @@
     const float        deltaTimeMs,
     const float        speed)
 {
-    // TODO: this is axis independent, should be fixed
+    // TODO P2: this is axis independent, should be fixed
 
     return {exponentialApproach(current.x, target.x, deltaTimeMs, speed),
             exponentialApproach(current.y, target.y, deltaTimeMs, speed)};

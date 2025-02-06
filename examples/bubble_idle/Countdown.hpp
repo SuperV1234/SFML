@@ -1,6 +1,9 @@
 #pragma once
 
+#include "Easing.hpp"
+
 #include "SFML/Base/IntTypes.hpp"
+#include "SFML/Base/Math/Fabs.hpp"
 #include "SFML/Base/Optional.hpp"
 
 
@@ -20,7 +23,7 @@ enum class [[nodiscard]] CountdownStatusStop : sf::base::U8
 };
 
 ////////////////////////////////////////////////////////////
-struct [[nodiscard]] Countdown // TODO: turn to free funcs
+struct [[nodiscard]] Countdown // TODO P2: turn to free funcs
 {
     float value = 0.f;
 
@@ -85,15 +88,21 @@ struct [[nodiscard]] TargetedCountdown : Countdown
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] float getInvProgress() const
+    [[nodiscard, gnu::always_inline, gnu::flatten]] float getInvProgress(EasingFn easingFn = easeIdentity) const
     {
-        return value / startingValue;
+        return easingFn(value / startingValue);
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] float getProgress() const
+    [[nodiscard, gnu::always_inline, gnu::flatten]] float getProgress(EasingFn easingFn = easeIdentity) const
     {
-        return 1.f - getInvProgress();
+        return easingFn(1.f - getInvProgress(easeIdentity));
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline, gnu::flatten]] float getProgressBounced(EasingFn easingFn = easeIdentity) const
+    {
+        return easingFn(1.f - sf::base::fabs(getInvProgress(easeIdentity) - 0.5f) * 2.f);
     }
 
     ////////////////////////////////////////////////////////////
@@ -111,13 +120,13 @@ struct [[nodiscard]] OptionalTargetedCountdown : private sf::base::Optional<Targ
     using BaseType::BaseType;
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] float getProgress() const
+    [[nodiscard, gnu::always_inline, gnu::flatten]] float getProgress(EasingFn easingFn = easeIdentity) const
     {
-        return hasValue() ? (*this)->getProgress() : 0.f;
+        return hasValue() ? (*this)->getProgress(easingFn) : 0.f;
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] bool isDone() const
+    [[nodiscard, gnu::always_inline, gnu::flatten]] bool isDone() const
     {
         return hasValue() && (*this)->isDone();
     }

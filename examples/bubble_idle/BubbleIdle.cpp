@@ -3,9 +3,11 @@
 #include "Cat.hpp"
 #include "CatConstants.hpp"
 #include "CatNames.hpp"
+#include "Collision.hpp"
 #include "Constants.hpp"
 #include "ControlFlow.hpp"
 #include "Countdown.hpp"
+#include "Easing.hpp"
 #include "HueColor.hpp"
 #include "MathUtils.hpp"
 #include "Particle.hpp"
@@ -59,17 +61,18 @@
 #include "SFML/System/Vector2.hpp"
 
 #include "SFML/Base/Algorithm.hpp"
-#include "SFML/Base/Assert.hpp"
+#include "SFML/Base/Builtins/OffsetOf.hpp"
 #include "SFML/Base/IntTypes.hpp"
 #include "SFML/Base/Macros.hpp"
 #include "SFML/Base/Math/Ceil.hpp"
-#include "SFML/Base/Math/Sqrt.hpp"
 #include "SFML/Base/Optional.hpp"
+#include "SFML/Base/TokenPaste.hpp"
 
 #include <imgui.h>
 
 #include <array>
 #include <iostream>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -84,91 +87,6 @@
 
 namespace
 {
-////////////////////////////////////////////////////////////
-struct [[nodiscard]] CollisionResolution
-{
-    sf::Vector2f iDisplacement;
-    sf::Vector2f jDisplacement;
-    sf::Vector2f iVelocityChange;
-    sf::Vector2f jVelocityChange;
-};
-
-////////////////////////////////////////////////////////////
-[[nodiscard]] bool detectCollision(const sf::Vector2f iPosition, const sf::Vector2f jPosition, const float iRadius, const float jRadius)
-{
-    const sf::Vector2f diff            = jPosition - iPosition;
-    const float        squaredDistance = diff.lengthSquared();
-
-    const float sumRadii        = iRadius + jRadius;
-    const float squaredRadiiSum = sumRadii * sumRadii;
-
-    return squaredDistance < squaredRadiiSum;
-}
-
-////////////////////////////////////////////////////////////
-[[nodiscard]] sf::base::Optional<CollisionResolution> handleCollision(
-    const float        deltaTimeMs,
-    const sf::Vector2f iPosition,
-    const sf::Vector2f jPosition,
-    const sf::Vector2f iVelocity,
-    const sf::Vector2f jVelocity,
-    const float        iRadius,
-    const float        jRadius,
-    const float        iMassMult,
-    const float        jMassMult)
-{
-    const sf::Vector2f diff            = jPosition - iPosition;
-    const float        squaredDistance = diff.lengthSquared();
-
-    const float sumRadii        = iRadius + jRadius;
-    const float squaredRadiiSum = sumRadii * sumRadii;
-
-    if (squaredDistance >= squaredRadiiSum)
-        return sf::base::nullOpt;
-
-    // Calculate the overlap between the bubbles
-    const float distance = sf::base::sqrt(squaredDistance); // Distance between centers
-    const float overlap  = sumRadii - distance;             // Amount of overlap
-
-    // Calculate the normal between the bubbles
-    const sf::Vector2f normal = (distance == 0.f) ? sf::Vector2f{1.f, 0.f} : diff / distance;
-
-    // Move the bubbles apart based on their masses (heavier bubbles move less)
-    const float m1        = iRadius * iRadius * iMassMult; // Mass of bubble i (quadratic scaling)
-    const float m2        = jRadius * jRadius * jMassMult; // Mass of bubble j (quadratic scaling)
-    const float totalMass = m1 + m2;
-
-    // Velocity resolution calculations
-    const float vRelDotNormal = (iVelocity - jVelocity).dot(normal);
-
-    sf::Vector2f velocityChangeI;
-    sf::Vector2f velocityChangeJ;
-
-    // Only apply impulse if bubbles are moving towards each other
-    if (vRelDotNormal > 0.f)
-    {
-        constexpr float e = 0.65f; // Coefficient of restitution (1.0 = perfectly elastic)
-        const float     j = -(1.f + e) * vRelDotNormal / ((1.f / m1) + (1.f / m2));
-
-        const sf::Vector2f impulse = normal * j;
-
-        velocityChangeI = impulse / m1;
-        velocityChangeJ = -impulse / m2;
-    }
-
-    // Define a "softness" factor to control how quickly the overlap is resolved
-    const float softnessFactor = 0.00075f * deltaTimeMs;
-
-    // Calculate the displacement needed to resolve the overlap
-    const sf::Vector2f displacement = normal * overlap * softnessFactor;
-
-    return sf::base::makeOptional( //
-        CollisionResolution{.iDisplacement   = -displacement * (m2 / totalMass),
-                            .jDisplacement   = displacement * (m1 / totalMass),
-                            .iVelocityChange = velocityChangeI,
-                            .jVelocityChange = velocityChangeJ});
-}
-
 ////////////////////////////////////////////////////////////
 bool handleBubbleCollision(const float deltaTimeMs, Bubble& iBubble, Bubble& jBubble)
 {
@@ -221,12 +139,12 @@ bool handleCatShrineCollision(const float deltaTimeMs, Cat& cat, Shrine& shrine)
 }
 
 ////////////////////////////////////////////////////////////
-[[nodiscard, gnu::always_inline]] inline Bubble makeRandomBubble(const float mapLimit, const float maxY)
+[[nodiscard, gnu::always_inline]] inline Bubble makeRandomBubble(RNG& rng, const float mapLimit, const float maxY)
 {
-    const float scaleFactor = getRndFloat(0.07f, 0.16f);
+    const float scaleFactor = rng.getF(0.07f, 0.16f);
 
-    return Bubble{.position = getRndVector2f({mapLimit, maxY}),
-                  .velocity = getRndVector2f({-0.1f, -0.1f}, {0.1f, 0.1f}),
+    return Bubble{.position = rng.getVec2f({mapLimit, maxY}),
+                  .velocity = rng.getVec2f({-0.1f, -0.1f}, {0.1f, 0.1f}),
                   .scale    = scaleFactor,
                   .rotation = 0.f,
                   .type     = BubbleType::Normal};
@@ -242,15 +160,17 @@ bool handleCatShrineCollision(const float deltaTimeMs, Cat& cat, Shrine& shrine)
 }
 
 ////////////////////////////////////////////////////////////
-void drawMinimap(sf::Shader&                 shader,
-                 const float                 minimapScale,
-                 const float                 mapLimit,
-                 const sf::View&             gameView,
-                 const sf::View&             hudView,
-                 sf::RenderTarget&           window,
-                 const sf::Texture&          txBackground,
-                 const sf::CPUDrawableBatch& cpuDrawableBatch,
-                 const sf::TextureAtlas&     textureAtlas)
+void drawMinimap(sf::Shader&             shader,
+                 const float             minimapScale,
+                 const float             mapLimit,
+                 const sf::View&         gameView,
+                 const sf::View&         hudView,
+                 sf::RenderTarget&       window,
+                 const sf::Texture&      txBackground,
+                 sf::CPUDrawableBatch&   cpuDrawableBatch,
+                 const sf::TextureAtlas& textureAtlas,
+                 const sf::Vector2f      resolution,
+                 const float             hudScale)
 {
     //
     // Screen position of minimap's top-left corner
@@ -267,7 +187,7 @@ void drawMinimap(sf::Shader&                 shader,
          .fillColor        = sf::Color::Transparent,
          .outlineColor     = sf::Color::White,
          .outlineThickness = 2.f,
-         .size             = {mapLimit / minimapScale, minimapSize.y}}};
+         .size             = sf::Vector2f{mapLimit / minimapScale, minimapSize.y}}};
 
     //
     // Blue rectangle showing current visible area
@@ -276,30 +196,40 @@ void drawMinimap(sf::Shader&                 shader,
          .fillColor    = sf::Color::Transparent,
          .outlineColor = sf::Color::Blue,
          .outlineThickness = 2.f,
-         .size             = gameScreenSize / minimapScale}};
+         .size             = sf::Vector2f{gameScreenSize / minimapScale}}};
 
     //
     // Convert minimap dimensions to normalized `[0, 1]` range for scissor rectangle
-    const auto  minimapScaledPosition = minimapPos.componentWiseDiv(resolution);
-    const auto  minimapScaledSized    = minimapSize.componentWiseDiv(resolution);
-    const float progressRatio         = sf::base::clamp(mapLimit / boundaries.x, 0.f, 1.f);
+    const float progressRatio = sf::base::clamp(mapLimit / boundaries.x, 0.f, 1.f);
+
+    auto minimapScaledPosition = minimapPos.componentWiseDiv(resolution / hudScale);
+    auto minimapScaledSize     = minimapSize.componentWiseDiv(resolution / hudScale);
+
+    minimapScaledPosition.x = sf::base::clamp(minimapScaledPosition.x, 0.f, 1.f);
+    minimapScaledPosition.y = sf::base::clamp(minimapScaledPosition.y, 0.f, 1.f);
+    minimapScaledSize.y     = sf::base::clamp(minimapScaledSize.y, 0.f, 1.f - minimapScaledPosition.y);
+
+    if (progressRatio * minimapScaledSize.x > 1.f - minimapScaledPosition.x)
+        minimapScaledSize.x = (1.f - minimapScaledPosition.x) / progressRatio;
 
     //
     // Special view that renders the world scaled down for minimap
-    const sf::View minimapView                                       //
-        {.center  = (resolution * 0.5f - minimapPos) * minimapScale, // Offset center to align minimap
-         .size    = resolution * minimapScale,                       // Zoom out to show scaled-down world
-         .scissor = {minimapScaledPosition,                          // Scissor rectangle position (normalized)
+    const sf::View minimapView                                                  //
+        {.center  = (resolution * 0.5f - minimapPos * hudScale) * minimapScale, // Offset center to align minimap
+         .size    = resolution * minimapScale,                                  // Zoom out to show scaled-down world
+         .scissor = {minimapScaledPosition, // Scissor rectangle position (normalized)
                      {
-                         progressRatio * minimapScaledSized.x, // Only show accessible width
-                         minimapScaledSized.y                  // Full height
+                         progressRatio * minimapScaledSize.x, // Only show accessible width
+                         minimapScaledSize.y                  // Full height
                      }}};
 
     //
     // Draw minimap contents
-    window.setView(minimapView);                                                               // Use minimap projection
-    window.draw(txBackground, {.shader = &shader});                                            // Draw world background
+    window.setView(minimapView);                                                     // Use minimap projection
+    window.draw(txBackground, {.scale = {hudScale, hudScale}}, {.shader = &shader}); // Draw world background
+    cpuDrawableBatch.scale = {hudScale, hudScale};
     window.draw(cpuDrawableBatch, {.texture = &textureAtlas.getTexture(), .shader = &shader}); // Draw game objects
+    cpuDrawableBatch.scale = {1.f, 1.f};
 
     //
     // Switch back to HUD view and draw overlay elements
@@ -309,34 +239,64 @@ void drawMinimap(sf::Shader&                 shader,
 }
 
 ////////////////////////////////////////////////////////////
-void drawSplashScreen(sf::RenderWindow& window, const sf::Texture& txLogo, const TargetedCountdown& splashCountdown)
+void drawSplashScreen(sf::RenderWindow&        window,
+                      const sf::Texture&       txLogo,
+                      const TargetedCountdown& splashCountdown,
+                      const sf::Vector2f       resolution,
+                      const float              hudScale)
 {
-    float fade = 255.f;
+    const auto alpha = static_cast<U8>(easeInOutSine(splashCountdown.getProgressBounced(easeInOutCubic)) * 255.f);
 
-    const float m0 = splashCountdown.startingValue;
-    const float m1 = splashCountdown.startingValue - 255.f;
-
-    if (splashCountdown.value > m1)
-        fade = remap(splashCountdown.value, m1, m0, 255.f, 0.f);
-    else if (splashCountdown.value < 255.f)
-        fade = splashCountdown.value;
-
-    window.draw({.position    = resolution / 2.f,
-                 .scale       = {0.7f, 0.7f},
+    window.draw({.position = resolution / 2.f / hudScale,
+                 .scale    = sf::Vector2f{0.7f, 0.7f} *
+                          (0.35f + 0.65f * easeInOutCubic(splashCountdown.getProgressBounced(easeInOutCubic))) / hudScale,
                  .origin      = txLogo.getSize().toVector2f() / 2.f,
                  .textureRect = txLogo.getRect(),
-                 .color       = sf::Color::White.withAlpha(static_cast<sf::base::U8>(fade))},
+                 .color       = sf::Color::White.withAlpha(alpha)},
                 txLogo);
 }
 
 ////////////////////////////////////////////////////////////
-// TODO: save seed
-// TODO: autosave
-// TODO: multiple save slots
+template <typename This, auto Fn>
+struct MemberInitGuard
+{
+    This* thisPtr;
+
+    MemberInitGuard(This* ptr) : thisPtr(ptr)
+    {
+        Fn(*thisPtr);
+    }
+};
+
+////////////////////////////////////////////////////////////
+#define MEMBER_INIT_GUARD(type, ...) \
+    MemberInitGuard<type, [](auto& self) __VA_ARGS__> SFML_BASE_TOKEN_PASTE(_scopeGuard, __LINE__) { this }
+
+////////////////////////////////////////////////////////////
+template <typename This, auto Fn>
+struct MemberScopeGuard
+{
+    This* thisPtr;
+
+    MemberScopeGuard(This* ptr) : thisPtr{ptr}
+    {
+    }
+
+    MemberScopeGuard(const MemberScopeGuard&) = delete;
+    MemberScopeGuard(MemberScopeGuard&&)      = delete;
+
+    ~MemberScopeGuard()
+    {
+        Fn(*thisPtr);
+    }
+};
+
+////////////////////////////////////////////////////////////
+#define MEMBER_SCOPE_GUARD(type, ...) \
+    MemberScopeGuard<type, [](auto& self) __VA_ARGS__> SFML_BASE_TOKEN_PASTE(_scopeGuard, __LINE__) { this }
 
 } // namespace
 
-#define AUTO_DATA_MEMBER(name, ...) decltype(__VA_ARGS__) name = __VA_ARGS__
 
 ////////////////////////////////////////////////////////////
 /// Main struct
@@ -345,113 +305,126 @@ void drawSplashScreen(sf::RenderWindow& window, const sf::Texture& txLogo, const
 struct Main
 {
     ////////////////////////////////////////////////////////////
-    sf::AudioContext    audioContext;
-    sf::PlaybackDevice  playbackDevice;
-    sf::GraphicsContext graphicsContext;
+    // Resource contexts
+    sf::AudioContext    audioContext{sf::AudioContext::create().value()};
+    sf::PlaybackDevice  playbackDevice{sf::PlaybackDevice::createDefault(audioContext).value()};
+    sf::GraphicsContext graphicsContext{sf::GraphicsContext::create().value()};
 
     ////////////////////////////////////////////////////////////
-    sf::Shader shader;
+    // Shader with hue support
+    sf::Shader shader{sf::Shader::loadFromMemory(sf::GraphicsContext::getBuiltInShaderVertexSrc(), fragmentSrc).value()};
 
     ////////////////////////////////////////////////////////////
-    sf::RenderWindow        window;
+    // Render window
+    sf::RenderWindow window{
+        {.size           = {1920u, 1080u},
+         .title          = "BubbleByte " BUBBLEBYTE_VERSION_STR,
+         .resizable      = true,
+         .vsync          = true,
+         .frametimeLimit = 144u,
+         .contextSettings = {.antiAliasingLevel = sf::base::min(16u, sf::RenderTexture::getMaximumAntiAliasingLevel())}}};
+
+    ////////////////////////////////////////////////////////////
+    // ImGui context and initialization
     sf::ImGui::ImGuiContext imGuiContext;
-
-    struct ImGuiInit
-    {
-        ImGuiInit(sf::ImGui::ImGuiContext& imGuiContextRef, sf::RenderWindow& windowRef)
-        {
-            if (!imGuiContextRef.init(windowRef))
-                throw -1;
-        }
-
-    } imGuiInitGuard{imGuiContext, window};
+    MEMBER_INIT_GUARD(Main, {
+        if (!self.imGuiContext.init(self.window))
+            throw -1;
+    });
 
     ////////////////////////////////////////////////////////////
-    sf::TextureAtlas textureAtlas;
+    // Texture atlas
+    sf::TextureAtlas textureAtlas{sf::Texture::create({4096u, 4096u}, {.smooth = true}).value()};
 
     ////////////////////////////////////////////////////////////
-    sf::Font fontSuperBakery;
+    // SFML fonts
+    sf::Font fontSuperBakery{sf::Font::openFromFile("resources/superbakery.ttf", &textureAtlas).value()};
 
     ////////////////////////////////////////////////////////////
-    ImFont* fontImGuiSuperBakery;
-    ImFont* fontImGuiMouldyCheese;
+    // ImGui fonts
+    ImFont* fontImGuiSuperBakery{ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/superbakery.ttf", 26.f)};
+    ImFont* fontImGuiMouldyCheese{ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/mouldycheese.ttf", 26.f)};
 
     ////////////////////////////////////////////////////////////
-    sf::Music musicBGM;
+    // Music
+    sf::Music musicBGM{sf::Music::openFromFile("resources/hibiscus.mp3").value()};
 
     ////////////////////////////////////////////////////////////
+    // Sound management
     Sounds       sounds;
     sf::Listener listener;
 
     ////////////////////////////////////////////////////////////
-    sf::Texture txLogo;
-    sf::Texture txBackground;
-    sf::Texture txByteTip;
-    sf::Texture txTipBg;
-    sf::Texture txTipByte;
+    // Textures (not in atlas)
+    sf::Texture txLogo{sf::Texture::loadFromFile("resources/logo.png", {.smooth = true}).value()};
+    sf::Texture txBackground{sf::Texture::loadFromFile("resources/background.jpg", {.smooth = true}).value()};
+    sf::Texture txByteTip{sf::Texture::loadFromFile("resources/bytetip.png", {.smooth = true}).value()};
+    sf::Texture txTipBg{sf::Texture::loadFromFile("resources/tipbg.png", {.smooth = true}).value()};
+    sf::Texture txTipByte{sf::Texture::loadFromFile("resources/tipbyte.png", {.smooth = true}).value()};
 
     ////////////////////////////////////////////////////////////
-    sf::FloatRect txrWhiteDot;
-    sf::FloatRect txrBubble;
-    sf::FloatRect txrBubbleStar;
-    sf::FloatRect txrCat;
-    sf::FloatRect txrSmartCat;
-    sf::FloatRect txrGeniusCat;
-    sf::FloatRect txrUniCat;
-    sf::FloatRect txrDevilCat;
-    sf::FloatRect txrCatPaw;
-    sf::FloatRect txrUniCatPaw;
-    sf::FloatRect txrDevilCatPaw;
-    sf::FloatRect txrParticle;
-    sf::FloatRect txrStarParticle;
-    sf::FloatRect txrFireParticle;
-    sf::FloatRect txrHexParticle;
-    sf::FloatRect txrShrineParticle;
-    sf::FloatRect txrWitchCat;
-    sf::FloatRect txrWitchCatPaw;
-    sf::FloatRect txrAstroCat;
-    sf::FloatRect txrAstroCatWithFlag;
-    sf::FloatRect txrBomb;
-    sf::FloatRect txrShrine;
-    sf::FloatRect txrWizardCat;
-    sf::FloatRect txrWizardCatPaw;
+    // Texture atlas rects
+    sf::FloatRect txrWhiteDot{textureAtlas.add(graphicsContext.getBuiltInWhiteDotTexture()).value()};
+    sf::FloatRect txrBubble{addImgResourceToAtlas("bubble2.png")};
+    sf::FloatRect txrBubbleStar{addImgResourceToAtlas("bubble3.png")};
+    sf::FloatRect txrCat{addImgResourceToAtlas("cat.png")};
+    sf::FloatRect txrSmartCat{addImgResourceToAtlas("smartcat.png")};
+    sf::FloatRect txrGeniusCat{addImgResourceToAtlas("geniuscat.png")};
+    sf::FloatRect txrUniCat{addImgResourceToAtlas("unicat.png")};
+    sf::FloatRect txrDevilCat{addImgResourceToAtlas("devilcat.png")};
+    sf::FloatRect txrCatPaw{addImgResourceToAtlas("catpaw.png")};
+    sf::FloatRect txrUniCatPaw{addImgResourceToAtlas("unicatpaw.png")};
+    sf::FloatRect txrDevilCatPaw{addImgResourceToAtlas("devilcatpaw.png")};
+    sf::FloatRect txrParticle{addImgResourceToAtlas("particle.png")};
+    sf::FloatRect txrStarParticle{addImgResourceToAtlas("starparticle.png")};
+    sf::FloatRect txrFireParticle{addImgResourceToAtlas("fireparticle.png")};
+    sf::FloatRect txrHexParticle{addImgResourceToAtlas("hexparticle.png")};
+    sf::FloatRect txrShrineParticle{addImgResourceToAtlas("shrineparticle.png")};
+    sf::FloatRect txrWitchCat{addImgResourceToAtlas("witchcat.png")};
+    sf::FloatRect txrWitchCatPaw{addImgResourceToAtlas("witchcatpaw.png")};
+    sf::FloatRect txrAstroCat{addImgResourceToAtlas("astromeow.png")};
+    sf::FloatRect txrAstroCatWithFlag{addImgResourceToAtlas("astromeowwithflag.png")};
+    sf::FloatRect txrBomb{addImgResourceToAtlas("bomb.png")};
+    sf::FloatRect txrShrine{addImgResourceToAtlas("shrine.png")};
+    sf::FloatRect txrWizardCat{addImgResourceToAtlas("wizardcat.png")};
+    sf::FloatRect txrWizardCatPaw{addImgResourceToAtlas("wizardcatpaw.png")};
 
-    ////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////
+    // Profile (stores settings)
     Profile profile;
-
-    struct ProfileSaveGuard
-    {
-        Profile& profileRef;
-
-        ~ProfileSaveGuard()
-        {
-            std::cout << "Saving profile to file on exit\n";
-            saveProfileToFile(profileRef);
-        }
-
-    } profileSaveGuard{profile};
+    MEMBER_SCOPE_GUARD(Main, {
+        std::cout << "Saving profile to file on exit\n";
+        saveProfileToFile(self.profile);
+    });
 
     ////////////////////////////////////////////////////////////
+    // Playthrough (game state)
     Playthrough pt;
-
-    struct PlaythroughSaveGuard
-    {
-        Playthrough& playthroughRef;
-
-        ~PlaythroughSaveGuard()
-        {
-            std::cout << "Saving playthrough to file on exit\n";
-            savePlaythroughToFile(playthroughRef);
-        }
-
-    } playthroughSaveGuard{pt};
+    MEMBER_SCOPE_GUARD(Main, {
+        std::cout << "Saving playthrough to file on exit\n";
+        savePlaythroughToFile(self.pt);
+    });
 
     ////////////////////////////////////////////////////////////
-    sf::Text        moneyText;
+    // HUD money text
+    sf::Text        moneyText{fontSuperBakery,
+                              {.position         = {15.f, 70.f},
+                               .string           = "$0",
+                               .characterSize    = 64u,
+                               .fillColor        = sf::Color::White,
+                               .outlineColor     = colorBlueOutline,
+                               .outlineThickness = 2.f}};
     TextShakeEffect moneyTextShakeEffect;
 
     ////////////////////////////////////////////////////////////
-    sf::Text        comboText;
+    // HUD combo text
+    sf::Text        comboText{fontSuperBakery,
+                              {.position         = moneyText.position + sf::Vector2f{0.f, 35.f},
+                               .string           = "x1",
+                               .characterSize    = 48u,
+                               .fillColor        = sf::Color::White,
+                               .outlineColor     = colorBlueOutline,
+                               .outlineThickness = 1.5f}};
     TextShakeEffect comboTextShakeEffect;
 
     ////////////////////////////////////////////////////////////
@@ -462,90 +435,112 @@ struct Main
     std::vector<TextParticle> textParticles;
 
     ////////////////////////////////////////////////////////////
-    std::vector<std::string> shuffledCatNames;
-    SizeT                    nextCatName;
+    // Random number generation
+    RNG rng{std::random_device{}()};
 
     ////////////////////////////////////////////////////////////
-    bool inPrestigeTransition;
+    // Cat names
+    std::vector<std::string> shuffledCatNames{getShuffledCatNames(rng.getEngine())};
 
     ////////////////////////////////////////////////////////////
-    TargetedCountdown bubbleSpawnTimer;
-    TargetedCountdown catRemoveTimer;
+    // Prestige transition
+    bool inPrestigeTransition{false};
 
     ////////////////////////////////////////////////////////////
-    int       combo;
+    // Times for transitions
+    TargetedCountdown bubbleSpawnTimer{.startingValue = 3.f};
+    TargetedCountdown catRemoveTimer{.startingValue = 100.f};
+
+    ////////////////////////////////////////////////////////////
+    // Combo state
+    int       combo{0u};
     Countdown comboCountdown;
 
     ////////////////////////////////////////////////////////////
+    // Clock and accumulator for played time
     sf::Clock     playedClock;
-    sf::base::I64 playedUsAccumulator;
+    sf::base::I64 playedUsAccumulator{0};
+    sf::base::I64 autosaveUsAccumulator{0};
 
     ////////////////////////////////////////////////////////////
+    // FPS and delta time clocks
     sf::Clock fpsClock;
     sf::Clock deltaClock;
 
     ////////////////////////////////////////////////////////////
+    // Batch for drawing
     sf::CPUDrawableBatch cpuDrawableBatch;
 
     ////////////////////////////////////////////////////////////
+    // Scrolling state
     sf::base::Optional<sf::Vector2f> dragPosition;
-    float                            scroll;
-    float                            actualScroll;
+    float                            scroll{0.f};
+    float                            actualScroll{0.f};
 
     ////////////////////////////////////////////////////////////
-    float screenShakeAmount;
-    float screenShakeTimer;
+    // Screen shake effect state
+    float screenShakeAmount{0.f};
+    float screenShakeTimer{0.f};
 
     ////////////////////////////////////////////////////////////
-    Cat*  draggedCat;
-    float catDragPressDuration;
+    // Cat dragging state
+    Cat*  draggedCat{nullptr};
+    float catDragPressDuration{0.f};
 
     ////////////////////////////////////////////////////////////
     std::vector<sf::base::Optional<sf::Vector2f>> fingerPositions;
 
     ////////////////////////////////////////////////////////////
-    TargetedCountdown splashCountdown;
+    // Splash screen state
+    TargetedCountdown splashCountdown{.startingValue = 1750.f};
 
     ////////////////////////////////////////////////////////////
-    float       tipTimer;
+    // Tip state
+    float       tipTimer{0.f};
     std::string tipString;
 
     ////////////////////////////////////////////////////////////
-    sf::CircleShape circleShapeBuffer;
-    sf::Text        textNameBuffer;
-    sf::Text        textStatusBuffer;
+    // Shape buffers
+    sf::CircleShape circleShapeBuffer{{.outlineTextureRect = txrWhiteDot, .outlineThickness = 1.f}};
+
+    ////////////////////////////////////////////////////////////
+    // Text buffers
+    sf::Text textNameBuffer{fontSuperBakery,
+                            {.characterSize    = 48u,
+                             .fillColor        = sf::Color::White,
+                             .outlineColor     = colorBlueOutline,
+                             .outlineThickness = 1.5f}};
+    sf::Text textStatusBuffer{fontSuperBakery,
+                              {.characterSize    = 32u,
+                               .fillColor        = sf::Color::White,
+                               .outlineColor     = colorBlueOutline,
+                               .outlineThickness = 1.f}};
 
     ////////////////////////////////////////////////////////////
     [[nodiscard]] SizeT getNextCatNameIdx()
     {
-        return nextCatName++ % shuffledCatNames.size();
+        return pt.nextCatName++ % shuffledCatNames.size();
     }
 
     ////////////////////////////////////////////////////////////
     void spawnParticles(const SizeT n, auto&&... args)
     {
         for (SizeT i = 0; i < n; ++i)
-            particles.emplace_back(makeParticle(SFML_BASE_FORWARD(args)...));
+            particles.emplace_back(makeParticle(rng, SFML_BASE_FORWARD(args)...));
     }
 
     ////////////////////////////////////////////////////////////
     void spawnParticlesWithHue(const float hue, const SizeT n, auto&&... args)
     {
         for (SizeT i = 0; i < n; ++i)
-        {
-            auto& p = particles.emplace_back(makeParticle(SFML_BASE_FORWARD(args)...));
-            p.hue   = hue;
-        }
+            particles.emplace_back(makeParticle(rng, SFML_BASE_FORWARD(args)...)).hue = hue;
     }
 
     ////////////////////////////////////////////////////////////
     void spawnParticlesNoGravity(const SizeT n, auto&&... args)
     {
         for (SizeT i = 0; i < n; ++i)
-        {
-            auto& p              = particles.emplace_back(makeParticle(SFML_BASE_FORWARD(args)...));
-            p.data.accelerationY = 0.f;
-        }
+            particles.emplace_back(makeParticle(rng, SFML_BASE_FORWARD(args)...)).data.accelerationY = 0.f;
     }
 
     ////////////////////////////////////////////////////////////
@@ -559,40 +554,38 @@ struct Main
     ////////////////////////////////////////////////////////////
     void statBubblePopped(const bool byHand, const MoneyType reward)
     {
-        withAllStats(
-            [&](auto& stats)
-            {
-                stats.bubblesPopped += 1;
-                stats.bubblesPoppedRevenue += reward;
-            });
+        withAllStats([&](Stats& stats)
+        {
+            stats.bubblesPopped += 1;
+            stats.bubblesPoppedRevenue += reward;
+        });
 
         if (byHand)
         {
-            withAllStats(
-                [&](auto& stats)
-                {
-                    stats.bubblesHandPopped += 1;
-                    stats.bubblesHandPoppedRevenue += reward;
-                });
+            withAllStats([&](Stats& stats)
+            {
+                stats.bubblesHandPopped += 1;
+                stats.bubblesHandPoppedRevenue += reward;
+            });
         }
     }
 
     ////////////////////////////////////////////////////////////
     void statExplosionRevenue(const MoneyType reward)
     {
-        withAllStats([&](auto& stats) { stats.explosionRevenue += reward; });
+        withAllStats([&](Stats& stats) { stats.explosionRevenue += reward; });
     }
 
     ////////////////////////////////////////////////////////////
     void statFlightRevenue(const MoneyType reward)
     {
-        withAllStats([&](auto& stats) { stats.flightRevenue += reward; });
+        withAllStats([&](Stats& stats) { stats.flightRevenue += reward; });
     }
 
     ////////////////////////////////////////////////////////////
     void statSecondsPlayed()
     {
-        withAllStats([&](auto& stats) { stats.secondsPlayed += 1u; });
+        withAllStats([&](Stats& stats) { stats.secondsPlayed += 1u; });
     }
 
     ////////////////////////////////////////////////////////////
@@ -627,27 +620,33 @@ struct Main
         spatialGrid.forEachIndexInRadius(center,
                                          radius,
                                          [&](const SizeT index)
-                                         {
-                                             auto& bubble = pt.bubbles[index];
+        {
+            auto& bubble = pt.bubbles[index];
 
-                                             if ((bubble.position - center).lengthSquared() > radiusSq)
-                                                 return ControlFlow::Continue;
+            if ((bubble.position - center).lengthSquared() > radiusSq)
+                return ControlFlow::Continue;
 
-                                             return func(bubble);
-                                         });
+            return func(bubble);
+        });
     }
 
     ////////////////////////////////////////////////////////////
     void addReward(const MoneyType reward)
     {
         pt.money += reward;
-        moneyTextShakeEffect.bump(1.f + static_cast<float>(combo) * 0.1f);
+        moneyTextShakeEffect.bump(rng, 1.f + static_cast<float>(combo) * 0.1f);
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] sf::Vector2f getResolution() const
+    {
+        return window.getSize().toVector2f();
     }
 
     ////////////////////////////////////////////////////////////
     Cat& spawnCat(const sf::View& gameView, const CatType catType, const sf::Vector2f rangeOffset, const float hue)
     {
-        const auto pos = window.mapPixelToCoords((resolution / 2.f).toVector2i(), gameView);
+        const auto pos = window.mapPixelToCoords((getResolution() / 2.f).toVector2i(), gameView);
         spawnParticles(32, pos, ParticleType::Star, 0.5f, 0.75f);
 
         return pt.cats.emplace_back(
@@ -757,12 +756,11 @@ struct Main
 
         uiPushButtonColors();
 
+        bool clicked = false;
         if (ImGui::Button(xBuffer, ImVec2(buttonWidth, 0.f)))
         {
             playSound(sounds.buy);
-
-            uiPopButtonColors();
-            return true;
+            clicked = true;
         }
 
         uiMakeTooltip();
@@ -773,7 +771,7 @@ struct Main
             ImGui::SetWindowFontScale(normalFontScale);
 
         ImGui::NextColumn();
-        return false;
+        return clicked;
     }
 
     ////////////////////////////////////////////////////////////
@@ -789,14 +787,14 @@ struct Main
         const bool maxedOut = psv.nPurchases == psv.data->nMaxPurchases;
         bool       result   = false;
 
+        if (maxedOut)
+            std::sprintf(buffer, "MAX##%u", widgetId++);
+        else if (cost == 0u)
+            std::sprintf(buffer, "N/A##%u", widgetId++);
+        else
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wformat-nonliteral"
-        if (maxedOut)
-            std::sprintf(buffer, "MAX");
-        else if (cost == 0u)
-            std::sprintf(buffer, "N/A");
-        else
-            std::sprintf(buffer, currencyFmt, cost, widgetId++);
+            std::sprintf(buffer, currencyFmt, toStringWithSeparators(cost).c_str(), widgetId++);
 #pragma clang diagnostic pop
 
         ImGui::BeginDisabled(maxedOut || availability < cost || cost == 0u);
@@ -814,10 +812,21 @@ struct Main
     };
 
     ////////////////////////////////////////////////////////////
+    template <typename T>
+    static std::string toStringWithSeparators(const T value)
+    {
+        std::string str = std::to_string(value);
+
+        for (int i = static_cast<int>(str.size()) - 3; i > 0; i -= 3)
+            str.insert(static_cast<SizeT>(i), ".");
+
+        return str;
+    }
+
+    ////////////////////////////////////////////////////////////
     [[nodiscard]] bool makePSVButtonEx(const char* label, PurchasableScalingValue& psv, const SizeT times, const MoneyType cost)
     {
-        // TODO: format big numbers with separators
-        return makePSVButtonExByCurrency(label, psv, times, cost, pt.money, "$%llu##%u");
+        return makePSVButtonExByCurrency(label, psv, times, cost, pt.money, "$%s##%u");
     }
 
     ////////////////////////////////////////////////////////////
@@ -837,12 +846,12 @@ struct Main
     {
         bool result = false;
 
+        if (done)
+            std::sprintf(buffer, "DONE##%u", widgetId++);
+        else
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wformat-nonliteral"
-        if (done)
-            std::sprintf(buffer, "DONE");
-        else
-            std::sprintf(buffer, currencyFmt, cost, widgetId++);
+            std::sprintf(buffer, currencyFmt, toStringWithSeparators(cost).c_str(), widgetId++);
 #pragma clang diagnostic pop
 
         ImGui::BeginDisabled(done || availability < cost);
@@ -867,7 +876,7 @@ struct Main
             done,
             /* cost */ static_cast<MoneyType>(pt.getComputedGlobalCostMultiplier() * static_cast<float>(cost)),
             /* availability */ pt.money,
-            "$%zu##%u");
+            "$%s##%u");
     }
 
     ////////////////////////////////////////////////////////////
@@ -877,7 +886,7 @@ struct Main
                                                       done,
                                                       /* cost */ prestigePointsCost,
                                                       /* availability */ pt.prestigePoints,
-                                                      "%zu PPs##%u");
+                                                      "%s PPs##%u");
     }
 
     ////////////////////////////////////////////////////////////
@@ -888,7 +897,7 @@ struct Main
                                          /* times */ 1u,
                                          /* cost */ static_cast<PrestigePointsType>(psv.nextCost()),
                                          /* availability */ pt.prestigePoints,
-                                         "%llu PPs##%u");
+                                         "%s PPs##%u");
     }
 
     ////////////////////////////////////////////////////////////
@@ -911,8 +920,8 @@ struct Main
     {
         widgetId = 0u;
 
-        ImGui::SetNextWindowPos({resolution.x - 15.f, 15.f}, 0, {1.f, 0.f});
-        ImGui::SetNextWindowSizeConstraints(ImVec2(windowWidth, 0.f), ImVec2(windowWidth, resolution.y - 15.f));
+        ImGui::SetNextWindowPos({getResolution().x - 15.f, 15.f}, 0, {1.f, 0.f});
+        ImGui::SetNextWindowSizeConstraints(ImVec2(windowWidth, 0.f), ImVec2(windowWidth, getResolution().y - 15.f));
         ImGui::PushFont(fontImGuiSuperBakery);
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.f); // Set corner radius
@@ -1023,7 +1032,10 @@ struct Main
 
         if (nCatNormal > 0 && pt.psvComboStartTime.nPurchases > 0)
         {
-            std::sprintf(tooltipBuffer, "Extend the map and enable scrolling (right click or drag with two fingers).");
+            std::sprintf(tooltipBuffer,
+                         "Extend the map and enable scrolling (right click or drag with two fingers).\n\nExtending the "
+                         "map will increase the total number of bubbles you can work with, and will also reveal "
+                         "shrines that grant unique cats upon completion.");
             std::sprintf(labelBuffer, "");
             if (makePurchasableButtonOneTime("Map scrolling", 250, pt.mapPurchased))
             {
@@ -1033,18 +1045,23 @@ struct Main
 
             if (pt.mapPurchased)
             {
-                std::sprintf(tooltipBuffer, "Extend the map further by one screen.");
+                std::sprintf(tooltipBuffer,
+                             "Extend the map further by one screen.\n\nExtending the map will increase the total "
+                             "number of bubbles you can work with, and will also reveal shrines that grant unique cats "
+                             "upon completion.");
                 std::sprintf(labelBuffer, "%.2f%%", static_cast<double>(pt.getMapLimit() / boundaries.x * 100.f));
                 makePSVButton("- Extend map", pt.psvMapExtension);
 
                 ImGui::BeginDisabled(pt.psvShrineActivation.nPurchases > pt.psvMapExtension.nPurchases);
-                std::sprintf(tooltipBuffer, "TODO: shrine tooltip");
+                std::sprintf(tooltipBuffer,
+                             "Activates the next shrine, enabling it to absorb nearby popped bubbles. Once enough "
+                             "bubbles are absorbed, shrines will grant a unique cat.");
                 std::sprintf(labelBuffer, "%zu shrines active", pt.psvShrineActivation.nPurchases);
                 if (makePSVButton("- Activate next shrine", pt.psvShrineActivation))
                 {
                     for (Shrine& shrine : pt.shrines)
                     {
-                        if (shrine.isActive())
+                        if (shrine.tcActivation.hasValue())
                             continue;
 
                         shrine.tcActivation.emplace(TargetedCountdown{.startingValue = 2000.f});
@@ -1085,7 +1102,7 @@ struct Main
             std::sprintf(labelBuffer, "%zu cats", nCatNormal);
             if (makePSVButton("Cat", pt.getPSVByCatType(CatType::Normal)))
             {
-                spawnCat(gameView, CatType::Normal, {0.f, 0.f}, /* hue */ getRndFloat(-20.f, 20.f));
+                spawnCat(gameView, CatType::Normal, {0.f, 0.f}, /* hue */ rng.getF(-20.f, 20.f));
 
                 if (nCatNormal == 0)
                 {
@@ -1135,7 +1152,7 @@ struct Main
             std::sprintf(labelBuffer, "%zu unicats", nCatUni);
             if (makePSVButton("Unicat", pt.getPSVByCatType(CatType::Uni)))
             {
-                spawnCat(gameView, CatType::Uni, {0.f, -100.f}, /* hue */ getRndFloat(0.f, 360.f));
+                spawnCat(gameView, CatType::Uni, {0.f, -100.f}, /* hue */ rng.getF(0.f, 360.f));
 
                 if (nCatUni == 0)
                 {
@@ -1164,7 +1181,7 @@ struct Main
             std::sprintf(labelBuffer, "%zu devilcats", nCatDevil);
             if (makePSVButton("Devilcat", pt.getPSVByCatType(CatType::Devil)))
             {
-                spawnCat(gameView, CatType::Devil, {0.f, 100.f}, /* hue */ getRndFloat(-20.f, 20.f));
+                spawnCat(gameView, CatType::Devil, {0.f, 100.f}, /* hue */ rng.getF(-20.f, 20.f));
 
                 if (nCatDevil == 0)
                 {
@@ -1201,7 +1218,7 @@ struct Main
             std::sprintf(labelBuffer, "%zu astrocats", nCatAstro);
             if (makePSVButton("Astrocat", pt.getPSVByCatType(CatType::Astro)))
             {
-                spawnCat(gameView, CatType::Astro, {-64.f, 0.f}, /* hue */ getRndFloat(-20.f, 20.f));
+                spawnCat(gameView, CatType::Astro, {-64.f, 0.f}, /* hue */ rng.getF(-20.f, 20.f));
 
                 if (nCatAstro == 0)
                 {
@@ -1282,7 +1299,7 @@ struct Main
                 needNCats(nCatUni, 1);
             }
 
-            // TODO: change dynamically
+            // TODO P1: change dynamically
             if (catUnicornUnlocked && !pt.isBubbleValueUnlocked())
             {
                 startList("to unlock prestige:");
@@ -1361,14 +1378,11 @@ struct Main
         ImGui::Separator();
 
         std::sprintf(tooltipBuffer,
-                     "WARNING: this will reset your progress!\n\nPrestige to increase bubble value "
-                     "permanently and obtain prestige points. Prestige points can be used to unlock "
-                     "powerful permanent upgrades.\n\nYou will sacrifice all your cats, bubbles, and "
-                     "money, but you will keep your prestige points and permanent upgrades, and the "
-                     "value "
-                     "of bubbles will be permanently increased.\n\nDo not be afraid to prestige -- it "
-                     "is "
-                     "what enables you to progress further!");
+                     "WARNING: this will reset your progress!\n\nPrestige to increase bubble value permanently and "
+                     "obtain prestige points. Prestige points can be used to unlock powerful permanent "
+                     "upgrades.\n\nYou will sacrifice all your cats, bubbles, and money, but you will keep your "
+                     "prestige points and permanent upgrades, and the value of bubbles will be permanently "
+                     "increased.\n\nDo not be afraid to prestige -- it is what enables you to progress further!");
         std::sprintf(labelBuffer, "current bubble value x%llu", pt.getComputedRewardByBubbleType(BubbleType::Normal));
 
         const auto [times,
@@ -1429,10 +1443,9 @@ struct Main
         buttonHueMod = 190.f;
 
         std::sprintf(tooltipBuffer,
-                     "Manually popping a bubble now also pops nearby bubbles automatically!\n\nNote "
-                     "that "
-                     "combo multiplier still only increases once per successful click.\n\nNote: this "
-                     "effect can be toggled at will.");
+                     "Manually popping a bubble now also pops nearby bubbles automatically!\n\nNote that combo "
+                     "multiplier still only increases once per successful click.\n\nNote: this effect can be toggled "
+                     "at will.");
         std::sprintf(labelBuffer, "");
         if (makePurchasablePPButtonOneTime("Multipop click", 1u, pt.multiPopPurchased))
             doTip("Popping a bubble now also pops\nnearby bubbles automatically!",
@@ -1500,8 +1513,7 @@ struct Main
 
         std::sprintf(tooltipBuffer,
                      "A giant fan (off-screen) will produce an intense wind, making bubbles move and "
-                     "flow "
-                     "much faster.\n\nNote: this effect can be toggled at will.");
+                     "flow much faster.\n\nNote: this effect can be toggled at will.");
         std::sprintf(labelBuffer, "");
         if (makePurchasablePPButtonOneTime("Giant fan", 2u, pt.windPurchased))
             doTip("Hold onto something!", /* maxPrestigeLevel */ UINT_MAX);
@@ -1591,24 +1603,21 @@ struct Main
         std::sprintf(tooltipBuffer, "TODO");
         std::sprintf(labelBuffer, "TODO");
         bool done = false;
-        if (makePurchasableButtonOneTimeByCurrency("Spell", done, ManaType{1}, pt.mana, "%llu mana##%u"))
+
+        if (makePurchasableButtonOneTimeByCurrency("Spell", done, ManaType{1}, pt.mana, "%s mana##%u"))
         {
             playSound(sounds.cast0);
-            spawnParticlesNoGravity(256,
-                                    wizardCat.position,
-                                    ParticleType::Star,
-                                    getRndFloat(0.25f, 1.25f),
-                                    getRndFloat(0.50f, 3.f));
+            spawnParticlesNoGravity(256, wizardCat.position, ParticleType::Star, rng.getF(0.25f, 1.25f), rng.getF(0.50f, 3.f));
 
             forEachBubbleInRadius(wizardCat.position,
                                   range,
                                   [&](Bubble& bubble)
-                                  {
-                                      spawnParticles(4, bubble.position, ParticleType::Star, 0.5f, 0.35f);
-                                      bubble.type = BubbleType::Star;
+            {
+                spawnParticles(4, bubble.position, ParticleType::Star, 0.5f, 0.35f);
+                bubble.type = BubbleType::Star;
 
-                                      return ControlFlow::Continue;
-                                  });
+                return ControlFlow::Continue;
+            });
 
             done = false;
             ++wizardCat.hits;
@@ -1750,7 +1759,7 @@ struct Main
             ImGui::SetWindowFontScale(0.75f);
             if (ImGui::BeginTabItem(" Achievements "))
             {
-                // TODO:
+                // TODO P1: add achievements
 
                 ImGui::EndTabItem();
             }
@@ -1775,7 +1784,10 @@ struct Main
         ImGui::Checkbox("Enable combo scratch sound", &profile.playComboEndSound);
 
         ImGui::SetNextItemWidth(210.f);
-        ImGui::SliderFloat("Minimap Scale", &profile.minimapScale, 10.f, 30.f, "%.2f");
+        ImGui::SliderFloat("Minimap Scale", &profile.minimapScale, 5.f, 40.f, "%.2f");
+
+        ImGui::SetNextItemWidth(210.f);
+        ImGui::SliderFloat("HUD Scale", &profile.hudScale, 0.5f, 2.f, "%.2f");
 
         ImGui::Checkbox("Enable tips", &profile.tipsEnabled);
 
@@ -1790,7 +1802,7 @@ struct Main
         ImGui::SameLine();
 
         if (ImGui::Button("Load game"))
-            loadPlaythroughFromFile(pt);
+            loadPlaythroughFromFileAndReseed();
 
         ImGui::SameLine();
 
@@ -1799,7 +1811,11 @@ struct Main
 
         if (ImGui::Button("Reset game"))
         {
-            pt = Playthrough{};
+            rng.reseed(std::random_device{}());
+            shuffledCatNames = getShuffledCatNames(rng.getEngine());
+
+            pt      = Playthrough{};
+            pt.seed = rng.getSeed();
 
             particles.clear();
             textParticles.clear();
@@ -1822,13 +1838,13 @@ struct Main
         auto& tp = textParticles.emplace_back(
             TextParticle{.buffer = {},
                          .data   = {.position = {position.x, position.y - 10.f},
-                                    .velocity = getRndVector2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
+                                    .velocity = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
                                     .scale = sf::base::clamp(1.f + 0.1f * static_cast<float>(combo + 1) / 1.75f, 1.f, 3.0f),
                                     .accelerationY = 0.0042f,
                                     .opacity       = 1.f,
                                     .opacityDecay  = 0.00175f,
                                     .rotation      = 0.f,
-                                    .torque        = getRndFloat(-0.002f, 0.002f)}});
+                                    .torque        = rng.getF(-0.002f, 0.002f)}});
 
         std::snprintf(tp.buffer, sizeof(tp.buffer), "+$%llu", reward);
 
@@ -1862,7 +1878,7 @@ struct Main
 
                 popBubble(byHand, bubble.type, newReward, 1, bubble.position, /* popSoundOverlap */ false);
                 addReward(newReward);
-                bubble = makeRandomBubble(pt.getMapLimit(), 0.f);
+                bubble = makeRandomBubble(rng, pt.getMapLimit(), 0.f);
                 bubble.position.y -= bubble.getRadius();
 
                 return ControlFlow::Continue;
@@ -1887,16 +1903,16 @@ struct Main
                 continue;
 
             shrine.collectedReward += reward;
-            shrine.textStatusShakeEffect.bump(1.5f);
+            shrine.textStatusShakeEffect.bump(rng, 1.5f);
 
-            spawnParticlesWithHue(shrine.getHue() + 40.f,
+            spawnParticlesWithHue(wrapHue(shrine.getHue() + 40.f),
                                   6,
                                   shrine.getDrawPosition(),
                                   ParticleType::Fire,
-                                  getRndFloat(0.25f, 0.6f),
+                                  rng.getF(0.25f, 0.6f),
                                   0.75f);
 
-            spawnParticlesWithHue(shrine.getHue(), 6, shrine.getDrawPosition(), ParticleType::Shrine, getRndFloat(0.6f, 1.f), 0.5f);
+            spawnParticlesWithHue(shrine.getHue(), 6, shrine.getDrawPosition(), ParticleType::Shrine, rng.getF(0.6f, 1.f), 0.5f);
 
             particles.emplace_back(ParticleData{.position      = bubble.position,
                                                 .velocity      = -diff.normalized() * 0.5f,
@@ -1912,14 +1928,14 @@ struct Main
 
         popBubble(byHand, bubble.type, reward, xCombo, bubble.position, popSoundOverlap);
         addReward(reward);
-        bubble = makeRandomBubble(xPt.getMapLimit(), 0.f);
+        bubble = makeRandomBubble(rng, xPt.getMapLimit(), 0.f);
         bubble.position.y -= bubble.getRadius();
     };
 
     ////////////////////////////////////////////////////////////
     void gameLoopCheats()
     {
-        // TODO
+        // TODO P1: remove or enable via flag
 
         if (keyDown(sf::Keyboard::Key::F4))
         {
@@ -1967,7 +1983,7 @@ struct Main
 
             if (pos.y - radius > boundaries.y)
             {
-                pos.x = getRndFloat(0.f, pt.getMapLimit());
+                pos.x = rng.getF(0.f, pt.getMapLimit());
                 pos.y = -radius;
 
                 bubble.velocity.y = pt.windEnabled ? 0.2f : 0.05f;
@@ -2026,16 +2042,16 @@ struct Main
 
             if (cat.inspiredCountdown.value > 0.f)
             {
-                if (getRndFloat(0.f, 1.f) > 0.5f)
+                if (rng.getF(0.f, 1.f) > 0.5f)
                     particles.push_back(
-                        {.data = {.position = drawPosition + sf::Vector2f{getRndFloat(-catRadius, +catRadius), catRadius},
-                                  .velocity      = getRndVector2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
-                                  .scale         = getRndFloat(0.08f, 0.27f) * 0.2f,
+                        {.data = {.position = drawPosition + sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius},
+                                  .velocity = rng.getVec2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
+                                  .scale    = rng.getF(0.08f, 0.27f) * 0.2f,
                                   .accelerationY = -0.002f,
                                   .opacity       = 255.f,
-                                  .opacityDecay  = getRndFloat(0.00025f, 0.0015f),
-                                  .rotation      = getRndFloat(0.f, sf::base::tau),
-                                  .torque        = getRndFloat(-0.002f, 0.002f)},
+                                  .opacityDecay  = rng.getF(0.00025f, 0.0015f),
+                                  .rotation      = rng.getF(0.f, sf::base::tau),
+                                  .torque        = rng.getF(-0.002f, 0.002f)},
                          .type = ParticleType::Star});
             }
 
@@ -2066,12 +2082,12 @@ struct Main
                         newReward,
                         /* combo */ 1,
                         bubble.position,
-                        /* popSoundOverlap */ getRndFloat(0.f, 1.f) > 0.75f);
+                        /* popSoundOverlap */ rng.getF(0.f, 1.f) > 0.75f);
                     addReward(newReward);
-                    bubble = makeRandomBubble(pt.getMapLimit(), 0.f);
+                    bubble = makeRandomBubble(rng, pt.getMapLimit(), 0.f);
                     bubble.position.y -= bubble.getRadius();
 
-                    cat.textStatusShakeEffect.bump(1.5f);
+                    cat.textStatusShakeEffect.bump(rng, 1.5f);
 
                     return ControlFlow::Continue;
                 };
@@ -2107,16 +2123,16 @@ struct Main
 
             if (cat.type == CatType::Wizard)
             {
-                if (getRndFloat(0.f, 1.f) > 0.5f)
+                if (rng.getF(0.f, 1.f) > 0.5f)
                     particles.push_back(
-                        {.data = {.position = drawPosition + sf::Vector2f{getRndFloat(-catRadius, +catRadius), catRadius},
-                                  .velocity      = getRndVector2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
-                                  .scale         = getRndFloat(0.08f, 0.27f) * 0.2f,
+                        {.data = {.position = drawPosition + sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius},
+                                  .velocity = rng.getVec2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
+                                  .scale    = rng.getF(0.08f, 0.27f) * 0.2f,
                                   .accelerationY = -0.002f,
                                   .opacity       = 255.f,
-                                  .opacityDecay  = getRndFloat(0.00025f, 0.0015f),
-                                  .rotation      = getRndFloat(0.f, sf::base::tau),
-                                  .torque        = getRndFloat(-0.002f, 0.002f)},
+                                  .opacityDecay  = rng.getF(0.00025f, 0.0015f),
+                                  .rotation      = rng.getF(0.f, sf::base::tau),
+                                  .torque        = rng.getF(-0.002f, 0.002f)},
                          .hue  = 225.f,
                          .type = ParticleType::Star});
 
@@ -2136,7 +2152,7 @@ struct Main
                 }
             }
 
-            if (cat.type == CatType::Witch) // TODO: change
+            if (cat.type == CatType::Witch) // TODO P1: change
             {
                 sf::base::U32 witchHits = 0u;
                 bool          pawSet    = false;
@@ -2152,7 +2168,7 @@ struct Main
                     otherCat.cooldown.value = pt.getComputedCooldownByCatType(cat.type);
                     ++witchHits;
 
-                    if (!pawSet && getRndFloat(0.f, 100.f) > 50.f)
+                    if (!pawSet && rng.getF(0.f, 100.f) > 50.f)
                     {
                         pawSet = true;
 
@@ -2169,7 +2185,7 @@ struct Main
                     sounds.hex.setPosition({cx, cy});
                     playSound(sounds.hex);
 
-                    cat.textStatusShakeEffect.bump(1.5f);
+                    cat.textStatusShakeEffect.bump(rng, 1.5f);
                     cat.hits += witchHits;
                 }
 
@@ -2189,32 +2205,32 @@ struct Main
                 if (cat.type == CatType::Uni)
                 {
                     bubble.type       = BubbleType::Star;
-                    bubble.velocity.y = getRndFloat(-0.1f, -0.05f);
+                    bubble.velocity.y = rng.getF(-0.1f, -0.05f);
                     sounds.shine.setPosition({bubble.position.x, bubble.position.y});
                     playSound(sounds.shine);
 
                     spawnParticles(4, bubble.position, ParticleType::Star, 0.5f, 0.35f);
 
-                    cat.textStatusShakeEffect.bump(1.5f);
+                    cat.textStatusShakeEffect.bump(rng, 1.5f);
                     ++cat.hits;
                 }
                 else if (cat.type == CatType::Normal)
                 {
                     popWithRewardAndReplaceBubble(pt, /* byHand */ false, bubble, /* combo */ 1, /* popSoundOverlap */ true);
 
-                    cat.textStatusShakeEffect.bump(1.5f);
+                    cat.textStatusShakeEffect.bump(rng, 1.5f);
                     ++cat.hits;
                 }
                 else if (cat.type == CatType::Devil)
                 {
                     bubble.type = BubbleType::Bomb;
-                    bubble.velocity.y += getRndFloat(0.1f, 0.2f);
+                    bubble.velocity.y += rng.getF(0.1f, 0.2f);
                     sounds.makeBomb.setPosition({bubble.position.x, bubble.position.y});
                     playSound(sounds.makeBomb);
 
                     spawnParticles(8, bubble.position, ParticleType::Fire, 1.25f, 0.35f);
 
-                    cat.textStatusShakeEffect.bump(1.5f);
+                    cat.textStatusShakeEffect.bump(rng, 1.5f);
                     ++cat.hits;
                 }
 
@@ -2256,24 +2272,202 @@ struct Main
                 if (!pt.geniusCatsPurchased)
                 {
                     if (firstSpecialBubble != nullptr)
-                        action(*firstSpecialBubble);
+                        (void)action(*firstSpecialBubble);
                     else if (firstNormalBubble != nullptr)
-                        action(*firstNormalBubble);
+                        (void)action(*firstNormalBubble);
                 }
                 else
                 {
                     if (firstBombBubble != nullptr && !pt.geniusCatIgnoreBombBubbles)
-                        action(*firstBombBubble);
+                        (void)action(*firstBombBubble);
                     else if (firstStarBubble != nullptr && !pt.geniusCatIgnoreStarBubbles)
-                        action(*firstStarBubble);
+                        (void)action(*firstStarBubble);
                     else if (firstNormalBubble != nullptr && !pt.geniusCatIgnoreNormalBubbles)
-                        action(*firstNormalBubble);
+                        (void)action(*firstNormalBubble);
                 }
             }
             else
             {
                 forEachBubbleInRadius({cx, cy}, range, action);
             }
+        }
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopUpdateCatDragging(const float deltaTimeMs, const SizeT countFingersDown, const sf::Vector2f mousePos)
+    {
+        if (!mBtnDown(sf::Mouse::Button::Left) && countFingersDown != 1)
+        {
+            if (draggedCat)
+            {
+                draggedCat->cooldown.value = pt.getComputedCooldownByCatType(draggedCat->type);
+
+                playSound(sounds.drop);
+                draggedCat = nullptr;
+            }
+
+            catDragPressDuration = 0.f;
+            return;
+        }
+
+        if (draggedCat)
+        {
+            draggedCat->position       = exponentialApproach(draggedCat->position, mousePos, deltaTimeMs, 50.f);
+            draggedCat->cooldown.value = INFINITY;
+            return;
+        }
+
+        constexpr float catDragPressDurationMax = 100.f;
+
+        Cat* hoveredCat = nullptr;
+
+        // Only check for hover targets during initial press phase
+        if (catDragPressDuration <= catDragPressDurationMax)
+            for (Cat& cat : pt.cats)
+                if (!cat.isAstroAndInFlight() && (mousePos - cat.position).length() <= cat.getRadius())
+                    hoveredCat = &cat;
+
+        if (hoveredCat)
+        {
+            catDragPressDuration += deltaTimeMs;
+
+            if (catDragPressDuration >= catDragPressDurationMax)
+            {
+                draggedCat = hoveredCat;
+                playSound(sounds.grab);
+            }
+        }
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopUpdateShrines(const float deltaTimeMs, const sf::View& gameView)
+    {
+        for (Shrine& shrine : pt.shrines)
+        {
+            if (shrine.tcActivation.hasValue())
+            {
+                const auto cdStatus = shrine.tcActivation->updateAndStop(deltaTimeMs);
+
+                if (cdStatus == CountdownStatusStop::Running)
+                {
+                    spawnParticlesWithHue(wrapHue(shrine.getHue() + 40.f),
+                                          static_cast<SizeT>(1 + 12 * (1.f - shrine.tcActivation->getProgress())),
+                                          shrine.getDrawPosition() + rng.getVec2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
+                                          ParticleType::Fire,
+                                          rng.getF(0.25f, 1.f),
+                                          0.75f);
+
+                    spawnParticlesWithHue(shrine.getHue(),
+                                          static_cast<SizeT>(4 + 36 * (1.f - shrine.tcActivation->getProgress())),
+                                          shrine.getDrawPosition() + rng.getVec2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
+                                          ParticleType::Shrine,
+                                          rng.getF(0.35f, 1.2f),
+                                          0.5f);
+                }
+                else if (cdStatus == CountdownStatusStop::JustFinished)
+                {
+                    playSound(sounds.woosh);
+                }
+            }
+
+            shrine.update(deltaTimeMs);
+
+            if (!shrine.isActive())
+                continue;
+
+            forEachBubbleInRadius(shrine.position,
+                                  shrine.getRange(),
+                                  [&](Bubble& bubble)
+            {
+                const auto diff = (shrine.position - bubble.position);
+
+                // magnetism
+                // bubble.velocity += diff * 0.0000005f * deltaTimeMs;
+
+                // repulsion
+                // if (diff.length() < 128.f)
+                //     bubble.velocity -= diff * 0.0000025f * deltaTimeMs;
+
+                // scattering
+                // bubble.velocity.x += (diff.x * 0.0000055f * deltaTimeMs);
+
+                // other ideas:
+                // - turns all bubbles into normal bubbles
+                // - periodically pushes cats/bubbles away
+                // - debuffs/buffs clicks/cats/combos/stars/etc
+                // - only gets rewards from stars/bombs
+
+                return ControlFlow::Continue;
+            });
+
+            if (shrine.collectedReward >= pt.getComputedRequiredRewardByShrineType(shrine.type))
+            {
+                if (!shrine.tcDeath.hasValue())
+                {
+                    shrine.tcDeath.emplace(TargetedCountdown{.startingValue = 5000.f});
+                    shrine.tcDeath->restart();
+
+                    sounds.earthquake.setPosition({shrine.position.x, shrine.position.y});
+                    playSound(sounds.earthquake);
+
+                    screenShakeAmount = 4.5f;
+                }
+                else
+                {
+                    const auto cdStatus = shrine.tcDeath->updateAndStop(deltaTimeMs);
+
+                    if (cdStatus == CountdownStatusStop::JustFinished)
+                    {
+                        playSound(sounds.woosh);
+
+                        // TODO: handle shrine death rewards
+                        auto& c    = spawnCat(gameView, CatType::Wizard, {0.f, 0.f}, /* hue */ 0.f);
+                        c.position = shrine.position;
+
+                        pt.magicUnlocked = true;
+
+                        doTip("TODO: wizard tip");
+                    }
+                    else if (cdStatus == CountdownStatusStop::Running)
+                    {
+                        spawnParticlesWithHue(wrapHue(shrine.getHue() + 40.f),
+                                              static_cast<SizeT>(1 + 12 * shrine.getDeathProgress()),
+                                              shrine.getDrawPosition() + rng.getVec2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
+                                              ParticleType::Fire,
+                                              sf::base::max(0.25f, 1.f - shrine.getDeathProgress()),
+                                              0.75f);
+
+                        spawnParticlesWithHue(shrine.getHue(),
+                                              static_cast<SizeT>(4 + 36 * shrine.getDeathProgress()),
+                                              shrine.getDrawPosition() + rng.getVec2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
+                                              ParticleType::Shrine,
+                                              sf::base::max(0.35f, 1.2f - shrine.getDeathProgress()),
+                                              0.5f);
+                    }
+                }
+            }
+        }
+
+        std::erase_if(pt.shrines, [](const Shrine& shrine) { return shrine.getDeathProgress() >= 1.f; });
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopUpdateMana(const float deltaTimeMs)
+    {
+        if (!pt.magicUnlocked)
+            return;
+
+        if (pt.mana < pt.getComputedMaxMana())
+            pt.manaTimer += deltaTimeMs;
+        else
+            pt.manaTimer = 0.f;
+
+        if (pt.manaTimer >= pt.getComputedManaCooldown())
+        {
+            pt.manaTimer = 0.f;
+
+            if (pt.mana < pt.getComputedMaxMana())
+                pt.mana += 1u;
         }
     }
 
@@ -2430,10 +2624,8 @@ struct Main
 
         bool anyCatHovered = false;
 
-        for (SizeT i = 0u; i < pt.cats.size(); ++i)
+        for (Cat& cat : pt.cats)
         {
-            Cat& cat = pt.cats[i];
-
             float opacityMod      = 1.f;
             U8    rangeInnerAlpha = 0u;
 
@@ -2474,7 +2666,7 @@ struct Main
             const auto circleColor = CatConstants::colors[static_cast<U8>(cat.type)].withHueMod(cat.hue).withLightness(0.75f);
             const sf::Color outlineColor = circleColor.withLightness(0.25f);
 
-            // TODO P1: make it possible to draw a circle directly via batching without any of this stuff,
+            // TODO P2: (lib) make it possible to draw a circle directly via batching without any of this stuff,
             // no need to preallocate a circle shape before, have a reusable vertex buffer in the batch itself
             circleShapeBuffer.position = cat.position + cat.rangeOffset;
             circleShapeBuffer.origin   = {range, range};
@@ -2506,6 +2698,7 @@ struct Main
             textNameBuffer.setString(shuffledCatNames[cat.nameIdx]);
             textNameBuffer.position = cat.position + sf::Vector2f{0.f, 48.f};
             textNameBuffer.origin   = textNameBuffer.getLocalBounds().size / 2.f;
+            textNameBuffer.scale    = sf::Vector2f{0.5f, 0.5f};
             textNameBuffer.setOutlineColor(outlineColor);
             cpuDrawableBatch.add(textNameBuffer);
 
@@ -2515,6 +2708,7 @@ struct Main
             textStatusBuffer.origin   = textStatusBuffer.getLocalBounds().size / 2.f;
             textStatusBuffer.setOutlineColor(outlineColor);
             cat.textStatusShakeEffect.applyToText(textStatusBuffer);
+            textStatusBuffer.scale *= 0.5f;
             cpuDrawableBatch.add(textStatusBuffer);
         };
     }
@@ -2522,36 +2716,41 @@ struct Main
     ////////////////////////////////////////////////////////////
     void gameLoopDrawShrines()
     {
-        for (SizeT i = 0u; i < pt.shrines.size(); ++i)
+        for (Shrine& shrine : pt.shrines)
         {
-            Shrine&     shrine           = pt.shrines[i];
             const float invDeathProgress = 1.f - shrine.getDeathProgress();
+
+            const auto shrineAlpha = static_cast<U8>(remap(shrine.getActivationProgress(), 0.f, 1.f, 128.f, 255.f));
+            const auto shrineColor = hueColor(shrine.getHue(), shrineAlpha);
+
+            const auto      circleColor  = sf::Color{231u, 198u, 39u}.withHueMod(shrine.getHue()).withLightness(0.75f);
+            const sf::Color outlineColor = circleColor.withLightness(0.25f);
 
             cpuDrawableBatch.add(
                 sf::Sprite{.position = shrine.getDrawPosition(),
                            .scale    = sf::Vector2f{0.2f, 0.2f} * invDeathProgress +
-                                    sf::Vector2f{shrine.textStatusShakeEffect.grow, shrine.textStatusShakeEffect.grow} * 0.025f,
+                                    sf::Vector2f{1.f, 1.f} * shrine.textStatusShakeEffect.grow * 0.025f,
                            .origin      = txrShrine.size / 2.f,
                            .textureRect = txrShrine,
-                           .color       = hueColor(shrine.getHue(),
-                                             static_cast<U8>(remap(shrine.getActivationProgress(), 0.f, 1.f, 128.f, 255.f)))});
+                           .color       = shrineColor});
 
             const auto range = shrine.getRange();
 
-            // TODO P1: make it possible to draw a circle directly via batching without any of this stuff,
+            // TODO P2: (lib) make it possible to draw a circle directly via batching without any of this stuff,
             // no need to preallocate a circle shape before, have a reusable vertex buffer in the batch itself
             circleShapeBuffer.position = shrine.position;
             circleShapeBuffer.origin   = {range, range};
             circleShapeBuffer.setPointCount(64);
             circleShapeBuffer.setRadius(range);
-            circleShapeBuffer.setOutlineColor(sf::Color::Black.withAlpha(static_cast<U8>(255.f * invDeathProgress)));
+            circleShapeBuffer.setOutlineColor(circleColor);
             circleShapeBuffer.setFillColor(sf::Color::Transparent);
             cpuDrawableBatch.add(circleShapeBuffer);
 
             textNameBuffer.setString(shrineNames[static_cast<U8>(shrine.type)]);
             textNameBuffer.position = shrine.position + sf::Vector2f{0.f, 48.f};
             textNameBuffer.origin   = textNameBuffer.getLocalBounds().size / 2.f;
-            textNameBuffer.scale    = sf::Vector2f{1.f, 1.f} * invDeathProgress;
+            textNameBuffer.scale    = sf::Vector2f{0.5f, 0.5f} * invDeathProgress;
+            textNameBuffer.setOutlineColor(outlineColor);
             cpuDrawableBatch.add(textNameBuffer);
 
             if (shrine.isActive())
@@ -2566,8 +2765,10 @@ struct Main
 
             textStatusBuffer.position = shrine.position + sf::Vector2f{0.f, 68.f};
             textStatusBuffer.origin   = textStatusBuffer.getLocalBounds().size / 2.f;
+            textStatusBuffer.setOutlineColor(outlineColor);
             shrine.textStatusShakeEffect.applyToText(textStatusBuffer);
             textStatusBuffer.scale *= invDeathProgress;
+            textStatusBuffer.scale *= 0.5f;
             cpuDrawableBatch.add(textStatusBuffer);
         };
     }
@@ -2630,12 +2831,13 @@ struct Main
 
         sf::Text tipText{fontSuperBakery,
                          {.position         = {},
+                          .scale            = {0.5f, 0.5f},
                           .string           = tipString.substr(0,
                                                      static_cast<SizeT>(
                                                          sf::base::clamp((4100.f - tipTimer) / 25.f,
                                                                          0.f,
                                                                          static_cast<float>(tipString.size())))),
-                          .characterSize    = 29u,
+                          .characterSize    = 60u,
                           .fillColor        = sf::Color::White.withAlpha(alpha),
                           .outlineColor     = colorBlueOutline.withAlpha(alpha),
                           .outlineThickness = 2.f}};
@@ -2649,7 +2851,7 @@ struct Main
                              .textureRect = txTipBg.getRect(),
                              .color       = sf::Color::White.withAlpha(static_cast<U8>(alpha * 0.85f))};
 
-        tipSprite.setBottomCenter({resolution.x / 2.f, resolution.y - 50.f});
+        tipSprite.setBottomCenter({getResolution().x / 2.f / profile.hudScale, getResolution().y / profile.hudScale - 50.f});
         window.draw(tipSprite, txTipBg);
 
         sf::Sprite tipByteSprite{.position    = {},
@@ -2690,7 +2892,6 @@ struct Main
             }
             else if (const auto* e = event->getIf<sf::Event::TouchEnded>())
             {
-                // TODO: is this guaranteed to be called even if the finger is lifted?
                 fingerPositions[e->finger].reset();
             }
             else if (const auto* e = event->getIf<sf::Event::TouchMoved>())
@@ -2755,7 +2956,7 @@ struct Main
             }
             else if (countFingersDown == 2)
             {
-                // TODO: check fingers distance
+                // TODO P1: check fingers distance
                 const auto [fingerPos0, fingerPos1] = [&]
                 {
                     std::pair<sf::base::Optional<sf::Vector2f>, sf::base::Optional<sf::Vector2f>> result;
@@ -2802,18 +3003,38 @@ struct Main
 
         actualScroll = exponentialApproach(actualScroll, scroll, deltaTimeMs, 75.f);
 
-        const auto screenShake = getRndVector2f({-screenShakeAmount, -screenShakeAmount},
-                                                {screenShakeAmount, screenShakeAmount});
+        const auto screenShake = rng.getVec2f({-screenShakeAmount, -screenShakeAmount},
+                                              {screenShakeAmount, screenShakeAmount});
 
-        const sf::View gameView //
-            {.center = sf::Vector2f{sf::base::clamp(gameScreenSize.x / 2.f + actualScroll * 2.f,
-                                                    gameScreenSize.x / 2.f,
-                                                    boundaries.x - gameScreenSize.x / 2.f),
-                                    gameScreenSize.y / 2.f} +
-                       screenShake,
-             .size = gameScreenSize};
+        const sf::Vector2f resolution = getResolution();
 
-        // TODO: if windows is resized this needs to be adapted
+        const auto createScaledView = [&](const sf::Vector2f& originalSize, const sf::Vector2f& windowSize) -> sf::View
+        {
+            // Calculate the scale factors for both dimensions
+            const float scaleX = windowSize.x / originalSize.x;
+            const float scaleY = windowSize.y / originalSize.y;
+
+            // Use the smaller scale factor to maintain aspect ratio
+            const float scale = std::min(scaleX, scaleY);
+
+            // Calculate the scaled dimensions
+            const sf::Vector2f scaledSize = originalSize * scale;
+
+            return {.center   = originalSize / 2.f,
+                    .size     = originalSize,
+                    .viewport = {(windowSize - scaledSize).componentWiseDiv(windowSize * 2.f),
+                                 scaledSize.componentWiseDiv(windowSize)}};
+        };
+
+        const sf::Vector2f viewCenter{sf::base::clamp(gameScreenSize.x / 2.f + actualScroll * 2.f,
+                                                      gameScreenSize.x / 2.f,
+                                                      boundaries.x - gameScreenSize.x / 2.f),
+                                      gameScreenSize.y / 2.f};
+
+        sf::View gameView            = createScaledView(gameScreenSize, resolution);
+        gameView.viewport.position.x = 0.f;
+        gameView.center              = viewCenter + screenShake;
+
         const auto windowSpaceMouseOrFingerPos = countFingersDown == 1u ? downFingers[0].toVector2i()
                                                                         : sf::Mouse::getPosition(window);
 
@@ -2889,7 +3110,7 @@ struct Main
 
                     for (SizeT i = 0; i < times; ++i)
                     {
-                        const auto bPos = pt.bubbles.emplace_back(makeRandomBubble(pt.getMapLimit(), boundaries.y)).position;
+                        const auto bPos = pt.bubbles.emplace_back(makeRandomBubble(rng, pt.getMapLimit(), boundaries.y)).position;
 
                         spawnParticles(8, bPos, ParticleType::Bubble, 0.5f, 0.5f);
                         playReversePopAt(bPos);
@@ -2944,7 +3165,7 @@ struct Main
                         combo += 1;
                         comboCountdown.value += 150.f - sf::base::clamp(static_cast<float>(combo) * 10.f, 0.f, 100.f);
 
-                        comboTextShakeEffect.bump(1.f + static_cast<float>(combo) * 0.2f);
+                        comboTextShakeEffect.bump(rng, 1.f + static_cast<float>(combo) * 0.2f);
                     }
                 }
                 else
@@ -2958,16 +3179,16 @@ struct Main
                     forEachBubbleInRadius(clickPos,
                                           pt.getComputedMultiPopRange(),
                                           [&](Bubble& otherBubble)
-                                          {
-                                              if (&otherBubble != &bubble)
-                                                  popWithRewardAndReplaceBubble(pt,
-                                                                                /* byHand */ true,
-                                                                                otherBubble,
-                                                                                combo,
-                                                                                /* popSoundOverlap */ false);
+                    {
+                        if (&otherBubble != &bubble)
+                            popWithRewardAndReplaceBubble(pt,
+                                                          /* byHand */ true,
+                                                          otherBubble,
+                                                          combo,
+                                                          /* popSoundOverlap */ false);
 
-                                              return ControlFlow::Continue;
-                                          });
+                        return ControlFlow::Continue;
+                    });
 
 
                 return ControlFlow::Break;
@@ -2989,9 +3210,8 @@ struct Main
 
         //
         // Bubble vs bubble collisions
-        spatialGrid.forEachUniqueIndexPair(
-            [&](const SizeT bubbleIdxI, const SizeT bubbleIdxJ)
-            { handleBubbleCollision(deltaTimeMs, pt.bubbles[bubbleIdxI], pt.bubbles[bubbleIdxJ]); });
+        spatialGrid.forEachUniqueIndexPair([&](const SizeT bubbleIdxI, const SizeT bubbleIdxJ)
+        { handleBubbleCollision(deltaTimeMs, pt.bubbles[bubbleIdxI], pt.bubbles[bubbleIdxJ]); });
 
         //
         // Cat vs cat collisions
@@ -3034,182 +3254,10 @@ struct Main
             for (Shrine& shrine : pt.shrines)
                 handleCatShrineCollision(deltaTimeMs, cat, shrine);
 
-        if (mBtnDown(sf::Mouse::Button::Left) || (countFingersDown == 1))
-        {
-            if (draggedCat)
-            {
-                draggedCat->position       = exponentialApproach(draggedCat->position, mousePos, deltaTimeMs, 50.f);
-                draggedCat->cooldown.value = INFINITY;
-            }
-            else
-            {
-                constexpr float catDragPressDurationMax = 100.f;
-
-                Cat* hoveredCat = nullptr;
-
-                // Only check for hover targets during initial press phase
-                if (catDragPressDuration <= catDragPressDurationMax)
-                    for (Cat& cat : pt.cats)
-                        if (!cat.isAstroAndInFlight() && (mousePos - cat.position).length() <= cat.getRadius())
-                            hoveredCat = &cat;
-
-                if (hoveredCat)
-                {
-                    catDragPressDuration += deltaTimeMs;
-
-                    if (catDragPressDuration >= catDragPressDurationMax)
-                    {
-                        draggedCat = hoveredCat;
-                        playSound(sounds.grab);
-                    }
-                }
-            }
-        }
-        else
-        {
-            if (draggedCat)
-            {
-                draggedCat->cooldown.value = pt.getComputedCooldownByCatType(draggedCat->type);
-
-                playSound(sounds.drop);
-                draggedCat = nullptr;
-            }
-
-            catDragPressDuration = 0.f;
-        }
-
+        gameLoopUpdateCatDragging(deltaTimeMs, countFingersDown, mousePos);
         gameLoopUpdateCatActions(deltaTimeMs);
-
-        // TODO: move to its own fn
-        for (Shrine& shrine : pt.shrines)
-        {
-            if (shrine.tcActivation.hasValue())
-            {
-                const auto cdStatus = shrine.tcActivation->updateAndStop(deltaTimeMs);
-
-                if (cdStatus == CountdownStatusStop::Running)
-                {
-                    spawnParticlesWithHue(shrine.getHue() + 40.f,
-                                          static_cast<SizeT>(1 + 12 * (1.f - shrine.tcActivation->getProgress())),
-                                          shrine.getDrawPosition() + getRndVector2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
-                                          ParticleType::Fire,
-                                          getRndFloat(0.25f, 1.f),
-                                          0.75f);
-
-                    spawnParticlesWithHue(shrine.getHue(),
-                                          static_cast<SizeT>(4 + 36 * (1.f - shrine.tcActivation->getProgress())),
-                                          shrine.getDrawPosition() + getRndVector2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
-                                          ParticleType::Shrine,
-                                          getRndFloat(0.35f, 1.2f),
-                                          0.5f);
-                }
-                else if (cdStatus == CountdownStatusStop::JustFinished)
-                {
-                    playSound(sounds.woosh);
-                }
-            }
-
-            shrine.update(deltaTimeMs);
-
-            if (!shrine.isActive())
-                continue;
-
-            forEachBubbleInRadius(shrine.position,
-                                  shrine.getRange(),
-                                  [&](Bubble& bubble)
-                                  {
-                                      const auto diff = (shrine.position - bubble.position);
-
-                                      // magnetism
-                                      // bubble.velocity += diff * 0.0000005f * deltaTimeMs;
-
-                                      // repulsion
-                                      // if (diff.length() < 128.f)
-                                      //     bubble.velocity -= diff * 0.0000025f * deltaTimeMs;
-
-                                      // scattering
-                                      // bubble.velocity.x += (diff.x * 0.0000055f * deltaTimeMs);
-
-                                      // other ideas:
-                                      // - turns all bubbles into normal bubbles
-                                      // - periodically pushes cats/bubbles away
-                                      // - debuffs/buffs clicks/cats/combos/stars/etc
-                                      // - only gets rewards from stars/bombs
-
-                                      return ControlFlow::Continue;
-                                  });
-
-            if (shrine.collectedReward >= pt.getComputedRequiredRewardByShrineType(shrine.type))
-            {
-                if (!shrine.tcDeath.hasValue())
-                {
-                    shrine.tcDeath.emplace(TargetedCountdown{.startingValue = 5000.f});
-                    shrine.tcDeath->restart();
-
-                    sounds.earthquake.setPosition({shrine.position.x, shrine.position.y});
-                    playSound(sounds.earthquake);
-
-                    screenShakeAmount = 4.5f;
-                }
-                else
-                {
-                    const auto cdStatus = shrine.tcDeath->updateAndStop(deltaTimeMs);
-
-                    if (cdStatus == CountdownStatusStop::JustFinished)
-                    {
-                        playSound(sounds.woosh);
-
-                        // TODO: handle shrine death rewards
-                        auto& c    = spawnCat(gameView, CatType::Wizard, {0.f, 0.f}, /* hue */ 0.f);
-                        c.position = shrine.position;
-
-                        pt.magicUnlocked = true;
-
-                        doTip("TODO: wizard tip");
-                    }
-                    else if (cdStatus == CountdownStatusStop::Running)
-                    {
-                        spawnParticlesWithHue(shrine.getHue() + 40.f,
-                                              static_cast<SizeT>(1 + 12 * shrine.getDeathProgress()),
-                                              shrine.getDrawPosition() + getRndVector2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
-                                              ParticleType::Fire,
-                                              sf::base::max(0.25f, 1.f - shrine.getDeathProgress()),
-                                              0.75f);
-
-                        spawnParticlesWithHue(shrine.getHue(),
-                                              static_cast<SizeT>(4 + 36 * shrine.getDeathProgress()),
-                                              shrine.getDrawPosition() + getRndVector2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
-                                              ParticleType::Shrine,
-                                              sf::base::max(0.35f, 1.2f - shrine.getDeathProgress()),
-                                              0.5f);
-                    }
-                }
-            }
-        }
-
-        const bool anyShrineDying = sf::base::anyOf(pt.shrines.begin(),
-                                                    pt.shrines.end(),
-                                                    [](const Shrine& shrine) { return shrine.tcDeath.hasValue(); });
-
-        // TODO: move to its own fn
-        [&]
-        {
-            if (!pt.magicUnlocked)
-                return;
-
-            if (pt.mana < pt.getComputedMaxMana())
-                pt.manaTimer += deltaTimeMs;
-            else
-                pt.manaTimer = 0.f;
-
-            if (pt.manaTimer >= pt.getComputedManaCooldown())
-            {
-                pt.manaTimer = 0.f;
-
-                if (pt.mana < pt.getComputedMaxMana())
-                    pt.mana += 1u;
-            }
-        }();
+        gameLoopUpdateShrines(deltaTimeMs, gameView);
+        gameLoopUpdateMana(deltaTimeMs);
 
         if (screenShakeTimer > 0.f)
         {
@@ -3217,13 +3265,15 @@ struct Main
             screenShakeTimer = sf::base::max(0.f, screenShakeTimer);
         }
 
+        const bool anyShrineDying = sf::base::anyOf(pt.shrines.begin(),
+                                                    pt.shrines.end(),
+                                                    [](const Shrine& shrine) { return shrine.tcDeath.hasValue(); });
+
         if (!anyShrineDying && screenShakeTimer <= 0.f && screenShakeAmount > 0.f)
         {
             screenShakeAmount -= deltaTimeMs * 0.05f;
             screenShakeAmount = sf::base::max(0.f, screenShakeAmount);
         }
-
-        std::erase_if(pt.shrines, [](const Shrine& shrine) { return shrine.getDeathProgress() >= 1.f; });
 
         const auto updateParticleLike = [&](auto& particleLikeVec)
         {
@@ -3248,12 +3298,21 @@ struct Main
             musicBGM.setVolume(0.f);
 
         playedUsAccumulator += playedClock.getElapsedTime().asMicroseconds();
+        autosaveUsAccumulator += playedClock.getElapsedTime().asMicroseconds();
         playedClock.restart();
 
         while (playedUsAccumulator > 1'000'000)
         {
             playedUsAccumulator -= 1'000'000;
             statSecondsPlayed();
+        }
+
+        if (autosaveUsAccumulator >= 180'000'000) // 3 min
+        {
+            autosaveUsAccumulator = 0;
+
+            std::cout << "Autosaving...\n";
+            savePlaythroughToFile(pt);
         }
 
         gameLoopUpdateMilestones();
@@ -3280,16 +3339,20 @@ struct Main
 
         window.draw(cpuDrawableBatch, {.texture = &textureAtlas.getTexture(), .shader = &shader});
 
-        const sf::View hudView{.center = {resolution.x / 2.f, resolution.y / 2.f}, .size = resolution};
+        const auto createScaledHudView = [](const sf::Vector2f& resolution, float scale) -> sf::View
+        { return {.center = {resolution.x / (2.f * scale), resolution.y / (2.f * scale)}, .size = resolution / scale}; };
+
+        const sf::View hudView = createScaledHudView(resolution, profile.hudScale);
         window.setView(hudView);
 
         moneyText.setString("$" + std::to_string(pt.money));
-        moneyText.scale  = {1.f, 1.f};
+        moneyText.scale  = {0.5f, 0.5f};
         moneyText.origin = moneyText.getLocalBounds().size / 2.f;
 
         moneyText.setTopLeft({15.f, 70.f});
         moneyTextShakeEffect.update(deltaTimeMs);
         moneyTextShakeEffect.applyToText(moneyText);
+        moneyText.scale *= 0.5f;
 
         const float yBelowMinimap = pt.mapPurchased ? (boundaries.y / profile.minimapScale) + 12.f : 0.f;
 
@@ -3304,6 +3367,7 @@ struct Main
 
             comboTextShakeEffect.update(deltaTimeMs);
             comboTextShakeEffect.applyToText(comboText);
+            comboText.scale *= 0.5f;
 
             comboText.position.y = yBelowMinimap + 50.f;
 
@@ -3330,7 +3394,9 @@ struct Main
                         window,
                         txBackground,
                         cpuDrawableBatch,
-                        textureAtlas);
+                        textureAtlas,
+                        resolution,
+                        profile.hudScale);
 
         //
         // UI
@@ -3339,7 +3405,7 @@ struct Main
         //
         // Splash screen
         if (splashCountdown.value > 0.f)
-            drawSplashScreen(window, txLogo, splashCountdown);
+            drawSplashScreen(window, txLogo, splashCountdown, resolution, profile.hudScale);
 
         //
         // Tips
@@ -3402,151 +3468,34 @@ void main()
 )glsl";
 
     ////////////////////////////////////////////////////////////
-    Main() :
-    // Resource contexts
-    audioContext{sf::AudioContext::create().value()},
-    playbackDevice{sf::PlaybackDevice::createDefault(audioContext).value()},
-    graphicsContext{sf::GraphicsContext::create().value()},
+    void loadPlaythroughFromFileAndReseed()
+    {
+        loadPlaythroughFromFile(pt);
+        rng.reseed(pt.seed);
+        shuffledCatNames = getShuffledCatNames(rng.getEngine());
+    }
 
-    // Shader
-    shader{sf::Shader::loadFromMemory(sf::GraphicsContext::getBuiltInShaderVertexSrc(), fragmentSrc).value()},
-
-    // Render window
-    window{{.size           = resolutionUInt,
-            .title          = "BubbleByte " BUBBLEBYTE_VERSION_STR,
-            .resizable      = false, // TODO: reconsider
-            .vsync          = true,
-            .frametimeLimit = 144u,
-            .contextSettings = {.antiAliasingLevel = sf::base::min(16u, sf::RenderTexture::getMaximumAntiAliasingLevel())}}},
-
-    // Texture atlas
-    textureAtlas{sf::Texture::create({4096u, 4096u}, {.smooth = true}).value()},
-
-    // SFML fonts
-    fontSuperBakery{sf::Font::openFromFile("resources/superbakery.ttf", &textureAtlas).value()},
-
-    // ImGui fonts
-    fontImGuiSuperBakery{ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/superbakery.ttf", 26.f)},
-    fontImGuiMouldyCheese{ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/mouldycheese.ttf", 26.f)},
-
-    // Music
-    musicBGM{sf::Music::openFromFile("resources/hibiscus.mp3").value()},
-
-    // Textures (not in atlas)
-    txLogo{sf::Texture::loadFromFile("resources/logo.png", {.smooth = true}).value()},
-    txBackground{sf::Texture::loadFromFile("resources/background.jpg", {.smooth = true}).value()},
-    txByteTip{sf::Texture::loadFromFile("resources/bytetip.png", {.smooth = true}).value()},
-    txTipBg{sf::Texture::loadFromFile("resources/tipbg.png", {.smooth = true}).value()},
-    txTipByte{sf::Texture::loadFromFile("resources/tipbyte.png", {.smooth = true}).value()},
-
-    // Texture atlas rects
-    txrWhiteDot{textureAtlas.add(graphicsContext.getBuiltInWhiteDotTexture()).value()},
-    txrBubble{addImgResourceToAtlas("bubble2.png")},
-    txrBubbleStar{addImgResourceToAtlas("bubble3.png")},
-    txrCat{addImgResourceToAtlas("cat.png")},
-    txrSmartCat{addImgResourceToAtlas("smartcat.png")},
-    txrGeniusCat{addImgResourceToAtlas("geniuscat.png")},
-    txrUniCat{addImgResourceToAtlas("unicat.png")},
-    txrDevilCat{addImgResourceToAtlas("devilcat.png")},
-    txrCatPaw{addImgResourceToAtlas("catpaw.png")},
-    txrUniCatPaw{addImgResourceToAtlas("unicatpaw.png")},
-    txrDevilCatPaw{addImgResourceToAtlas("devilcatpaw.png")},
-    txrParticle{addImgResourceToAtlas("particle.png")},
-    txrStarParticle{addImgResourceToAtlas("starparticle.png")},
-    txrFireParticle{addImgResourceToAtlas("fireparticle.png")},
-    txrHexParticle{addImgResourceToAtlas("hexparticle.png")},
-    txrShrineParticle{addImgResourceToAtlas("shrineparticle.png")},
-    txrWitchCat{addImgResourceToAtlas("witchcat.png")},
-    txrWitchCatPaw{addImgResourceToAtlas("witchcatpaw.png")},
-    txrAstroCat{addImgResourceToAtlas("astromeow.png")},
-    txrAstroCatWithFlag{addImgResourceToAtlas("astromeowwithflag.png")},
-    txrBomb{addImgResourceToAtlas("bomb.png")},
-    txrShrine{addImgResourceToAtlas("shrine.png")},
-    txrWizardCat{addImgResourceToAtlas("wizardcat.png")},
-    txrWizardCatPaw{addImgResourceToAtlas("wizardcatpaw.png")},
-
-    // UI Text
-    moneyText{fontSuperBakery,
-              {.position         = {15.f, 70.f},
-               .string           = "$0",
-               .characterSize    = 32u,
-               .fillColor        = sf::Color::White,
-               .outlineColor     = colorBlueOutline,
-               .outlineThickness = 2.f}},
-    comboText{fontSuperBakery,
-              {.position         = moneyText.position + sf::Vector2f{0.f, 35.f},
-               .string           = "x1",
-               .characterSize    = 24u,
-               .fillColor        = sf::Color::White,
-               .outlineColor     = colorBlueOutline,
-               .outlineThickness = 1.5f}},
-
-    // Cat names
-    shuffledCatNames{getShuffledCatNames(getRandomEngine())},
-    nextCatName{0u},
-
-    // Prestige transition
-    inPrestigeTransition{false},
-
-    // Times for transitions
-    bubbleSpawnTimer{.startingValue = 3.f},
-    catRemoveTimer{.startingValue = 100.f},
-
-    // Combo state
-    combo{0},
-
-    // Accumulator for played time
-    playedUsAccumulator{0},
-
-    // Scrolling state
-    scroll{0.f},
-    actualScroll{0.f},
-
-    // Screen shake
-    screenShakeAmount{0.f},
-    screenShakeTimer{0.f},
-
-    // Cat dragging state
-    draggedCat{nullptr},
-    catDragPressDuration{0.f},
-
-    // Splash screen state
-    splashCountdown{.startingValue = 0.f},
-    // splashCountdown{.startingValue = 1750.f}, // TODO:
-
-    // Tip state
-    tipTimer{0.f},
-    tipString{},
-
-    // Shape buffers
-    circleShapeBuffer{{.outlineTextureRect = txrWhiteDot, .outlineThickness = 1.f}},
-
-    // Text buffers
-    textNameBuffer{fontSuperBakery,
-                   {.characterSize    = 24u,
-                    .fillColor        = sf::Color::White,
-                    .outlineColor     = colorBlueOutline,
-                    .outlineThickness = 1.5f}},
-    textStatusBuffer{fontSuperBakery,
-                     {.characterSize    = 16u,
-                      .fillColor        = sf::Color::White,
-                      .outlineColor     = colorBlueOutline,
-                      .outlineThickness = 1.f}}
+    ////////////////////////////////////////////////////////////
+    Main()
     {
         //
         // Profile
         if (sf::Path{"profile.json"}.exists())
         {
-            std::cout << "Loaded profile from file on startup\n";
             loadProfileFromFile(profile);
+            std::cout << "Loaded profile from file on startup\n";
         }
 
         //
         // Playthrough
         if (sf::Path{"playthrough.json"}.exists())
         {
+            loadPlaythroughFromFileAndReseed();
             std::cout << "Loaded playthrough from file on startup\n";
-            loadPlaythroughFromFile(pt);
+        }
+        else
+        {
+            pt.seed = rng.getSeed();
         }
 
         //
@@ -3568,8 +3517,6 @@ void main()
         // Startup (splash screen and meow)
         splashCountdown.restart();
         playSound(sounds.byteMeow);
-
-        // TODO: spawn test shrine
 
         //
         //

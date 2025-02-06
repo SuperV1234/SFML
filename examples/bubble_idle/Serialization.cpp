@@ -149,6 +149,7 @@ void from_json(const nlohmann::json& j, PurchasableScalingValue (&p)[N])
 // NOLINTNEXTLINE(modernize-use-constraints)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     Stats,
+
     secondsPlayed,
     bubblesPopped,
     bubblesPoppedRevenue,
@@ -197,11 +198,13 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
 // NOLINTNEXTLINE(modernize-use-constraints)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     Profile,
+
     masterVolume,
     musicVolume,
     playAudioInBackground,
     playComboEndSound,
     minimapScale,
+    hudScale,
     tipsEnabled,
 
     statsLifetime);
@@ -210,6 +213,10 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
 // NOLINTNEXTLINE(modernize-use-constraints)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     Playthrough,
+
+    seed,
+    nextCatName,
+
     psvComboStartTime,
     psvMapExtension,
     psvShrineActivation,
@@ -275,6 +282,9 @@ void forceCopyFile(const std::filesystem::path& from, const std::filesystem::pat
 void doRotatingBackup(const std::string& filename)
 try
 {
+    if (sf::Path{filename + ".bak2"}.exists())
+        forceCopyFile(filename + ".bak2", filename + ".bak3");
+
     if (sf::Path{filename + ".bak1"}.exists())
         forceCopyFile(filename + ".bak1", filename + ".bak2");
 

@@ -173,6 +173,9 @@ UseCRLF: false
 QualifierAlignment: Custom
 QualifierOrder: ['static', 'inline', 'constexpr', 'const', 'volatile', 'type']
 
+# Lambdas
+LambdaBodyIndentation: OuterScope
+
 ---
 Language: ObjC
 IndentWidth: 4

@@ -2,6 +2,7 @@
 
 #include "Aliases.hpp"
 #include "Countdown.hpp"
+#include "MathUtils.hpp"
 #include "TextShakeEffect.hpp"
 
 #include "SFML/System/Vector2.hpp"
@@ -105,6 +106,6 @@ struct [[nodiscard]] Shrine
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline float getHue() const
     {
-        return sf::base::fmod(static_cast<float>(type) * 85.f, 360.f);
+        return wrapHue(static_cast<float>(type) * 85.f);
     }
 };

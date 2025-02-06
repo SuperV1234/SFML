@@ -17,7 +17,7 @@
 struct Sounds
 {
     ////////////////////////////////////////////////////////////
-    struct LoadedSound : private sf::SoundBuffer, public sf::Sound // TODO: eww
+    struct LoadedSound : private sf::SoundBuffer, public sf::Sound // TODO P2: eww
     {
         ////////////////////////////////////////////////////////////
         explicit LoadedSound(const sf::Path& filename) :
@@ -127,7 +127,7 @@ struct Sounds
     ////////////////////////////////////////////////////////////
     bool playPooled(sf::PlaybackDevice& playbackDevice, const LoadedSound& ls, const bool overlap)
     {
-        // TODO P1: improve in library
+        // TODO P2 (lib): improve in library
 
         if (!overlap && isPlayingPooled(ls))
             return false;
@@ -145,7 +145,7 @@ struct Sounds
             return true;
         }
 
-        // TODO: to sf base, also not needed
+        // TODO P2 (lib): to sf base, also not needed
         // std::erase_if(soundsBeingPlayed,
         //               [](const sf::Sound& sound) { return sound.getStatus() == sf::Sound::Status::Stopped; });
 

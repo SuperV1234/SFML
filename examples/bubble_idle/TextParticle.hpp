@@ -20,7 +20,7 @@ struct [[nodiscard]] TextParticle
     ////////////////////////////////////////////////////////////
     [[gnu::always_inline]] inline void applyToText(sf::Text& text) const
     {
-        text.setString(buffer); // TODO P1: should find a way to assign directly to text buffer
+        text.setString(buffer); // TODO P2: (lib) should find a way to assign directly to text buffer
 
         data.applyToTransformable(text);
         text.origin = text.getLocalBounds().size / 2.f;

@@ -9,7 +9,7 @@
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] PurchasableScalingValue
 {
-    const PSVData*  data; // TODO: eww
+    const PSVData*  data; // TODO P2: eww
     sf::base::SizeT nPurchases = 0u;
 
     ////////////////////////////////////////////////////////////

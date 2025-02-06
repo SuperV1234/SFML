@@ -6,10 +6,6 @@
 
 
 ////////////////////////////////////////////////////////////
-constexpr sf::Vector2f resolution{1920.f, 1080.f}; // TODO: make customizable
-constexpr auto         resolutionUInt = resolution.toVector2u();
-
-////////////////////////////////////////////////////////////
 constexpr sf::Vector2f gameScreenSize{1366.f, 768.f};
 constexpr auto         gameScreenSizeUInt = gameScreenSize.toVector2u();
 

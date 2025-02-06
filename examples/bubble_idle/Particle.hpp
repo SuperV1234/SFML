@@ -48,6 +48,7 @@ struct [[nodiscard]] Particle
 
 ////////////////////////////////////////////////////////////
 [[nodiscard, gnu::always_inline]] inline Particle makeParticle(
+    RNG&               rng,
     const sf::Vector2f position,
     const ParticleType particleType,
     const float        scaleMult,
@@ -56,13 +57,13 @@ struct [[nodiscard]] Particle
     const float        hue     = 0.f)
 {
     return {.data = {.position      = position,
-                     .velocity      = getRndVector2f({-0.75f, -0.75f}, {0.75f, 0.75f}) * speedMult,
-                     .scale         = getRndFloat(0.08f, 0.27f) * scaleMult,
+                     .velocity      = rng.getVec2f({-0.75f, -0.75f}, {0.75f, 0.75f}) * speedMult,
+                     .scale         = rng.getF(0.08f, 0.27f) * scaleMult,
                      .accelerationY = 0.002f,
                      .opacity       = opacity,
-                     .opacityDecay  = getRndFloat(0.00025f, 0.0015f),
-                     .rotation      = getRndFloat(0.f, sf::base::tau),
-                     .torque        = getRndFloat(-0.002f, 0.002f)},
+                     .opacityDecay  = rng.getF(0.00025f, 0.0015f),
+                     .rotation      = rng.getF(0.f, sf::base::tau),
+                     .torque        = rng.getF(-0.002f, 0.002f)},
             .hue  = hue,
             .type = particleType};
 }

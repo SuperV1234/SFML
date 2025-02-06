@@ -14,10 +14,10 @@ struct [[nodiscard]] TextShakeEffect
     float angle = 0.f;
 
     ////////////////////////////////////////////////////////////
-    void bump(const float strength)
+    void bump(RNG& rng, const float strength)
     {
         grow  = strength;
-        angle = getRndFloat(-grow * 0.2f, grow * 0.2f);
+        angle = rng.getF(-grow * 0.2f, grow * 0.2f);
     }
 
     ////////////////////////////////////////////////////////////
