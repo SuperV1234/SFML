@@ -2,43 +2,46 @@
 
 #include "SFML/Base/IntTypes.hpp"
 
-#include <limits>
+#include <climits>
 
 
 ////////////////////////////////////////////////////////////
-static inline constexpr auto maxU64 = std::numeric_limits<sf::base::U64>::max();
+using MilestoneTimestamp                  = sf::base::U64;
+static inline constexpr auto maxMilestone = ULLONG_MAX;
 
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] Milestones
 {
-    sf::base::U64 firstCat      = maxU64;
-    sf::base::U64 firstUnicat   = maxU64;
-    sf::base::U64 firstDevilcat = maxU64;
-    sf::base::U64 firstAstrocat = maxU64;
+    MilestoneTimestamp firstCat      = maxMilestone;
+    MilestoneTimestamp firstUnicat   = maxMilestone;
+    MilestoneTimestamp firstDevilcat = maxMilestone;
+    MilestoneTimestamp firstAstrocat = maxMilestone;
 
-    sf::base::U64 fiveCats      = maxU64;
-    sf::base::U64 fiveUnicats   = maxU64;
-    sf::base::U64 fiveDevilcats = maxU64;
-    sf::base::U64 fiveAstrocats = maxU64;
+    MilestoneTimestamp fiveCats      = maxMilestone;
+    MilestoneTimestamp fiveUnicats   = maxMilestone;
+    MilestoneTimestamp fiveDevilcats = maxMilestone;
+    MilestoneTimestamp fiveAstrocats = maxMilestone;
 
-    sf::base::U64 tenCats      = maxU64;
-    sf::base::U64 tenUnicats   = maxU64;
-    sf::base::U64 tenDevilcats = maxU64;
-    sf::base::U64 tenAstrocats = maxU64;
+    MilestoneTimestamp tenCats      = maxMilestone;
+    MilestoneTimestamp tenUnicats   = maxMilestone;
+    MilestoneTimestamp tenDevilcats = maxMilestone;
+    MilestoneTimestamp tenAstrocats = maxMilestone;
 
-    sf::base::U64 prestigeLevel1  = maxU64;
-    sf::base::U64 prestigeLevel2  = maxU64;
-    sf::base::U64 prestigeLevel3  = maxU64;
-    sf::base::U64 prestigeLevel4  = maxU64;
-    sf::base::U64 prestigeLevel5  = maxU64;
-    sf::base::U64 prestigeLevel10 = maxU64;
-    sf::base::U64 prestigeLevel15 = maxU64;
-    sf::base::U64 prestigeLevel20 = maxU64;
+    MilestoneTimestamp prestigeLevel1  = maxMilestone;
+    MilestoneTimestamp prestigeLevel2  = maxMilestone;
+    MilestoneTimestamp prestigeLevel3  = maxMilestone;
+    MilestoneTimestamp prestigeLevel4  = maxMilestone;
+    MilestoneTimestamp prestigeLevel5  = maxMilestone;
+    MilestoneTimestamp prestigeLevel10 = maxMilestone;
+    MilestoneTimestamp prestigeLevel15 = maxMilestone;
+    MilestoneTimestamp prestigeLevel20 = maxMilestone;
 
-    sf::base::U64 revenue10000      = maxU64;
-    sf::base::U64 revenue100000     = maxU64;
-    sf::base::U64 revenue1000000    = maxU64;
-    sf::base::U64 revenue10000000   = maxU64;
-    sf::base::U64 revenue100000000  = maxU64;
-    sf::base::U64 revenue1000000000 = maxU64;
+    MilestoneTimestamp revenue10000      = maxMilestone;
+    MilestoneTimestamp revenue100000     = maxMilestone;
+    MilestoneTimestamp revenue1000000    = maxMilestone;
+    MilestoneTimestamp revenue10000000   = maxMilestone;
+    MilestoneTimestamp revenue100000000  = maxMilestone;
+    MilestoneTimestamp revenue1000000000 = maxMilestone;
+
+    // TODO: other milestones, achievements for fast milestones
 };

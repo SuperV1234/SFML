@@ -3,6 +3,7 @@
 #include "Aliases.hpp"
 #include "Bubble.hpp"
 #include "Cat.hpp"
+#include "CatConstants.hpp"
 #include "Constants.hpp"
 #include "Milestones.hpp"
 #include "PSVDataConstants.hpp"
@@ -12,44 +13,21 @@
 
 #include "SFML/System/Vector2.hpp"
 
-#include <imgui.h>
+#include <vector>
 
-#include <climits>
-#include <cstdio>
+#include <cmath>
 
 
 ////////////////////////////////////////////////////////////
 struct Playthrough
 {
-    ////////////////////////////////////////////////////////////
-    static inline constexpr float baseCooldowns[nCatTypes]{
-        1000.f,  // Normal
-        3000.f,  // Uni
-        7000.f,  // Devil
-        2000.f,  // Witch
-        10000.f, // Astro
-
-        1.f, // Wizard
-    };
-
-    ////////////////////////////////////////////////////////////
-    static inline constexpr float baseRanges[nCatTypes]{
-        96.f,  // Normal
-        64.f,  // Uni
-        48.f,  // Devil
-        256.f, // Witch
-        48.f,  // Astro
-
-        384.f, // Wizard
-    };
-
     //
     // PSV instances
     PurchasableScalingValue psvComboStartTime{&PSVDataConstants::comboStartTime};
     PurchasableScalingValue psvMapExtension{&PSVDataConstants::mapExtension};
     PurchasableScalingValue psvShrineActivation{&PSVDataConstants::shrineActivation};
     PurchasableScalingValue psvBubbleCount{&PSVDataConstants::bubbleCount};
-    PurchasableScalingValue psvBubbleValue{&PSVDataConstants::bubbleValue}; // prestige
+    PurchasableScalingValue psvBubbleValue{&PSVDataConstants::bubbleValue}; // also tracks prestige level
     PurchasableScalingValue psvExplosionRadiusMult{&PSVDataConstants::explosionRadiusMult};
 
     PurchasableScalingValue psvPerCatType[nCatTypes]{
@@ -83,8 +61,8 @@ struct Playthrough
     // Permanent PSV instances
     PurchasableScalingValue psvPPMultiPopRange{&PSVDataConstants::multiPopRange};
     PurchasableScalingValue psvPPInspireDurationMult{&PSVDataConstants::inspireDurationMult};
-    PurchasableScalingValue psvPPManaCooldownMult{&PSVDataConstants::manaCooldownMult}; // TODO: add button
-    PurchasableScalingValue psvPPManaMaxMult{&PSVDataConstants::manaMaxMult};           // TODO: add button
+    PurchasableScalingValue psvPPManaCooldownMult{&PSVDataConstants::manaCooldownMult};
+    PurchasableScalingValue psvPPManaMaxMult{&PSVDataConstants::manaMaxMult};
 
     //
     // Currencies
@@ -101,9 +79,9 @@ struct Playthrough
 
     //
     // Shrine rewards
-    bool          magicUnlocked = false;
-    float         manaTimer     = 0.f;
-    sf::base::U64 mana          = 0u;
+    bool     magicUnlocked = false;
+    float    manaTimer     = 0.f;
+    ManaType mana          = 0u;
 
     //
     // Permanent purchases
@@ -147,15 +125,13 @@ struct Playthrough
         shrinesSpawned = true;
 
         for (SizeT i = 0u; i < 9u; ++i)
-        {
-            shrines.emplace_back(Shrine{
-                .position              = resolution / 2.f + sf::Vector2f{resolution.x * (i + 1u), 0.f},
+            shrines.push_back({
+                .position              = gameScreenSize / 2.f + sf::Vector2f{gameScreenSize.x * (i + 1u), 0.f},
                 .tcActivation          = {},
                 .tcDeath               = {},
                 .textStatusShakeEffect = {},
                 .type                  = static_cast<ShrineType>(i),
             });
-        }
     }
 
     ////////////////////////////////////////////////////////////
@@ -208,7 +184,7 @@ struct Playthrough
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] constexpr MoneyType getBaseRewardByBubbleType(const BubbleType type) const
+    [[nodiscard]] constexpr MoneyType getComputedRewardByBubbleType(const BubbleType type) const
     {
         constexpr MoneyType baseRewards[nBubbleTypes]{
             1u,  // Normal
@@ -216,20 +192,14 @@ struct Playthrough
             1u,  // Bomb
         };
 
-        return baseRewards[static_cast<U8>(type)];
+        return baseRewards[static_cast<U8>(type)] * static_cast<MoneyType>(psvBubbleValue.currentValue() + 1.f);
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] constexpr MoneyType getComputedRewardByBubbleType(const BubbleType type) const
-    {
-        return getBaseRewardByBubbleType(type) * static_cast<MoneyType>(psvBubbleValue.currentValue() + 1.f);
-    }
-
-    ////////////////////////////////////////////////////////////
-    [[nodiscard]] constexpr MoneyType getBaseRequiredRewardByShrineType(const ShrineType type) const
+    [[nodiscard, gnu::always_inline]] inline MoneyType getComputedRequiredRewardByShrineType(const ShrineType type) const
     {
         constexpr MoneyType baseRequiredRewards[nShrineTypes]{
-            1'0 /*00*/,    // Magic
+            1'0 /*00*/,    // Magic // TODO
             1'000,         // Clicking
             1'000,         // Automation
             10'000,        // Repulsion
@@ -240,14 +210,8 @@ struct Playthrough
             1'000'000'000, // Victory
         };
 
-        return baseRequiredRewards[static_cast<U8>(type)];
-    }
-
-    ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline MoneyType getComputedRequiredRewardByShrineType(const ShrineType type) const
-    {
         return static_cast<MoneyType>(
-            static_cast<float>(getBaseRequiredRewardByShrineType(type)) * getComputedGlobalCostMultiplier());
+            static_cast<float>(baseRequiredRewards[static_cast<U8>(type)]) * getComputedGlobalCostMultiplier());
     }
 
     ////////////////////////////////////////////////////////////
@@ -271,13 +235,13 @@ struct Playthrough
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline float getComputedCooldownByCatType(const CatType catType)
     {
-        return baseCooldowns[static_cast<U8>(catType)] * getCooldownMultPSVByCatType(catType).currentValue();
+        return CatConstants::baseCooldowns[static_cast<U8>(catType)] * getCooldownMultPSVByCatType(catType).currentValue();
     }
 
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline float getComputedRangeByCatType(const CatType catType)
     {
-        return baseRanges[static_cast<U8>(catType)] / getRangeDivPSVByCatType(catType).currentValue();
+        return CatConstants::baseRanges[static_cast<U8>(catType)] / getRangeDivPSVByCatType(catType).currentValue();
     }
 
     ////////////////////////////////////////////////////////////
@@ -299,9 +263,9 @@ struct Playthrough
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline sf::base::U64 getComputedMaxMana() const
+    [[nodiscard, gnu::always_inline]] inline ManaType getComputedMaxMana() const
     {
-        return static_cast<sf::base::U64>(20.f * psvPPManaMaxMult.currentValue());
+        return static_cast<ManaType>(20.f * psvPPManaMaxMult.currentValue());
     }
 
     ////////////////////////////////////////////////////////////

@@ -1,12 +1,11 @@
 #pragma once
 
-
 #include "SFML/Base/IntTypes.hpp"
 #include "SFML/Base/Optional.hpp"
 
 
 ////////////////////////////////////////////////////////////
-enum class [[nodiscard]] CountdownStatusLoop : sf::base::U8
+enum class [[nodiscard]] CountdownStatusLoop : bool
 {
     Running,
     Looping
@@ -43,12 +42,15 @@ struct [[nodiscard]] Countdown // TODO: turn to free funcs
             value -= deltaTimeMs;
 
             if (value <= 0.f)
+            {
+                value = 0.f;
                 return CountdownStatusStop::JustFinished;
+            }
 
             return CountdownStatusStop::Running;
         }
 
-        value = 0.f;
+        SFML_BASE_ASSERT(value == 0.f);
         return CountdownStatusStop::AlreadyFinished;
     }
 
@@ -83,14 +85,21 @@ struct [[nodiscard]] TargetedCountdown : Countdown
     }
 
     ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline]] float getInvProgress() const
+    {
+        return value / startingValue;
+    }
+
+    ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] float getProgress() const
     {
-        return 1.f - (value / startingValue);
+        return 1.f - getInvProgress();
     }
 
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] bool isDone() const
     {
+        SFML_BASE_ASSERT(value >= 0.f);
         return value == 0.f;
     }
 };
@@ -118,7 +127,6 @@ struct [[nodiscard]] OptionalTargetedCountdown : private sf::base::Optional<Targ
     {
         return *this;
     }
-
 
     ////////////////////////////////////////////////////////////
     [[nodiscard]] const BaseType& asBase() const

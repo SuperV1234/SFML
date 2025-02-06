@@ -2,7 +2,7 @@
 
 
 ////////////////////////////////////////////////////////////
-enum class ControlFlow : bool
+enum class [[nodiscard]] ControlFlow : bool
 {
     Continue,
     Break

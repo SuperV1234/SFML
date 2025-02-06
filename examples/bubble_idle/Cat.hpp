@@ -2,7 +2,6 @@
 
 #include "Aliases.hpp"
 #include "Countdown.hpp"
-#include "LoopingTimer.hpp"
 #include "TextShakeEffect.hpp"
 
 #include "SFML/System/Vector2.hpp"
@@ -30,7 +29,7 @@ enum class [[nodiscard]] CatType : sf::base::U8
 inline constexpr auto nCatTypes = static_cast<sf::base::SizeT>(CatType::Count);
 
 ////////////////////////////////////////////////////////////
-[[nodiscard]] inline constexpr bool isUniqueCatType(const CatType catType) noexcept
+[[nodiscard, gnu::const]] inline constexpr bool isUniqueCatType(const CatType catType) noexcept
 {
     return catType == CatType::Wizard;
 }
@@ -41,8 +40,8 @@ struct [[nodiscard]] Cat
     sf::Vector2f position;
     sf::Vector2f rangeOffset;
 
-    LoopingTimer wobbleTimer;
-    LoopingTimer cooldownTimer;
+    float     wobbleRadians;
+    Countdown cooldown;
 
     sf::Vector2f pawPosition;
     sf::Angle    pawRotation;
@@ -79,20 +78,20 @@ struct [[nodiscard]] Cat
     [[gnu::always_inline]] inline void update(const float deltaTime)
     {
         textStatusShakeEffect.update(deltaTime);
-        (void)wobbleTimer.updateAndLoop(deltaTime * 0.002f, sf::base::tau);
+        wobbleRadians = sf::base::fmod(wobbleRadians + deltaTime * 0.002f, sf::base::tau);
     }
 
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline sf::Vector2f getDrawPosition() const
     {
-        return position + sf::Vector2f{0.f, std::sin(wobbleTimer.value * 2.f) * 7.5f};
+        return position + sf::Vector2f{0.f, std::sin(wobbleRadians * 2.f) * 7.5f};
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline bool updateCooldown(const float maxCooldown, const float deltaTime)
+    [[nodiscard, gnu::always_inline]] inline bool updateCooldown(const float deltaTime)
     {
         const float cooldownSpeed = inspiredCountdown.updateAndIsActive(deltaTime) ? 2.f : 1.f;
-        return cooldownTimer.updateAndStop(deltaTime * cooldownSpeed, maxCooldown);
+        return cooldown.updateAndStop(deltaTime * cooldownSpeed) == CountdownStatusStop::AlreadyFinished;
     }
 
     ////////////////////////////////////////////////////////////
@@ -122,24 +121,3 @@ struct [[nodiscard]] Cat
         return isUniqueCatType(type);
     }
 };
-
-////////////////////////////////////////////////////////////
-[[nodiscard]] inline Cat makeCat(const CatType       catType,
-                                 const sf::Vector2f& position,
-                                 const sf::Vector2f  rangeOffset,
-                                 const SizeT         nameIdx,
-                                 const float         hue)
-{
-    return Cat{.position              = position,
-               .rangeOffset           = rangeOffset,
-               .wobbleTimer           = {},
-               .cooldownTimer         = {},
-               .pawPosition           = position,
-               .pawRotation           = sf::radians(0.f),
-               .hue                   = hue,
-               .inspiredCountdown     = {},
-               .nameIdx               = nameIdx,
-               .textStatusShakeEffect = {},
-               .type                  = catType,
-               .astroState            = {}};
-}

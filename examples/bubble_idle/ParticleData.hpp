@@ -41,7 +41,7 @@ struct [[nodiscard]] ParticleData
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::pure, gnu::always_inline]] inline sf::base::U8 opacityAsAlpha() const
+    [[nodiscard, gnu::always_inline, gnu::pure]] inline sf::base::U8 opacityAsAlpha() const
     {
         return static_cast<sf::base::U8>(opacity * 255.f);
     }

@@ -34,33 +34,28 @@ struct [[nodiscard]] PurchasableScalingValue
             MoneyType       nextCost = 0u;
         } result;
 
-        MoneyType cumulative = 0;
+        MoneyType       cumulative = 0;
+        sf::base::SizeT i          = nPurchases;
 
-        for (sf::base::SizeT i = nPurchases; i < data->nMaxPurchases; ++i)
+        // Try to purchase as many subsequent upgrades as possible.
+        for (; i < data->nMaxPurchases; ++i)
         {
             const auto currentCost = static_cast<MoneyType>(
                 data->cost.computeGrowth(static_cast<float>(i)) * globalMultiplier);
 
-            // Check if we can afford to buy the next upgrade
             if (cumulative + currentCost > money)
                 break;
 
-            // Track cumulative cost and update results
             cumulative += currentCost;
             ++result.times;
             result.maxCost = cumulative;
-
-            // Calculate the cumulative cost for the next potential purchase
-            const auto nextCostCandidate = static_cast<MoneyType>(
-                data->cost.computeGrowth(static_cast<float>(i + 1)) * globalMultiplier);
-            result.nextCost = cumulative + nextCostCandidate;
         }
 
-        // Handle edge case: no purchases possible, but next cost exists
-        if (result.times == 0 && nPurchases < data->nMaxPurchases)
+        // If further purchases are possible, compute the cost for one more.
+        if (nPurchases < data->nMaxPurchases)
         {
-            result.nextCost = static_cast<MoneyType>(
-                data->cost.computeGrowth(static_cast<float>(nPurchases)) * globalMultiplier);
+            result.nextCost = cumulative +
+                              static_cast<MoneyType>(data->cost.computeGrowth(static_cast<float>(i)) * globalMultiplier);
         }
 
         return result;

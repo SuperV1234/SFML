@@ -8,7 +8,7 @@
 
 
 ////////////////////////////////////////////////////////////
-[[nodiscard, gnu::const, gnu::always_inline]] inline constexpr float remap(
+[[nodiscard, gnu::always_inline, gnu::const]] inline constexpr float remap(
     const float x,
     const float oldMin,
     const float oldMax,
@@ -22,7 +22,7 @@
 }
 
 ////////////////////////////////////////////////////////////
-[[nodiscard, gnu::const, gnu::always_inline]] inline constexpr float exponentialApproach(
+[[nodiscard, gnu::always_inline, gnu::const]] inline constexpr float exponentialApproach(
     const float current,
     const float target,
     const float deltaTimeMs,
@@ -36,14 +36,21 @@
 }
 
 ////////////////////////////////////////////////////////////
-[[nodiscard, gnu::const, gnu::always_inline]] inline constexpr sf::Vector2f exponentialApproach(
+[[nodiscard, gnu::always_inline, gnu::const]] inline constexpr sf::Vector2f exponentialApproach(
     const sf::Vector2f current,
     const sf::Vector2f target,
     const float        deltaTimeMs,
     const float        speed)
 {
-    // TODO: this is axis independent
+    // TODO: this is axis independent, should be fixed
 
     return {exponentialApproach(current.x, target.x, deltaTimeMs, speed),
             exponentialApproach(current.y, target.y, deltaTimeMs, speed)};
+}
+
+////////////////////////////////////////////////////////////
+[[nodiscard, gnu::always_inline, gnu::const]] inline constexpr float wrapHue(const float hue)
+{
+    const auto val = hue - static_cast<float>(static_cast<int>(hue / 360.f)) * 360.f;
+    return val >= 0.f ? val : val + 360.f;
 }

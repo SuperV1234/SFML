@@ -1,6 +1,7 @@
 #include "Aliases.hpp"
 #include "Bubble.hpp"
 #include "Cat.hpp"
+#include "CatConstants.hpp"
 #include "CatNames.hpp"
 #include "Constants.hpp"
 #include "ControlFlow.hpp"
@@ -271,11 +272,11 @@ void drawMinimap(sf::Shader&                 shader,
     //
     // Blue rectangle showing current visible area
     const sf::RectangleShape minimapIndicator{
-        {.position         = minimapPos + sf::Vector2f{(gameView.center.x - resolution.x / 2.f) / minimapScale, 0.f},
-         .fillColor        = sf::Color::Transparent,
-         .outlineColor     = sf::Color::Blue,
+        {.position     = minimapPos + sf::Vector2f{(gameView.center.x - gameScreenSize.x / 2.f) / minimapScale, 0.f},
+         .fillColor    = sf::Color::Transparent,
+         .outlineColor = sf::Color::Blue,
          .outlineThickness = 2.f,
-         .size             = resolution / minimapScale}};
+         .size             = gameScreenSize / minimapScale}};
 
     //
     // Convert minimap dimensions to normalized `[0, 1]` range for scissor rectangle
@@ -468,8 +469,8 @@ struct Main
     bool inPrestigeTransition;
 
     ////////////////////////////////////////////////////////////
-    TargetedLoopingTimer bubbleSpawnTimer;
-    TargetedLoopingTimer catRemoveTimer;
+    TargetedCountdown bubbleSpawnTimer;
+    TargetedCountdown catRemoveTimer;
 
     ////////////////////////////////////////////////////////////
     int       combo;
@@ -648,7 +649,20 @@ struct Main
     {
         const auto pos = window.mapPixelToCoords((resolution / 2.f).toVector2i(), gameView);
         spawnParticles(32, pos, ParticleType::Star, 0.5f, 0.75f);
-        return pt.cats.emplace_back(makeCat(catType, pos, rangeOffset, getNextCatNameIdx(), hue));
+
+        return pt.cats.emplace_back(
+            Cat{.position              = pos,
+                .rangeOffset           = rangeOffset,
+                .wobbleRadians         = {},
+                .cooldown              = {.value = pt.getComputedCooldownByCatType(catType)},
+                .pawPosition           = pos,
+                .pawRotation           = sf::radians(0.f),
+                .hue                   = hue,
+                .inspiredCountdown     = {},
+                .nameIdx               = getNextCatNameIdx(),
+                .textStatusShakeEffect = {},
+                .type                  = catType,
+                .astroState            = {}});
     }
 
     ////////////////////////////////////////////////////////////
@@ -1577,7 +1591,7 @@ struct Main
         std::sprintf(tooltipBuffer, "TODO");
         std::sprintf(labelBuffer, "TODO");
         bool done = false;
-        if (makePurchasableButtonOneTimeByCurrency("Spell", done, sf::base::U64{1}, pt.mana, "%llu mana##%u"))
+        if (makePurchasableButtonOneTimeByCurrency("Spell", done, ManaType{1}, pt.mana, "%llu mana##%u"))
         {
             playSound(sounds.cast0);
             spawnParticlesNoGravity(256,
@@ -1673,9 +1687,9 @@ struct Main
             {
                 ImGui::SetWindowFontScale(0.75f);
 
-                const auto doMilestone = [&](const char* name, const sf::base::U64 value)
+                const auto doMilestone = [&](const char* name, const MilestoneTimestamp value)
                 {
-                    if (value == std::numeric_limits<sf::base::U64>::max())
+                    if (value == maxMilestone)
                     {
                         ImGui::Text("%s: N/A", name);
                         return;
@@ -1805,7 +1819,17 @@ struct Main
     {
         statBubblePopped(byHand, reward);
 
-        auto& tp = textParticles.emplace_back(makeTextParticle(position, xCombo));
+        auto& tp = textParticles.emplace_back(
+            TextParticle{.buffer = {},
+                         .data   = {.position = {position.x, position.y - 10.f},
+                                    .velocity = getRndVector2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
+                                    .scale = sf::base::clamp(1.f + 0.1f * static_cast<float>(combo + 1) / 1.75f, 1.f, 3.0f),
+                                    .accelerationY = 0.0042f,
+                                    .opacity       = 1.f,
+                                    .opacityDecay  = 0.00175f,
+                                    .rotation      = 0.f,
+                                    .torque        = getRndFloat(-0.002f, 0.002f)}});
+
         std::snprintf(tp.buffer, sizeof(tp.buffer), "+$%llu", reward);
 
         sounds.pop.setPosition({position.x, position.y});
@@ -1983,7 +2007,7 @@ struct Main
             cat.pawPosition -= diff * 0.01f * deltaTimeMs;
             cat.pawRotation = cat.pawRotation.rotatedTowards(sf::degrees(-45.f), deltaTimeMs * 0.005f);
 
-            if (cat.cooldownTimer.value < 0.f)
+            if (cat.cooldown.value == INFINITY)
             {
                 cat.pawOpacity  = 128.f;
                 cat.mainOpacity = 128.f;
@@ -1993,7 +2017,7 @@ struct Main
                 cat.mainOpacity = 255.f;
             }
 
-            if (cat.cooldownTimer.value == maxCooldown && cat.pawOpacity > 10.f)
+            if (cat.cooldown.value == 0.f && cat.pawOpacity > 10.f)
                 cat.pawOpacity -= 0.5f * deltaTimeMs;
 
             cat.update(deltaTimeMs);
@@ -2071,14 +2095,14 @@ struct Main
                 if (wrapped && cat.position.x <= startX)
                 {
                     cat.astroState.reset();
-                    cat.position.x          = startX;
-                    cat.cooldownTimer.value = 0.f;
+                    cat.position.x     = startX;
+                    cat.cooldown.value = maxCooldown;
                 }
 
                 continue;
             }
 
-            if (!cat.updateCooldown(maxCooldown, deltaTimeMs))
+            if (!cat.updateCooldown(deltaTimeMs))
                 continue;
 
             if (cat.type == CatType::Wizard)
@@ -2125,7 +2149,7 @@ struct Main
                     if ((otherCat.position - cat.position).length() > range)
                         continue;
 
-                    otherCat.cooldownTimer.value = pt.getComputedCooldownByCatType(cat.type);
+                    otherCat.cooldown.value = pt.getComputedCooldownByCatType(cat.type);
                     ++witchHits;
 
                     if (!pawSet && getRndFloat(0.f, 100.f) > 50.f)
@@ -2149,7 +2173,7 @@ struct Main
                     cat.hits += witchHits;
                 }
 
-                cat.cooldownTimer.value = 0.f;
+                cat.cooldown.value = maxCooldown;
                 continue;
             }
 
@@ -2194,7 +2218,7 @@ struct Main
                     ++cat.hits;
                 }
 
-                cat.cooldownTimer.value = 0.f;
+                cat.cooldown.value = maxCooldown;
                 return ControlFlow::Break;
             };
 
@@ -2369,7 +2393,7 @@ struct Main
 
             constexpr float hueRange = 60.f;
 
-            tempSprite.color = hueColor(sf::base::fmod(static_cast<float>(i) * 2.f - hueRange / 2.f, hueRange), 255);
+            tempSprite.color = hueColor(wrapHue(sf::base::fmod(static_cast<float>(i) * 2.f - hueRange / 2.f, hueRange)), 255);
 
             cpuDrawableBatch.add(tempSprite);
         }
@@ -2404,26 +2428,6 @@ struct Main
             &txrWizardCatPaw, // Wizard
         };
 
-        constexpr sf::Color colorsByType[nCatTypes]{
-            {192u, 147u, 109u}, // Normal
-            {129u, 251u, 191u}, // Uni
-            {191u, 61u, 61u},   // Devil
-            {90u, 155u, 48u},   // Witch
-            sf::Color::White,   // Astro
-
-            {123u, 108u, 191u}, // Wizard
-        };
-
-        constexpr const char* catActions[nCatTypes]{
-            "Pops",    // Normal
-            "Shines",  // Uni
-            "IEDs",    // Devil
-            "Hexes",   // Witch
-            "Flights", // Astro
-
-            "Spells", // Wizard
-        };
-
         bool anyCatHovered = false;
 
         for (SizeT i = 0u; i < pt.cats.size(); ++i)
@@ -2445,7 +2449,7 @@ struct Main
             const auto& catPawTxr = *catPawTxrsByType[static_cast<U8>(cat.type)];
 
             const auto maxCooldown  = pt.getComputedCooldownByCatType(cat.type);
-            const auto cooldownDiff = (maxCooldown - cat.cooldownTimer.value);
+            const auto cooldownDiff = (maxCooldown - cat.cooldown.value);
 
             float catRotation = 0.f;
 
@@ -2461,13 +2465,13 @@ struct Main
 
             const auto range    = pt.getComputedRangeByCatType(cat.type);
             const auto alpha    = static_cast<U8>(cat.mainOpacity * opacityMod);
-            const auto catColor = hueColor(cat.hue, alpha);
+            const auto catColor = hueColor(wrapHue(cat.hue), alpha);
 
-            const auto circleAlpha = cat.cooldownTimer.value < 0.f
+            const auto circleAlpha = cat.cooldown.value < 0.f
                                          ? static_cast<U8>(0u)
-                                         : static_cast<U8>(cat.cooldownTimer.value / maxCooldown * 128.f);
+                                         : static_cast<U8>(255.f - (cat.cooldown.value / maxCooldown * 225.f));
 
-            const auto circleColor = colorsByType[static_cast<U8>(cat.type)].withHueMod(cat.hue).withLightness(0.75f);
+            const auto circleColor = CatConstants::colors[static_cast<U8>(cat.type)].withHueMod(cat.hue).withLightness(0.75f);
             const sf::Color outlineColor = circleColor.withLightness(0.25f);
 
             // TODO P1: make it possible to draw a circle directly via batching without any of this stuff,
@@ -2497,7 +2501,7 @@ struct Main
                            .origin      = catPawTxr.size / 2.f,
                            .rotation    = cat.pawRotation,
                            .textureRect = catPawTxr,
-                           .color       = catColor});
+                           .color       = catColor.withAlpha(static_cast<U8>(cat.pawOpacity))});
 
             textNameBuffer.setString(shuffledCatNames[cat.nameIdx]);
             textNameBuffer.position = cat.position + sf::Vector2f{0.f, 48.f};
@@ -2505,7 +2509,8 @@ struct Main
             textNameBuffer.setOutlineColor(outlineColor);
             cpuDrawableBatch.add(textNameBuffer);
 
-            textStatusBuffer.setString(std::to_string(cat.hits) + " " + catActions[static_cast<U8>(cat.type)]);
+            textStatusBuffer.setString(
+                std::to_string(cat.hits) + " " + CatConstants::actionNames[static_cast<U8>(cat.type)]);
             textStatusBuffer.position = cat.position + sf::Vector2f{0.f, 68.f};
             textStatusBuffer.origin   = textStatusBuffer.getLocalBounds().size / 2.f;
             textStatusBuffer.setOutlineColor(outlineColor);
@@ -2839,7 +2844,7 @@ struct Main
 
         if (splashCountdown.updateAndStop(deltaTimeMs) == CountdownStatusStop::AlreadyFinished)
         {
-            if (catRemoveTimer.updateAndLoop(deltaTimeMs))
+            if (catRemoveTimer.updateAndLoop(deltaTimeMs) == CountdownStatusLoop::Looping)
             {
                 if (inPrestigeTransition && !pt.cats.empty())
                 {
@@ -2860,7 +2865,7 @@ struct Main
                 }
             }
 
-            if (bubbleSpawnTimer.updateAndLoop(deltaTimeMs))
+            if (bubbleSpawnTimer.updateAndLoop(deltaTimeMs) == CountdownStatusLoop::Looping)
             {
                 if (inPrestigeTransition)
                 {
@@ -3033,8 +3038,8 @@ struct Main
         {
             if (draggedCat)
             {
-                draggedCat->position = exponentialApproach(draggedCat->position, mousePos, deltaTimeMs, 50.f);
-                draggedCat->cooldownTimer.value = -250.f;
+                draggedCat->position       = exponentialApproach(draggedCat->position, mousePos, deltaTimeMs, 50.f);
+                draggedCat->cooldown.value = INFINITY;
             }
             else
             {
@@ -3064,6 +3069,8 @@ struct Main
         {
             if (draggedCat)
             {
+                draggedCat->cooldown.value = pt.getComputedCooldownByCatType(draggedCat->type);
+
                 playSound(sounds.drop);
                 draggedCat = nullptr;
             }
@@ -3345,26 +3352,6 @@ struct Main
         return true;
     }
 
-    static inline constexpr const char* vertexSrc = R"glsl(
-
-layout(location = 0) uniform mat4 sf_u_mvpMatrix;
-
-layout(location = 0) in vec2 sf_a_position;
-layout(location = 1) in vec4 sf_a_color;
-layout(location = 2) in vec2 sf_a_texCoord;
-
-out vec4 sf_v_color;
-out vec2 sf_v_texCoord;
-
-void main()
-{
-    gl_Position = sf_u_mvpMatrix * vec4(sf_a_position, 0.0, 1.0);
-    sf_v_color = sf_a_color;
-    sf_v_texCoord = sf_a_texCoord;
-}
-
-)glsl";
-
     static inline constexpr const char* fragmentSrc = R"glsl(
 
 layout(location = 2) uniform sampler2D sf_u_texture;
@@ -3422,7 +3409,7 @@ void main()
     graphicsContext{sf::GraphicsContext::create().value()},
 
     // Shader
-    shader{sf::Shader::loadFromMemory(vertexSrc, fragmentSrc).value()},
+    shader{sf::Shader::loadFromMemory(sf::GraphicsContext::getBuiltInShaderVertexSrc(), fragmentSrc).value()},
 
     // Render window
     window{{.size           = resolutionUInt,
@@ -3502,8 +3489,8 @@ void main()
     inPrestigeTransition{false},
 
     // Times for transitions
-    bubbleSpawnTimer{.target = 3.f},
-    catRemoveTimer{.target = 100.f},
+    bubbleSpawnTimer{.startingValue = 3.f},
+    catRemoveTimer{.startingValue = 100.f},
 
     // Combo state
     combo{0},

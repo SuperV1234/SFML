@@ -35,17 +35,17 @@ public:
         m_end   = e;
     }
 
-    [[nodiscard, gnu::pure, gnu::always_inline]] constexpr const T* begin() const noexcept
+    [[nodiscard, gnu::always_inline, gnu::pure]] constexpr const T* begin() const noexcept
     {
         return m_begin;
     }
 
-    [[nodiscard, gnu::pure, gnu::always_inline]] constexpr const T* end() const noexcept
+    [[nodiscard, gnu::always_inline, gnu::pure]] constexpr const T* end() const noexcept
     {
         return m_end;
     }
 
-    [[nodiscard, gnu::pure, gnu::always_inline]] constexpr size_type size() const noexcept
+    [[nodiscard, gnu::always_inline, gnu::pure]] constexpr size_type size() const noexcept
     {
         return static_cast<size_type>(m_end - m_begin);
     }
@@ -56,13 +56,13 @@ private:
 };
 
 template <typename T>
-[[nodiscard, gnu::pure, gnu::always_inline]] constexpr const T* begin(initializer_list<T> il) noexcept
+[[nodiscard, gnu::always_inline, gnu::pure]] constexpr const T* begin(initializer_list<T> il) noexcept
 {
     return il.begin();
 }
 
 template <typename T>
-[[nodiscard, gnu::pure, gnu::always_inline]] constexpr const T* end(initializer_list<T> il) noexcept
+[[nodiscard, gnu::always_inline, gnu::pure]] constexpr const T* end(initializer_list<T> il) noexcept
 {
     return il.end();
 }

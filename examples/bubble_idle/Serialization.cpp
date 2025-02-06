@@ -61,11 +61,11 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Bubble, position, velocity, scale, rotation, 
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Cat, type, position, rangeOffset, wobbleTimer, cooldownTimer, hue, inspiredCountdown, nameIdx, hits);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Cat, type, position, rangeOffset, wobbleRadians, cooldown, hue, inspiredCountdown, nameIdx, hits);
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Shrine, position, wobbleTimer, tcActivation, tcDeath, collectedReward, type);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Shrine, position, wobbleRadians, tcActivation, tcDeath, collectedReward, type);
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
@@ -109,36 +109,6 @@ void to_json(nlohmann::json& j, const OptionalTargetedCountdown& p)
 void from_json(const nlohmann::json& j, OptionalTargetedCountdown& p)
 {
     from_json(j, p.asBase());
-}
-
-////////////////////////////////////////////////////////////
-// NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
-void to_json(nlohmann::json& j, const LoopingTimer& p)
-{
-    j = p.value;
-}
-
-////////////////////////////////////////////////////////////
-// NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
-void from_json(const nlohmann::json& j, LoopingTimer& p)
-{
-    p.value = j;
-}
-
-////////////////////////////////////////////////////////////
-// NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
-void to_json(nlohmann::json& j, const TargetedLoopingTimer& p)
-{
-    j[0] = p.value;
-    j[1] = p.target;
-}
-
-////////////////////////////////////////////////////////////
-// NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
-[[maybe_unused]] void from_json(const nlohmann::json& j, TargetedLoopingTimer& p)
-{
-    p.value  = j[0];
-    p.target = j[1];
 }
 
 ////////////////////////////////////////////////////////////

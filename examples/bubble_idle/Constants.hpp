@@ -6,7 +6,7 @@
 
 
 ////////////////////////////////////////////////////////////
-constexpr sf::Vector2f resolution{1366.f, 768.f};
+constexpr sf::Vector2f resolution{1920.f, 1080.f}; // TODO: make customizable
 constexpr auto         resolutionUInt = resolution.toVector2u();
 
 ////////////////////////////////////////////////////////////
@@ -18,4 +18,3 @@ constexpr sf::Vector2f boundaries{1366.f * 10.f, 768.f};
 
 ////////////////////////////////////////////////////////////
 constexpr sf::Color colorBlueOutline{50u, 84u, 135u};
-constexpr sf::Color colorRedOutline{135u, 50u, 50u};

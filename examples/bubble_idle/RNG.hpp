@@ -36,3 +36,5 @@
 {
     return {getRndFloat(0.f, maxs.x), getRndFloat(0.f, maxs.y)};
 }
+
+// TODO: turn into class and give it a seed

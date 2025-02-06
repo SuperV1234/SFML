@@ -17,8 +17,9 @@ private:
     static inline constexpr float gridSize    = 64.f;
     static inline constexpr float invGridSize = 1.f / gridSize;
 
-    static inline constexpr auto nCellsX = static_cast<SizeT>(boundaries.x * invGridSize) + 1;
-    static inline constexpr auto nCellsY = static_cast<SizeT>(boundaries.y * invGridSize) + 1;
+    static inline constexpr auto nCellsX     = static_cast<SizeT>(boundaries.x * invGridSize) + 1;
+    static inline constexpr auto nCellsY     = static_cast<SizeT>(boundaries.y * invGridSize) + 1;
+    static inline constexpr auto nCellsTotal = nCellsX * nCellsY;
 
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline static constexpr SizeT convert2DTo1D(const SizeT x, const SizeT y, const SizeT width)
@@ -36,7 +37,7 @@ private:
 
         struct Result
         {
-            SizeT xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx;
+            SizeT xStartIdx, yStartIdx, xEndIdx, yEndIdx;
         };
 
         return Result{static_cast<SizeT>(sf::base::max(0.f, minX * invGridSize)),
@@ -54,11 +55,11 @@ public:
     ////////////////////////////////////////////////////////////
     void forEachIndexInRadius(const sf::Vector2f center, const float radius, auto&& func)
     {
-        const auto [xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx] = computeGridRange(center, radius);
+        const auto [xStartIdx, yStartIdx, xEndIdx, yEndIdx] = computeGridRange(center, radius);
 
         // Check all candidate cells
-        for (SizeT cellX = xCellStartIdx; cellX <= xCellEndIdx; ++cellX)
-            for (SizeT cellY = yCellStartIdx; cellY <= yCellEndIdx; ++cellY)
+        for (SizeT cellX = xStartIdx; cellX <= xEndIdx; ++cellX)
+            for (SizeT cellY = yStartIdx; cellY <= yEndIdx; ++cellY)
             {
                 const SizeT cellIdx = convert2DTo1D(cellX, cellY, nCellsX);
 
@@ -76,17 +77,15 @@ public:
     ////////////////////////////////////////////////////////////
     void forEachUniqueIndexPair(auto&& func)
     {
-        for (SizeT ix = 0; ix < nCellsX; ++ix)
-            for (SizeT iy = 0; iy < nCellsY; ++iy)
-            {
-                const SizeT cellIdx = convert2DTo1D(ix, iy, nCellsX);
-                const SizeT start   = m_cellStartIndices[cellIdx];
-                const SizeT end     = m_cellStartIndices[cellIdx + 1];
+        for (SizeT cellIdx = 0; cellIdx < nCellsTotal; ++cellIdx)
+        {
+            const SizeT start = m_cellStartIndices[cellIdx];
+            const SizeT end   = m_cellStartIndices[cellIdx + 1];
 
-                for (SizeT i = start; i < end; ++i)
-                    for (SizeT j = i + 1; j < end; ++j)
-                        func(m_objectIndices[i], m_objectIndices[j]);
-            }
+            for (SizeT i = start; i < end; ++i)
+                for (SizeT j = i + 1; j < end; ++j)
+                    func(m_objectIndices[i], m_objectIndices[j]);
+        }
     }
 
     ////////////////////////////////////////////////////////////
@@ -104,12 +103,11 @@ public:
         // - Calculate how many bubbles will be placed in each grid cell.
         for (auto& bubble : bubbles)
         {
-            const auto [xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx] = computeGridRange(bubble.position,
-                                                                                                   bubble.getRadius());
+            const auto [xStartIdx, yStartIdx, xEndIdx, yEndIdx] = computeGridRange(bubble.position, bubble.getRadius());
 
             // For each cell the bubble covers, increment the count
-            for (SizeT x = xCellStartIdx; x <= xCellEndIdx; ++x)
-                for (SizeT y = yCellStartIdx; y <= yCellEndIdx; ++y)
+            for (SizeT x = xStartIdx; x <= xEndIdx; ++x)
+                for (SizeT y = yStartIdx; y <= yEndIdx; ++y)
                 {
                     const SizeT cellIdx = convert2DTo1D(x, y, nCellsX) + 1; // +1 offsets for prefix sum
                     ++m_cellStartIndices[sf::base::min(cellIdx, m_cellStartIndices.size() - 1)];
@@ -134,13 +132,12 @@ public:
         // - Place the bubble indices into the correct positions in the `m_objectIndices` buffer.
         for (SizeT i = 0; i < bubbles.size(); ++i)
         {
-            const auto& bubble                                                  = bubbles[i];
-            const auto [xCellStartIdx, yCellStartIdx, xCellEndIdx, yCellEndIdx] = computeGridRange(bubble.position,
-                                                                                                   bubble.getRadius());
+            const auto& bubble                                  = bubbles[i];
+            const auto [xStartIdx, yStartIdx, xEndIdx, yEndIdx] = computeGridRange(bubble.position, bubble.getRadius());
 
             // Insert the bubble index into all overlapping cells
-            for (SizeT x = xCellStartIdx; x <= xCellEndIdx; ++x)
-                for (SizeT y = yCellStartIdx; y <= yCellEndIdx; ++y)
+            for (SizeT x = xStartIdx; x <= xEndIdx; ++x)
+                for (SizeT y = yStartIdx; y <= yEndIdx; ++y)
                 {
                     const SizeT cellIdx        = convert2DTo1D(x, y, nCellsX);
                     const SizeT insertPos      = m_cellInsertionPositions[cellIdx]++;

@@ -2,12 +2,10 @@
 
 #include "Aliases.hpp"
 #include "Countdown.hpp"
-#include "LoopingTimer.hpp"
 #include "TextShakeEffect.hpp"
 
 #include "SFML/System/Vector2.hpp"
 
-#include "SFML/Base/Optional.hpp"
 #include "SFML/Base/SizeT.hpp"
 
 
@@ -48,7 +46,7 @@ struct [[nodiscard]] Shrine
 {
     sf::Vector2f position;
 
-    LoopingTimer wobbleTimer{};
+    float wobbleRadians = 0.f;
 
     float mainOpacity = 255.f;
 
@@ -83,14 +81,14 @@ struct [[nodiscard]] Shrine
     [[gnu::always_inline]] inline void update(const float deltaTime)
     {
         textStatusShakeEffect.update(deltaTime);
-        (void)wobbleTimer.updateAndLoop(deltaTime * 0.002f + getDeathProgress() * 0.2f, sf::base::tau);
+        wobbleRadians = sf::base::fmod(wobbleRadians + deltaTime * 0.002f + getDeathProgress() * 0.2f, sf::base::tau);
     }
 
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline sf::Vector2f getDrawPosition() const
     {
-        const sf::Vector2f wobbleOffset{std::cos(wobbleTimer.value) * (7.5f + getDeathProgress() * 128.f),
-                                        std::sin(wobbleTimer.value) * (14.f + getDeathProgress() * 128.f)};
+        const sf::Vector2f wobbleOffset{std::cos(wobbleRadians) * (7.5f + getDeathProgress() * 128.f),
+                                        std::sin(wobbleRadians) * (14.f + getDeathProgress() * 128.f)};
 
         return position + getActivationProgress() * wobbleOffset;
     }

@@ -14,7 +14,7 @@ struct [[nodiscard]] GrowthFactors
     const float finalMult      = 1.f;
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::pure, gnu::always_inline]] inline float computeGrowth(const float n) const
+    [[nodiscard, gnu::always_inline, gnu::pure]] inline constexpr float computeGrowth(const float n) const
     {
         return ((initial + n * multiplicative) * std::pow(exponential, n) + linear * n + flat) * finalMult;
     }
