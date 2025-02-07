@@ -391,7 +391,7 @@ struct Main
     sf::FloatRect txrWizardCat{addImgResourceToAtlas("wizardcat.png")};
     sf::FloatRect txrWizardCatPaw{addImgResourceToAtlas("wizardcatpaw.png")};
     sf::FloatRect txrMouseCat{addImgResourceToAtlas("mousecat.png")};
-    sf::FloatRect txrMouseCatPaw{addImgResourceToAtlas("catpaw.png")}; // TODO P1: paw
+    sf::FloatRect txrMouseCatPaw{addImgResourceToAtlas("mousecatpaw.png")};
 
     ///////////////////////////////////////////////////////////
     // Profile (stores settings)
@@ -3782,9 +3782,9 @@ int main()
 // - consider allowing menu to be outside game view when resizing or in separate widnow
 // - astrocats collide with each other when one flies but the other doesn't
 // - milestone system with time per milestone, also achievements for speedrunning milestones
-// - map expansion witches
 // - map expansion special bubble find
 // - another source of prestige points at prestige max level?
+// - mouse cat could keep up his own combo, and his paw should be a cursor
 
 // x - decouple resolution and "map chunk size"
 // x - genius cats should also be able to only hit bombs
