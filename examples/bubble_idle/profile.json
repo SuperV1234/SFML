@@ -6,13 +6,13 @@
     "playAudioInBackground": true,
     "playComboEndSound": true,
     "statsLifetime": {
-        "bubblesHandPopped": 2235,
-        "bubblesHandPoppedRevenue": 3649633,
-        "bubblesPopped": 33946,
-        "bubblesPoppedRevenue": 10846178,
+        "bubblesHandPopped": 2262,
+        "bubblesHandPoppedRevenue": 3650596,
+        "bubblesPopped": 34050,
+        "bubblesPoppedRevenue": 10848604,
         "explosionRevenue": 5896440,
         "flightRevenue": 3921180,
-        "secondsPlayed": 3335
+        "secondsPlayed": 3429
     },
     "tipsEnabled": true
 }
