@@ -1,18 +1,18 @@
 {
-    "hudScale": 1.0,
-    "masterVolume": 59.0,
-    "minimapScale": 8.430000305175781,
+    "hudScale": 1.2400000095367432,
+    "masterVolume": 79.0,
+    "minimapScale": 10.59000015258789,
     "musicVolume": 43.0,
     "playAudioInBackground": true,
     "playComboEndSound": true,
     "statsLifetime": {
-        "bubblesHandPopped": 195,
-        "bubblesHandPoppedRevenue": 295,
-        "bubblesPopped": 4138,
-        "bubblesPoppedRevenue": 7056,
+        "bubblesHandPopped": 312,
+        "bubblesHandPoppedRevenue": 515,
+        "bubblesPopped": 5008,
+        "bubblesPoppedRevenue": 8029,
         "explosionRevenue": 0,
         "flightRevenue": 0,
-        "secondsPlayed": 955
+        "secondsPlayed": 1690
     },
     "tipsEnabled": true
 }

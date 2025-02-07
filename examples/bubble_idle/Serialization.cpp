@@ -221,6 +221,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     psvMapExtension,
     psvShrineActivation,
     psvBubbleCount,
+    psvSpellCount,
     psvBubbleValue,
     psvExplosionRadiusMult,
 
@@ -245,6 +246,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     magicUnlocked,
     manaTimer,
     mana,
+    absorbingWisdom,
+    wisdom,
 
     multiPopPurchased,
     smartCatsPurchased,

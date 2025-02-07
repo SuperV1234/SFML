@@ -36,7 +36,7 @@ static inline constexpr float baseCooldowns[nCatTypes]{
     2000.f,  // Witch
     10000.f, // Astro
 
-    1.f, // Wizard
+    100.f, // Wizard
 };
 
 ////////////////////////////////////////////////////////////

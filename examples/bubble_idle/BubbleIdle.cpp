@@ -77,6 +77,7 @@
 #include <vector>
 
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 
@@ -1045,10 +1046,7 @@ struct Main
 
             if (pt.mapPurchased)
             {
-                std::sprintf(tooltipBuffer,
-                             "Extend the map further by one screen.\n\nExtending the map will increase the total "
-                             "number of bubbles you can work with, and will also reveal shrines that grant unique cats "
-                             "upon completion.");
+                std::sprintf(tooltipBuffer, "Extend the map further by one screen.");
                 std::sprintf(labelBuffer, "%.2f%%", static_cast<double>(pt.getMapLimit() / boundaries.x * 100.f));
                 makePSVButton("- Extend map", pt.psvMapExtension);
 
@@ -1585,9 +1583,31 @@ struct Main
 
         ImGui::Separator();
 
-        ImGui::Text("Mana: %llu / %llu", pt.mana, pt.getComputedMaxMana());
+        ImGui::Text("Wisdom points: %llu WP", pt.wisdom);
+
+        ImGui::Checkbox("Absorb wisdom", &pt.absorbingWisdom);
+        std::sprintf(tooltipBuffer, "TODO");
+        uiMakeTooltip();
+
+        uiBeginColumns();
+        buttonHueMod = 45.f;
+
+        std::sprintf(tooltipBuffer, "TODO");
+        std::sprintf(labelBuffer, "TODO");
+        (void)makePSVButtonExByCurrency("Discover spell",
+                                        pt.psvSpellCount,
+                                        1u,
+                                        static_cast<MoneyType>(
+                                            pt.getComputedGlobalCostMultiplier() * pt.psvSpellCount.nextCost()),
+                                        pt.wisdom,
+                                        "%s WP##%u");
+
+        buttonHueMod = 0.f;
+        ImGui::Columns(1);
 
         ImGui::Separator();
+
+        ImGui::Text("Mana: %llu / %llu", pt.mana, pt.getComputedMaxMana());
 
         ImGui::Text("Next mana:");
         ImGui::SameLine();
@@ -1597,34 +1617,51 @@ struct Main
 
         ImGui::Separator();
 
-        uiBeginColumns();
-        buttonHueMod = 45.f;
-
-        std::sprintf(tooltipBuffer, "TODO");
-        std::sprintf(labelBuffer, "TODO");
-        bool done = false;
-
-        if (makePurchasableButtonOneTimeByCurrency("Spell", done, ManaType{1}, pt.mana, "%s mana##%u"))
+        if (pt.psvSpellCount.nPurchases == 0)
         {
-            playSound(sounds.cast0);
-            spawnParticlesNoGravity(256, wizardCat.position, ParticleType::Star, rng.getF(0.25f, 1.25f), rng.getF(0.50f, 3.f));
+            ImGui::Text("No spells revealed yet...");
+        }
+        else
+        {
+            ImGui::BeginDisabled(pt.absorbingWisdom);
+            uiBeginColumns();
+            buttonHueMod = 45.f;
 
-            forEachBubbleInRadius(wizardCat.position,
-                                  range,
-                                  [&](Bubble& bubble)
+            //
+            // SPELL 0
+            if (pt.psvSpellCount.nPurchases >= 0)
             {
-                spawnParticles(4, bubble.position, ParticleType::Star, 0.5f, 0.35f);
-                bubble.type = BubbleType::Star;
+                std::sprintf(tooltipBuffer, "TODO");
+                std::sprintf(labelBuffer, "TODO");
+                bool done = false;
+                if (makePurchasableButtonOneTimeByCurrency("Spell", done, ManaType{1}, pt.mana, "%s mana##%u"))
+                {
+                    playSound(sounds.cast0);
+                    spawnParticlesNoGravity(256,
+                                            wizardCat.position,
+                                            ParticleType::Star,
+                                            rng.getF(0.25f, 1.25f),
+                                            rng.getF(0.50f, 3.f));
 
-                return ControlFlow::Continue;
-            });
+                    forEachBubbleInRadius(wizardCat.position,
+                                          range,
+                                          [&](Bubble& bubble)
+                    {
+                        spawnParticles(4, bubble.position, ParticleType::Star, 0.5f, 0.35f);
+                        bubble.type = BubbleType::Star;
 
-            done = false;
-            ++wizardCat.hits;
+                        return ControlFlow::Continue;
+                    });
+
+                    done = false;
+                    ++wizardCat.hits;
+                }
+            }
         }
 
         buttonHueMod = 0.f;
         ImGui::Columns(1);
+        ImGui::EndDisabled();
     }
 
     ////////////////////////////////////////////////////////////
@@ -1826,18 +1863,19 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    void popBubble(const bool         byHand,
-                   const BubbleType   bubbleType,
-                   const MoneyType    reward,
-                   const int          xCombo,
-                   const sf::Vector2f position,
-                   bool               popSoundOverlap)
+    void popBubbleImpl(const bool         byHand,
+                       const BubbleType   bubbleType,
+                       const MoneyType    reward,
+                       const int          xCombo,
+                       const sf::Vector2f position,
+                       const sf::Vector2f tpPosition,
+                       bool               popSoundOverlap)
     {
         statBubblePopped(byHand, reward);
 
         auto& tp = textParticles.emplace_back(
             TextParticle{.buffer = {},
-                         .data   = {.position = {position.x, position.y - 10.f},
+                         .data   = {.position = {tpPosition.x, tpPosition.y - 10.f},
                                     .velocity = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
                                     .scale = sf::base::clamp(1.f + 0.1f * static_cast<float>(combo + 1) / 1.75f, 1.f, 3.0f),
                                     .accelerationY = 0.0042f,
@@ -1876,10 +1914,11 @@ struct Main
 
                 statExplosionRevenue(newReward);
 
-                popBubble(byHand, bubble.type, newReward, 1, bubble.position, /* popSoundOverlap */ false);
-                addReward(newReward);
-                bubble = makeRandomBubble(rng, pt.getMapLimit(), 0.f);
-                bubble.position.y -= bubble.getRadius();
+                popWithRewardAndReplaceBubble(newReward,
+                                              byHand,
+                                              bubble,
+                                              /* combo */ 1,
+                                              /* popSoundOverlap */ false);
 
                 return ControlFlow::Continue;
             };
@@ -1889,11 +1928,9 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    void popWithRewardAndReplaceBubble(const Playthrough& xPt, const bool byHand, Bubble& bubble, int xCombo, bool popSoundOverlap)
+    void popWithRewardAndReplaceBubble(const MoneyType reward, const bool byHand, Bubble& bubble, int xCombo, bool popSoundOverlap)
     {
-        const auto reward = static_cast<MoneyType>(sf::base::ceil(
-            static_cast<float>(xPt.getComputedRewardByBubbleType(bubble.type)) * getComboValueMult(xCombo)));
-
+        Shrine* collectorShrine = nullptr;
         for (Shrine& shrine : pt.shrines)
         {
             const auto diff = bubble.position - shrine.position;
@@ -1902,6 +1939,7 @@ struct Main
             if (diff.length() > shrine.getRange())
                 continue;
 
+            collectorShrine = &shrine;
             shrine.collectedReward += reward;
             shrine.textStatusShakeEffect.bump(rng, 1.5f);
 
@@ -1926,9 +1964,18 @@ struct Main
                                    ParticleType::Bubble);
         }
 
-        popBubble(byHand, bubble.type, reward, xCombo, bubble.position, popSoundOverlap);
-        addReward(reward);
-        bubble = makeRandomBubble(rng, xPt.getMapLimit(), 0.f);
+        popBubbleImpl(byHand,
+                      bubble.type,
+                      reward,
+                      xCombo,
+                      bubble.position,
+                      collectorShrine == nullptr ? bubble.position : collectorShrine->getDrawPosition(),
+                      popSoundOverlap);
+
+        if (collectorShrine == nullptr)
+            addReward(reward);
+
+        bubble = makeRandomBubble(rng, pt.getMapLimit(), 0.f);
         bubble.position.y -= bubble.getRadius();
     };
 
@@ -2076,16 +2123,11 @@ struct Main
 
                     statFlightRevenue(newReward);
 
-                    popBubble(
-                        /* byHand */ false,
-                        bubble.type,
-                        newReward,
-                        /* combo */ 1,
-                        bubble.position,
-                        /* popSoundOverlap */ rng.getF(0.f, 1.f) > 0.75f);
-                    addReward(newReward);
-                    bubble = makeRandomBubble(rng, pt.getMapLimit(), 0.f);
-                    bubble.position.y -= bubble.getRadius();
+                    popWithRewardAndReplaceBubble(newReward,
+                                                  /* byHand */ false,
+                                                  bubble,
+                                                  /* combo */ 1,
+                                                  /* popSoundOverlap */ rng.getF(0.f, 1.f) > 0.75f);
 
                     cat.textStatusShakeEffect.bump(rng, 1.5f);
 
@@ -2118,12 +2160,10 @@ struct Main
                 continue;
             }
 
-            if (!cat.updateCooldown(deltaTimeMs))
-                continue;
-
             if (cat.type == CatType::Wizard)
             {
-                if (rng.getF(0.f, 1.f) > 0.5f)
+                if (pt.absorbingWisdom && rng.getF(0.f, 1.f) > 0.5f)
+                {
                     particles.push_back(
                         {.data = {.position = drawPosition + sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius},
                                   .velocity = rng.getVec2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
@@ -2135,6 +2175,114 @@ struct Main
                                   .torque        = rng.getF(-0.002f, 0.002f)},
                          .hue  = 225.f,
                          .type = ParticleType::Star});
+                }
+            }
+
+            if (!cat.updateCooldown(deltaTimeMs))
+                continue;
+
+            const auto action = [&](Bubble& bubble)
+            {
+                if (cat.type == CatType::Uni && bubble.type != BubbleType::Normal)
+                    return ControlFlow::Continue;
+
+                cat.pawPosition = bubble.position;
+                cat.pawOpacity  = 255.f;
+                cat.pawRotation = (bubble.position - cat.position).angle() + sf::degrees(45);
+
+                if (cat.type == CatType::Uni)
+                {
+                    bubble.type       = BubbleType::Star;
+                    bubble.velocity.y = rng.getF(-0.1f, -0.05f);
+                    sounds.shine.setPosition({bubble.position.x, bubble.position.y});
+                    playSound(sounds.shine);
+
+                    spawnParticles(4, bubble.position, ParticleType::Star, 0.5f, 0.35f);
+
+                    cat.textStatusShakeEffect.bump(rng, 1.5f);
+                    ++cat.hits;
+                }
+                else if (cat.type == CatType::Normal)
+                {
+                    popWithRewardAndReplaceBubble(pt.getComputedRewardByBubbleType(bubble.type),
+                                                  /* byHand */ false,
+                                                  bubble,
+                                                  /* combo */ 1,
+                                                  /* popSoundOverlap */ true);
+
+                    cat.textStatusShakeEffect.bump(rng, 1.5f);
+                    ++cat.hits;
+                }
+                else if (cat.type == CatType::Devil)
+                {
+                    bubble.type = BubbleType::Bomb;
+                    bubble.velocity.y += rng.getF(0.1f, 0.2f);
+                    sounds.makeBomb.setPosition({bubble.position.x, bubble.position.y});
+                    playSound(sounds.makeBomb);
+
+                    spawnParticles(8, bubble.position, ParticleType::Fire, 1.25f, 0.35f);
+
+                    cat.textStatusShakeEffect.bump(rng, 1.5f);
+                    ++cat.hits;
+                }
+
+                cat.cooldown.value = maxCooldown;
+                return ControlFlow::Break;
+            };
+
+            if (cat.type == CatType::Wizard)
+            {
+                if (pt.absorbingWisdom)
+                {
+                    Bubble* starBubble = nullptr;
+
+                    const auto findStarBubble = [&](Bubble& bubble)
+                    {
+                        if (bubble.type != BubbleType::Star)
+                            return ControlFlow::Continue;
+
+                        starBubble = &bubble;
+                        return ControlFlow::Break;
+                    };
+
+                    forEachBubbleInRadius({cx, cy}, range, findStarBubble);
+
+                    if (starBubble != nullptr)
+                    {
+                        Bubble& bubble = *starBubble;
+
+                        cat.pawPosition = bubble.position;
+                        cat.pawOpacity  = 255.f;
+                        cat.pawRotation = (bubble.position - cat.position).angle() + sf::degrees(45);
+
+                        const auto reward = pt.getComputedRewardByBubbleType(bubble.type);
+
+                        auto& tp = textParticles.emplace_back(
+                            TextParticle{.buffer = {},
+                                         .data   = {.position = {drawPosition.x, drawPosition.y - 10.f},
+                                                    .velocity = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
+                                                    .scale    = 1.25f,
+                                                    .accelerationY = 0.0042f,
+                                                    .opacity       = 1.f,
+                                                    .opacityDecay  = 0.00175f,
+                                                    .rotation      = 0.f,
+                                                    .torque        = rng.getF(-0.002f, 0.002f)}});
+
+                        std::snprintf(tp.buffer, sizeof(tp.buffer), "+%llu WP", reward);
+
+                        // TODO P1: change sound
+                        sounds.pop.setPosition({bubble.position.x, bubble.position.y});
+                        sounds.pop.setPitch(1.f);
+                        playSound(sounds.pop);
+
+                        spawnParticlesWithHue(230.f, 16, bubble.position, ParticleType::Star, 0.5f, 0.35f);
+
+                        pt.wisdom += reward;
+                        bubble.type = BubbleType::Normal;
+
+                        cat.cooldown.value = maxCooldown;
+                    }
+                }
 
                 continue;
             }
@@ -2192,51 +2340,6 @@ struct Main
                 cat.cooldown.value = maxCooldown;
                 continue;
             }
-
-            const auto action = [&](Bubble& bubble)
-            {
-                if (cat.type == CatType::Uni && bubble.type != BubbleType::Normal)
-                    return ControlFlow::Continue;
-
-                cat.pawPosition = bubble.position;
-                cat.pawOpacity  = 255.f;
-                cat.pawRotation = (bubble.position - cat.position).angle() + sf::degrees(45);
-
-                if (cat.type == CatType::Uni)
-                {
-                    bubble.type       = BubbleType::Star;
-                    bubble.velocity.y = rng.getF(-0.1f, -0.05f);
-                    sounds.shine.setPosition({bubble.position.x, bubble.position.y});
-                    playSound(sounds.shine);
-
-                    spawnParticles(4, bubble.position, ParticleType::Star, 0.5f, 0.35f);
-
-                    cat.textStatusShakeEffect.bump(rng, 1.5f);
-                    ++cat.hits;
-                }
-                else if (cat.type == CatType::Normal)
-                {
-                    popWithRewardAndReplaceBubble(pt, /* byHand */ false, bubble, /* combo */ 1, /* popSoundOverlap */ true);
-
-                    cat.textStatusShakeEffect.bump(rng, 1.5f);
-                    ++cat.hits;
-                }
-                else if (cat.type == CatType::Devil)
-                {
-                    bubble.type = BubbleType::Bomb;
-                    bubble.velocity.y += rng.getF(0.1f, 0.2f);
-                    sounds.makeBomb.setPosition({bubble.position.x, bubble.position.y});
-                    playSound(sounds.makeBomb);
-
-                    spawnParticles(8, bubble.position, ParticleType::Fire, 1.25f, 0.35f);
-
-                    cat.textStatusShakeEffect.bump(rng, 1.5f);
-                    ++cat.hits;
-                }
-
-                cat.cooldown.value = maxCooldown;
-                return ControlFlow::Break;
-            };
 
             if (cat.type == CatType::Normal && pt.smartCatsPurchased)
             {
@@ -2324,8 +2427,18 @@ struct Main
         // Only check for hover targets during initial press phase
         if (catDragPressDuration <= catDragPressDurationMax)
             for (Cat& cat : pt.cats)
-                if (!cat.isAstroAndInFlight() && (mousePos - cat.position).length() <= cat.getRadius())
-                    hoveredCat = &cat;
+            {
+                if (cat.isAstroAndInFlight())
+                    continue;
+
+                if (cat.type == CatType::Wizard && pt.absorbingWisdom)
+                    continue;
+
+                if ((mousePos - cat.position).length() > cat.getRadius())
+                    continue;
+
+                hoveredCat = &cat;
+            }
 
         if (hoveredCat)
         {
@@ -3173,7 +3286,10 @@ struct Main
                     combo = 1;
                 }
 
-                popWithRewardAndReplaceBubble(pt, /* byHand */ true, bubble, combo, /* popSoundOverlap */ true);
+                const auto reward = static_cast<MoneyType>(sf::base::ceil(
+                    static_cast<float>(pt.getComputedRewardByBubbleType(bubble.type)) * getComboValueMult(combo)));
+
+                popWithRewardAndReplaceBubble(reward, /* byHand */ true, bubble, combo, /* popSoundOverlap */ true);
 
                 if (pt.multiPopEnabled)
                     forEachBubbleInRadius(clickPos,
@@ -3181,7 +3297,7 @@ struct Main
                                           [&](Bubble& otherBubble)
                     {
                         if (&otherBubble != &bubble)
-                            popWithRewardAndReplaceBubble(pt,
+                            popWithRewardAndReplaceBubble(reward,
                                                           /* byHand */ true,
                                                           otherBubble,
                                                           combo,

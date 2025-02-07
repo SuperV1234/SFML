@@ -133,4 +133,10 @@ inline constexpr PSVData manaMaxMult //
      .cost          = {.initial = 1.f, .linear = 1.f, .exponential = 1.5f},
      .value         = {.initial = 1.f, .linear = 0.2f}};
 
+// TODO: balance
+inline constexpr PSVData spellCount //
+    {.nMaxPurchases = 4u,
+     .cost          = {.initial = 75.f, .linear = 1500.f, .exponential = 2.5f},
+     .value         = {.initial = 0.f, .linear = 1.f}};
+
 } // namespace PSVDataConstants

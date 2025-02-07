@@ -33,6 +33,7 @@ struct Playthrough
     PurchasableScalingValue psvMapExtension{&PSVDataConstants::mapExtension};
     PurchasableScalingValue psvShrineActivation{&PSVDataConstants::shrineActivation};
     PurchasableScalingValue psvBubbleCount{&PSVDataConstants::bubbleCount};
+    PurchasableScalingValue psvSpellCount{&PSVDataConstants::spellCount};
     PurchasableScalingValue psvBubbleValue{&PSVDataConstants::bubbleValue}; // also tracks prestige level
     PurchasableScalingValue psvExplosionRadiusMult{&PSVDataConstants::explosionRadiusMult};
 
@@ -85,9 +86,11 @@ struct Playthrough
 
     //
     // Shrine rewards
-    bool     magicUnlocked = false;
-    float    manaTimer     = 0.f;
-    ManaType mana          = 0u;
+    bool      magicUnlocked   = false;
+    float     manaTimer       = 0.f;
+    ManaType  mana            = 0u;
+    bool      absorbingWisdom = false;
+    MoneyType wisdom          = 0u;
 
     //
     // Permanent purchases
@@ -147,6 +150,7 @@ struct Playthrough
         psvMapExtension.nPurchases        = 0u;
         psvShrineActivation.nPurchases    = 0u;
         psvBubbleCount.nPurchases         = 0u;
+        psvSpellCount.nPurchases          = 0u;
         psvExplosionRadiusMult.nPurchases = 0u;
 
         for (auto& psv : psvPerCatType)
@@ -164,9 +168,11 @@ struct Playthrough
         comboPurchased = false;
         mapPurchased   = false;
 
-        magicUnlocked = false;
-        manaTimer     = 0.f;
-        mana          = 0u;
+        magicUnlocked   = false;
+        manaTimer       = 0.f;
+        mana            = 0u;
+        absorbingWisdom = false;
+        wisdom          = 0u;
 
         windEnabled = false;
 
