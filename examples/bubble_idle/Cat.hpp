@@ -21,6 +21,7 @@ enum class [[nodiscard]] CatType : sf::base::U8
     Astro  = 4u,
 
     Wizard = 5u,
+    Mouse  = 6u,
 
     Count
 };
@@ -31,7 +32,7 @@ inline constexpr auto nCatTypes = static_cast<sf::base::SizeT>(CatType::Count);
 ////////////////////////////////////////////////////////////
 [[nodiscard, gnu::const]] inline constexpr bool isUniqueCatType(const CatType catType) noexcept
 {
-    return catType == CatType::Wizard;
+    return catType >= CatType::Wizard;
 }
 
 ////////////////////////////////////////////////////////////

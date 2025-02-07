@@ -248,6 +248,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     mana,
     absorbingWisdom,
     wisdom,
+    arcaneAuraTimer,
 
     multiPopPurchased,
     smartCatsPurchased,

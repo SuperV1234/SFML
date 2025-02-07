@@ -70,6 +70,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <array>
 #include <iostream>
 #include <random>
@@ -389,6 +390,8 @@ struct Main
     sf::FloatRect txrShrine{addImgResourceToAtlas("shrine.png")};
     sf::FloatRect txrWizardCat{addImgResourceToAtlas("wizardcat.png")};
     sf::FloatRect txrWizardCatPaw{addImgResourceToAtlas("wizardcatpaw.png")};
+    sf::FloatRect txrMouseCat{addImgResourceToAtlas("mousecat.png")};
+    sf::FloatRect txrMouseCatPaw{addImgResourceToAtlas("catpaw.png")}; // TODO P1: paw
 
     ///////////////////////////////////////////////////////////
     // Profile (stores settings)
@@ -816,6 +819,8 @@ struct Main
     template <typename T>
     static std::string toStringWithSeparators(const T value)
     {
+        // TODO P1: optimize to use buffer and return const char*
+
         std::string str = std::to_string(value);
 
         for (int i = static_cast<int>(str.size()) - 3; i > 0; i -= 3)
@@ -1410,7 +1415,7 @@ struct Main
 
         const auto currentMult = static_cast<SizeT>(pt.psvBubbleValue.currentValue()) + 1u;
 
-        ImGui::Text("(next prestige: $%llu)", nextCost);
+        ImGui::Text("(next prestige: $%s)", toStringWithSeparators(nextCost).c_str());
 
         if (maxCost == 0u)
             ImGui::Text("- not enough money to prestige");
@@ -1562,24 +1567,40 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    void uiTabBarMagic()
+    [[nodiscard]] bool isWizardBusy() const
     {
-        ImGui::SetWindowFontScale(normalFontScale);
+        return pt.absorbingWisdom;
+    }
 
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] Cat* findWizard()
+    {
         const auto wizardCatIt = sf::base::findIf(pt.cats.begin(),
                                                   pt.cats.end(),
                                                   [](const Cat& cat) { return cat.type == CatType::Wizard; });
 
         if (wizardCatIt == pt.cats.end())
+            return nullptr;
+
+        return &*wizardCatIt;
+    }
+
+    ////////////////////////////////////////////////////////////
+    void uiTabBarMagic()
+    {
+        ImGui::SetWindowFontScale(normalFontScale);
+
+        Cat* wizardCat = findWizard();
+
+        if (wizardCat == nullptr)
         {
             ImGui::Text("The wizard cat is missing!");
             return;
         }
 
-        Cat&       wizardCat = *wizardCatIt;
-        const auto range     = pt.getComputedRangeByCatType(CatType::Wizard);
+        const auto range = pt.getComputedRangeByCatType(CatType::Wizard);
 
-        ImGui::Text("Your wizard is %s!", shuffledCatNames[wizardCat.nameIdx].c_str());
+        ImGui::Text("Your wizard is %s!", shuffledCatNames[wizardCat->nameIdx].c_str());
 
         ImGui::Separator();
 
@@ -1623,7 +1644,7 @@ struct Main
         }
         else
         {
-            ImGui::BeginDisabled(pt.absorbingWisdom);
+            ImGui::BeginDisabled(isWizardBusy());
             uiBeginColumns();
             buttonHueMod = 45.f;
 
@@ -1634,16 +1655,17 @@ struct Main
                 std::sprintf(tooltipBuffer, "TODO");
                 std::sprintf(labelBuffer, "TODO");
                 bool done = false;
+                // TODO: give it a name, also make it ignore bombs
                 if (makePurchasableButtonOneTimeByCurrency("Spell", done, ManaType{1}, pt.mana, "%s mana##%u"))
                 {
                     playSound(sounds.cast0);
                     spawnParticlesNoGravity(256,
-                                            wizardCat.position,
+                                            wizardCat->position,
                                             ParticleType::Star,
                                             rng.getF(0.25f, 1.25f),
                                             rng.getF(0.50f, 3.f));
 
-                    forEachBubbleInRadius(wizardCat.position,
+                    forEachBubbleInRadius(wizardCat->position,
                                           range,
                                           [&](Bubble& bubble)
                     {
@@ -1654,14 +1676,37 @@ struct Main
                     });
 
                     done = false;
-                    ++wizardCat.hits;
+                    ++wizardCat->hits;
                 }
             }
-        }
 
-        buttonHueMod = 0.f;
-        ImGui::Columns(1);
-        ImGui::EndDisabled();
+            //
+            // SPELL 0
+            if (pt.psvSpellCount.nPurchases >= 2)
+            {
+                std::sprintf(tooltipBuffer, "TODO");
+                std::sprintf(labelBuffer, "%.2fs", static_cast<double>(pt.arcaneAuraTimer / 1000.f));
+                bool done = false;
+                if (makePurchasableButtonOneTimeByCurrency("Arcane aura", done, ManaType{1}, pt.mana, "%s mana##%u"))
+                {
+                    playSound(sounds.cast0);
+                    spawnParticlesNoGravity(256,
+                                            wizardCat->position,
+                                            ParticleType::Star,
+                                            rng.getF(0.25f, 1.25f),
+                                            rng.getF(0.50f, 3.f));
+
+                    pt.arcaneAuraTimer += 5000.f;
+
+                    done = false;
+                    ++wizardCat->hits;
+                }
+            }
+
+            buttonHueMod = 0.f;
+            ImGui::Columns(1);
+            ImGui::EndDisabled();
+        }
     }
 
     ////////////////////////////////////////////////////////////
@@ -1684,20 +1729,21 @@ struct Main
             ImGui::Spacing();
             ImGui::Spacing();
 
-            ImGui::Text("Bubbles popped: %llu", stats.bubblesPopped);
+            ImGui::Text("Bubbles popped: %s", toStringWithSeparators(stats.bubblesPopped).c_str());
             ImGui::Indent();
-            ImGui::Text("Clicked: %llu", stats.bubblesHandPopped);
-            ImGui::Text("By cats: %llu", stats.bubblesPopped - stats.bubblesHandPopped);
+            ImGui::Text("Clicked: %s", toStringWithSeparators(stats.bubblesHandPopped).c_str());
+            ImGui::Text("By cats: %s", toStringWithSeparators(stats.bubblesPopped - stats.bubblesHandPopped).c_str());
             ImGui::Unindent();
 
             ImGui::NextColumn();
 
-            ImGui::Text("Revenue: $%llu", stats.bubblesPoppedRevenue);
+            ImGui::Text("Revenue: $%s", toStringWithSeparators(stats.bubblesPoppedRevenue).c_str());
             ImGui::Indent();
-            ImGui::Text("Clicked: $%llu", stats.bubblesHandPoppedRevenue);
-            ImGui::Text("By cats: $%llu", stats.bubblesPoppedRevenue - stats.bubblesHandPoppedRevenue);
-            ImGui::Text("Bombs:  $%llu", stats.explosionRevenue);
-            ImGui::Text("Flights: $%llu", stats.flightRevenue);
+            ImGui::Text("Clicked: $%s", toStringWithSeparators(stats.bubblesHandPoppedRevenue).c_str());
+            ImGui::Text("By cats: $%s",
+                        toStringWithSeparators(stats.bubblesPoppedRevenue - stats.bubblesHandPoppedRevenue).c_str());
+            ImGui::Text("Bombs:  $%s", toStringWithSeparators(stats.explosionRevenue).c_str());
+            ImGui::Text("Flights: $%s", toStringWithSeparators(stats.flightRevenue).c_str());
             ImGui::Unindent();
 
             ImGui::Columns(1);
@@ -1808,6 +1854,19 @@ struct Main
         ImGui::SetWindowFontScale(normalFontScale);
     }
 
+    [[nodiscard]] MoneyType computeFinalReward(const sf::Vector2f bubblePosition, const MoneyType computedReward, const bool applyCombo)
+    {
+        Cat* wizardCat = findWizard();
+
+        const bool inRangeOfWizard = wizardCat != nullptr && (wizardCat->position - bubblePosition).length() <=
+                                                                 pt.getComputedRangeByCatType(CatType::Wizard);
+
+        const float comboValueMult = applyCombo ? getComboValueMult(combo) : 1.f;
+        const float arcaneAuraMult = (pt.arcaneAuraTimer > 0.f && inRangeOfWizard) ? 5.f : 1.f;
+
+        return static_cast<MoneyType>(sf::base::ceil(static_cast<float>(computedReward) * comboValueMult * arcaneAuraMult));
+    }
+
     ////////////////////////////////////////////////////////////
     void uiTabBarSettings()
     {
@@ -1910,7 +1969,9 @@ struct Main
                 if (bubble.type == BubbleType::Bomb)
                     return ControlFlow::Continue;
 
-                const MoneyType newReward = pt.getComputedRewardByBubbleType(bubble.type) * 10u;
+                const MoneyType newReward = computeFinalReward(bubble.position,
+                                                               pt.getComputedRewardByBubbleType(bubble.type) * 10u,
+                                                               /* applyCombo */ false);
 
                 statExplosionRevenue(newReward);
 
@@ -2038,7 +2099,8 @@ struct Main
                 if (sf::base::fabs(bubble.velocity.x) > 0.04f)
                     bubble.velocity.x = 0.04f;
 
-                bubble.type = BubbleType::Normal;
+                bubble.type     = BubbleType::Normal;
+                bubble.rotation = 0.f;
             }
             else if (pos.y + radius < 0.f)
                 pos.y = boundaries.y + radius;
@@ -2119,7 +2181,9 @@ struct Main
 
                 const auto astroPopAction = [&](Bubble& bubble)
                 {
-                    const MoneyType newReward = pt.getComputedRewardByBubbleType(bubble.type) * 20u;
+                    const MoneyType newReward = computeFinalReward(bubble.position,
+                                                                   pt.getComputedRewardByBubbleType(bubble.type) * 20u,
+                                                                   /* applyCombo */ false);
 
                     statFlightRevenue(newReward);
 
@@ -2162,7 +2226,7 @@ struct Main
 
             if (cat.type == CatType::Wizard)
             {
-                if (pt.absorbingWisdom && rng.getF(0.f, 1.f) > 0.5f)
+                if (isWizardBusy() && rng.getF(0.f, 1.f) > 0.5f)
                 {
                     particles.push_back(
                         {.data = {.position = drawPosition + sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius},
@@ -2204,7 +2268,9 @@ struct Main
                 }
                 else if (cat.type == CatType::Normal)
                 {
-                    popWithRewardAndReplaceBubble(pt.getComputedRewardByBubbleType(bubble.type),
+                    popWithRewardAndReplaceBubble(computeFinalReward(bubble.position,
+                                                                     pt.getComputedRewardByBubbleType(bubble.type),
+                                                                     /* applyCombo */ false),
                                                   /* byHand */ false,
                                                   bubble,
                                                   /* combo */ 1,
@@ -2236,6 +2302,15 @@ struct Main
                 {
                     Bubble* starBubble = nullptr;
 
+                    const auto findRotatedStarBubble = [&](Bubble& bubble)
+                    {
+                        if (bubble.type != BubbleType::Star || bubble.rotation == 0.f)
+                            return ControlFlow::Continue;
+
+                        starBubble = &bubble;
+                        return ControlFlow::Break;
+                    };
+
                     const auto findStarBubble = [&](Bubble& bubble)
                     {
                         if (bubble.type != BubbleType::Star)
@@ -2245,7 +2320,10 @@ struct Main
                         return ControlFlow::Break;
                     };
 
-                    forEachBubbleInRadius({cx, cy}, range, findStarBubble);
+                    forEachBubbleInRadius({cx, cy}, range, findRotatedStarBubble);
+
+                    if (starBubble == nullptr)
+                        forEachBubbleInRadius({cx, cy}, range, findStarBubble);
 
                     if (starBubble != nullptr)
                     {
@@ -2255,32 +2333,39 @@ struct Main
                         cat.pawOpacity  = 255.f;
                         cat.pawRotation = (bubble.position - cat.position).angle() + sf::degrees(45);
 
-                        const auto reward = pt.getComputedRewardByBubbleType(bubble.type);
+                        bubble.rotation += deltaTimeMs * 0.025f;
+                        spawnParticlesWithHue(230.f, 1, bubble.position, ParticleType::Star, 0.5f, 0.35f);
 
-                        auto& tp = textParticles.emplace_back(
-                            TextParticle{.buffer = {},
-                                         .data   = {.position = {drawPosition.x, drawPosition.y - 10.f},
-                                                    .velocity = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
-                                                    .scale    = 1.25f,
-                                                    .accelerationY = 0.0042f,
-                                                    .opacity       = 1.f,
-                                                    .opacityDecay  = 0.00175f,
-                                                    .rotation      = 0.f,
-                                                    .torque        = rng.getF(-0.002f, 0.002f)}});
+                        if (bubble.rotation >= sf::base::tau)
+                        {
+                            const auto wisdomReward = pt.getComputedRewardByBubbleType(bubble.type);
 
-                        std::snprintf(tp.buffer, sizeof(tp.buffer), "+%llu WP", reward);
+                            auto& tp = textParticles.emplace_back(
+                                TextParticle{.buffer = {},
+                                             .data   = {.position = {drawPosition.x, drawPosition.y - 10.f},
+                                                        .velocity = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
+                                                        .scale         = 1.25f,
+                                                        .accelerationY = 0.0042f,
+                                                        .opacity       = 1.f,
+                                                        .opacityDecay  = 0.00175f,
+                                                        .rotation      = 0.f,
+                                                        .torque        = rng.getF(-0.002f, 0.002f)}});
 
-                        // TODO P1: change sound
-                        sounds.pop.setPosition({bubble.position.x, bubble.position.y});
-                        sounds.pop.setPitch(1.f);
-                        playSound(sounds.pop);
+                            std::snprintf(tp.buffer, sizeof(tp.buffer), "+%llu WP", wisdomReward);
 
-                        spawnParticlesWithHue(230.f, 16, bubble.position, ParticleType::Star, 0.5f, 0.35f);
+                            // TODO P1: change sound
+                            sounds.pop.setPosition({bubble.position.x, bubble.position.y});
+                            sounds.pop.setPitch(1.f);
+                            playSound(sounds.pop);
 
-                        pt.wisdom += reward;
-                        bubble.type = BubbleType::Normal;
+                            spawnParticlesWithHue(230.f, 16, bubble.position, ParticleType::Star, 0.5f, 0.35f);
 
-                        cat.cooldown.value = maxCooldown;
+                            pt.wisdom += wisdomReward;
+                            bubble.type     = BubbleType::Normal;
+                            bubble.rotation = 0.f;
+
+                            cat.cooldown.value = maxCooldown;
+                        }
                     }
                 }
 
@@ -2431,7 +2516,7 @@ struct Main
                 if (cat.isAstroAndInFlight())
                     continue;
 
-                if (cat.type == CatType::Wizard && pt.absorbingWisdom)
+                if (cat.type == CatType::Wizard && isWizardBusy())
                     continue;
 
                 if ((mousePos - cat.position).length() > cat.getRadius())
@@ -2533,13 +2618,22 @@ struct Main
                     {
                         playSound(sounds.woosh);
 
-                        // TODO: handle shrine death rewards
-                        auto& c    = spawnCat(gameView, CatType::Wizard, {0.f, 0.f}, /* hue */ 0.f);
-                        c.position = shrine.position;
+                        // TODO P0: handle all shrine death rewards
+                        if (shrine.type == ShrineType::Magic)
+                        {
+                            auto& c    = spawnCat(gameView, CatType::Wizard, {0.f, 0.f}, /* hue */ 0.f);
+                            c.position = shrine.position;
 
-                        pt.magicUnlocked = true;
+                            pt.magicUnlocked = true;
+                            doTip("TODO: wizard tip");
+                        }
+                        else if (shrine.type == ShrineType::Clicking)
+                        {
+                            auto& c    = spawnCat(gameView, CatType::Mouse, {0.f, 0.f}, /* hue */ 0.f);
+                            c.position = shrine.position;
 
-                        doTip("TODO: wizard tip");
+                            doTip("TODO: mouse tip");
+                        }
                     }
                     else if (cdStatus == CountdownStatusStop::Running)
                     {
@@ -2581,6 +2675,12 @@ struct Main
 
             if (pt.mana < pt.getComputedMaxMana())
                 pt.mana += 1u;
+        }
+
+        if (pt.arcaneAuraTimer > 0.f)
+        {
+            pt.arcaneAuraTimer -= deltaTimeMs;
+            pt.arcaneAuraTimer = sf::base::max(pt.arcaneAuraTimer, 0.f);
         }
     }
 
@@ -2723,6 +2823,7 @@ struct Main
             astroCatTxr,  // Astro
 
             &txrWizardCat, // Wizard
+            &txrMouseCat,  // Mouse
         };
 
         const sf::FloatRect* const catPawTxrsByType[nCatTypes]{
@@ -2733,6 +2834,7 @@ struct Main
             &txrWhiteDot,    // Astro
 
             &txrWizardCatPaw, // Wizard
+            &txrMouseCatPaw,  // Mouse
         };
 
         bool anyCatHovered = false;
@@ -2754,7 +2856,7 @@ struct Main
             const auto& catPawTxr = *catPawTxrsByType[static_cast<U8>(cat.type)];
 
             const auto maxCooldown  = pt.getComputedCooldownByCatType(cat.type);
-            const auto cooldownDiff = (maxCooldown - cat.cooldown.value);
+            const auto cooldownDiff = cat.cooldown.value;
 
             float catRotation = 0.f;
 
@@ -2868,8 +2970,8 @@ struct Main
 
             if (shrine.isActive())
             {
-                textStatusBuffer.setString("$" + std::to_string(shrine.collectedReward) + " / $" +
-                                           std::to_string(pt.getComputedRequiredRewardByShrineType(shrine.type)));
+                textStatusBuffer.setString("$" + toStringWithSeparators(shrine.collectedReward) + " / $" +
+                                           toStringWithSeparators(pt.getComputedRequiredRewardByShrineType(shrine.type)));
             }
             else
             {
@@ -3286,9 +3388,9 @@ struct Main
                     combo = 1;
                 }
 
-                const auto reward = static_cast<MoneyType>(sf::base::ceil(
-                    static_cast<float>(pt.getComputedRewardByBubbleType(bubble.type)) * getComboValueMult(combo)));
-
+                const auto reward = computeFinalReward(bubble.position,
+                                                       pt.getComputedRewardByBubbleType(bubble.type),
+                                                       /* applyCombo */ true);
                 popWithRewardAndReplaceBubble(reward, /* byHand */ true, bubble, combo, /* popSoundOverlap */ true);
 
                 if (pt.multiPopEnabled)
@@ -3461,7 +3563,7 @@ struct Main
         const sf::View hudView = createScaledHudView(resolution, profile.hudScale);
         window.setView(hudView);
 
-        moneyText.setString("$" + std::to_string(pt.money));
+        moneyText.setString("$" + toStringWithSeparators(pt.money));
         moneyText.scale  = {0.5f, 0.5f};
         moneyText.origin = moneyText.getLocalBounds().size / 2.f;
 
@@ -3501,7 +3603,7 @@ struct Main
 
         //
         // Minimap
-        if (pt.mapPurchased)
+        if (shouldDrawUI && pt.mapPurchased)
             drawMinimap(shader,
                         profile.minimapScale,
                         pt.getMapLimit(),

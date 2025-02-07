@@ -43,6 +43,8 @@ struct Playthrough
         {&PSVDataConstants::catDevil},
         {&PSVDataConstants::catWitch},
         {&PSVDataConstants::catAstro},
+
+        {&PSVDataConstants::catWizard}, // TODO: unused?
         {&PSVDataConstants::catWizard}, // TODO: unused?
     };
 
@@ -52,6 +54,8 @@ struct Playthrough
         {&PSVDataConstants::catDevilCooldownMult},
         {&PSVDataConstants::catWitchCooldownMult},
         {&PSVDataConstants::catAstroCooldownMult},
+
+        {&PSVDataConstants::catWizardCooldownMult}, // TODO: unused? or change to PP
         {&PSVDataConstants::catWizardCooldownMult}, // TODO: unused? or change to PP
     };
 
@@ -61,6 +65,8 @@ struct Playthrough
         {&PSVDataConstants::catDevilRangeDiv},
         {&PSVDataConstants::catWitchRangeDiv},
         {&PSVDataConstants::catAstroRangeDiv},
+
+        {&PSVDataConstants::catWizardRangeDiv}, // TODO: unused? or change to PP
         {&PSVDataConstants::catWizardRangeDiv}, // TODO: unused? or change to PP
     };
 
@@ -85,12 +91,13 @@ struct Playthrough
     bool mapPurchased   = false;
 
     //
-    // Shrine rewards
+    // Magic
     bool      magicUnlocked   = false;
     float     manaTimer       = 0.f;
     ManaType  mana            = 0u;
     bool      absorbingWisdom = false;
     MoneyType wisdom          = 0u;
+    float     arcaneAuraTimer = 0.f;
 
     //
     // Permanent purchases
@@ -173,6 +180,7 @@ struct Playthrough
         mana            = 0u;
         absorbingWisdom = false;
         wisdom          = 0u;
+        arcaneAuraTimer = 0.f;
 
         windEnabled = false;
 
@@ -253,6 +261,9 @@ struct Playthrough
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline float getComputedRangeByCatType(const CatType catType)
     {
+        if (catType == CatType::Wizard && absorbingWisdom)
+            return CatConstants::baseRanges[static_cast<U8>(catType)] / 2.f;
+
         return CatConstants::baseRanges[static_cast<U8>(catType)] / getRangeDivPSVByCatType(catType).currentValue();
     }
 

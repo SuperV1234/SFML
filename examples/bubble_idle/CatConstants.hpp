@@ -15,6 +15,7 @@ inline constexpr sf::Color colors[nCatTypes]{
     sf::Color::White,   // Astro
 
     {123u, 108u, 191u}, // Wizard
+    {175u, 175u, 175u}, // Mouse
 };
 
 ////////////////////////////////////////////////////////////
@@ -26,6 +27,7 @@ inline constexpr const char* actionNames[nCatTypes]{
     "Flights", // Astro
 
     "Spells", // Wizard
+    "Clicks", // Mouse
 };
 
 ////////////////////////////////////////////////////////////
@@ -37,6 +39,7 @@ static inline constexpr float baseCooldowns[nCatTypes]{
     10000.f, // Astro
 
     100.f, // Wizard
+    100.f, // Mouse
 };
 
 ////////////////////////////////////////////////////////////
@@ -48,6 +51,7 @@ static inline constexpr float baseRanges[nCatTypes]{
     48.f,  // Astro
 
     384.f, // Wizard
+    256.f, // Mouse
 };
 
 } // namespace CatConstants
