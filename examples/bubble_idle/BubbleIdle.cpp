@@ -10,6 +10,7 @@
 #include "Easing.hpp"
 #include "HueColor.hpp"
 #include "MathUtils.hpp"
+#include "MemberGuard.hpp"
 #include "Particle.hpp"
 #include "Playthrough.hpp"
 #include "Profile.hpp"
@@ -61,30 +62,29 @@
 #include "SFML/System/Vector2.hpp"
 
 #include "SFML/Base/Algorithm.hpp"
-#include "SFML/Base/Builtins/OffsetOf.hpp"
 #include "SFML/Base/IntTypes.hpp"
 #include "SFML/Base/Macros.hpp"
 #include "SFML/Base/Math/Ceil.hpp"
 #include "SFML/Base/Optional.hpp"
-#include "SFML/Base/TokenPaste.hpp"
+#include "SFML/Base/SizeT.hpp"
 
 #include <imgui.h>
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <iostream>
 #include <random>
 #include <string>
 #include <vector>
 
 #include <cmath>
-#include <cstddef>
 #include <cstdio>
 #include <cstring>
 
 
 ////////////////////////////////////////////////////////////
-#define BUBBLEBYTE_VERSION_STR "v0.0.5"
+#define BUBBLEBYTE_VERSION_STR "v0.0.6"
 
 
 namespace
@@ -143,13 +143,11 @@ bool handleCatShrineCollision(const float deltaTimeMs, Cat& cat, Shrine& shrine)
 ////////////////////////////////////////////////////////////
 [[nodiscard, gnu::always_inline]] inline Bubble makeRandomBubble(RNG& rng, const float mapLimit, const float maxY)
 {
-    const float scaleFactor = rng.getF(0.07f, 0.16f);
-
-    return Bubble{.position = rng.getVec2f({mapLimit, maxY}),
-                  .velocity = rng.getVec2f({-0.1f, -0.1f}, {0.1f, 0.1f}),
-                  .scale    = scaleFactor,
-                  .rotation = 0.f,
-                  .type     = BubbleType::Normal};
+    return {.position = rng.getVec2f({mapLimit, maxY}),
+            .velocity = rng.getVec2f({-0.1f, -0.1f}, {0.1f, 0.1f}),
+            .scale    = rng.getF(0.07f, 0.16f),
+            .rotation = 0.f,
+            .type     = BubbleType::Normal};
 }
 
 ////////////////////////////////////////////////////////////
@@ -247,55 +245,15 @@ void drawSplashScreen(sf::RenderWindow&        window,
                       const sf::Vector2f       resolution,
                       const float              hudScale)
 {
-    const auto alpha = static_cast<U8>(easeInOutSine(splashCountdown.getProgressBounced(easeInOutCubic)) * 255.f);
+    const auto progress = splashCountdown.getProgressBounced(easeInOutCubic);
 
-    window.draw({.position = resolution / 2.f / hudScale,
-                 .scale    = sf::Vector2f{0.7f, 0.7f} *
-                          (0.35f + 0.65f * easeInOutCubic(splashCountdown.getProgressBounced(easeInOutCubic))) / hudScale,
+    window.draw({.position    = resolution / 2.f / hudScale,
+                 .scale       = sf::Vector2f{0.7f, 0.7f} * (0.35f + 0.65f * easeInOutCubic(progress)) / hudScale,
                  .origin      = txLogo.getSize().toVector2f() / 2.f,
                  .textureRect = txLogo.getRect(),
-                 .color       = sf::Color::White.withAlpha(alpha)},
+                 .color       = sf::Color::White.withAlpha(static_cast<U8>(easeInOutSine(progress) * 255.f))},
                 txLogo);
 }
-
-////////////////////////////////////////////////////////////
-template <typename This, auto Fn>
-struct MemberInitGuard
-{
-    This* thisPtr;
-
-    MemberInitGuard(This* ptr) : thisPtr(ptr)
-    {
-        Fn(*thisPtr);
-    }
-};
-
-////////////////////////////////////////////////////////////
-#define MEMBER_INIT_GUARD(type, ...) \
-    MemberInitGuard<type, [](auto& self) __VA_ARGS__> SFML_BASE_TOKEN_PASTE(_scopeGuard, __LINE__) { this }
-
-////////////////////////////////////////////////////////////
-template <typename This, auto Fn>
-struct MemberScopeGuard
-{
-    This* thisPtr;
-
-    MemberScopeGuard(This* ptr) : thisPtr{ptr}
-    {
-    }
-
-    MemberScopeGuard(const MemberScopeGuard&) = delete;
-    MemberScopeGuard(MemberScopeGuard&&)      = delete;
-
-    ~MemberScopeGuard()
-    {
-        Fn(*thisPtr);
-    }
-};
-
-////////////////////////////////////////////////////////////
-#define MEMBER_SCOPE_GUARD(type, ...) \
-    MemberScopeGuard<type, [](auto& self) __VA_ARGS__> SFML_BASE_TOKEN_PASTE(_scopeGuard, __LINE__) { this }
 
 } // namespace
 
@@ -417,7 +375,7 @@ struct Main
                                .characterSize    = 64u,
                                .fillColor        = sf::Color::White,
                                .outlineColor     = colorBlueOutline,
-                               .outlineThickness = 2.f}};
+                               .outlineThickness = 4.f}};
     TextShakeEffect moneyTextShakeEffect;
 
     ////////////////////////////////////////////////////////////
@@ -428,7 +386,7 @@ struct Main
                                .characterSize    = 48u,
                                .fillColor        = sf::Color::White,
                                .outlineColor     = colorBlueOutline,
-                               .outlineThickness = 1.5f}};
+                               .outlineThickness = 3.f}};
     TextShakeEffect comboTextShakeEffect;
 
     ////////////////////////////////////////////////////////////
@@ -513,12 +471,16 @@ struct Main
                             {.characterSize    = 48u,
                              .fillColor        = sf::Color::White,
                              .outlineColor     = colorBlueOutline,
-                             .outlineThickness = 1.5f}};
+                             .outlineThickness = 3.f}};
     sf::Text textStatusBuffer{fontSuperBakery,
                               {.characterSize    = 32u,
                                .fillColor        = sf::Color::White,
                                .outlineColor     = colorBlueOutline,
-                               .outlineThickness = 1.f}};
+                               .outlineThickness = 2.f}};
+
+    ////////////////////////////////////////////////////////////
+    // Bubble index buffer
+    std::vector<SizeT> bubbleIndexBuffer;
 
     ////////////////////////////////////////////////////////////
     [[nodiscard]] SizeT getNextCatNameIdx()
@@ -545,6 +507,17 @@ struct Main
     {
         for (SizeT i = 0; i < n; ++i)
             particles.emplace_back(makeParticle(rng, SFML_BASE_FORWARD(args)...)).data.accelerationY = 0.f;
+    }
+
+    ////////////////////////////////////////////////////////////
+    void spawnParticlesWithHueNoGravity(const float hue, const SizeT n, auto&&... args)
+    {
+        for (SizeT i = 0; i < n; ++i)
+        {
+            auto& p              = particles.emplace_back(makeParticle(rng, SFML_BASE_FORWARD(args)...));
+            p.data.accelerationY = 0.f;
+            p.hue                = hue;
+        }
     }
 
     ////////////////////////////////////////////////////////////
@@ -617,6 +590,31 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
+    const std::vector<SizeT>& getBubbleIndicesInRadius(const sf::Vector2f center, const float radius)
+    {
+        bubbleIndexBuffer.clear();
+        bubbleIndexBuffer.reserve(pt.bubbles.size());
+
+        const float radiusSq = radius * radius;
+
+        spatialGrid.forEachIndexInRadius(center,
+                                         radius,
+                                         [&](const SizeT index)
+        {
+            if ((pt.bubbles[index].position - center).lengthSquared() <= radiusSq)
+                bubbleIndexBuffer.push_back(index);
+
+            return ControlFlow::Continue;
+        });
+
+        std::sort(bubbleIndexBuffer.begin(), bubbleIndexBuffer.end());
+        bubbleIndexBuffer.erase(std::unique(bubbleIndexBuffer.begin(), bubbleIndexBuffer.end()), bubbleIndexBuffer.end());
+        std::shuffle(bubbleIndexBuffer.begin(), bubbleIndexBuffer.end(), rng.getEngine());
+
+        return bubbleIndexBuffer;
+    }
+
+    ////////////////////////////////////////////////////////////
     void forEachBubbleInRadius(const sf::Vector2f center, const float radius, auto&& func)
     {
         const float radiusSq = radius * radius;
@@ -635,10 +633,53 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    void addReward(const MoneyType reward)
+    [[nodiscard]] Bubble* pickRandomBubbleInRadiusMatching(const sf::Vector2f center, const float radius, auto&& predicate)
     {
-        pt.money += reward;
-        moneyTextShakeEffect.bump(rng, 1.f + static_cast<float>(combo) * 0.1f);
+#if 1
+        bubbleIndexBuffer.clear();
+        bubbleIndexBuffer.reserve(pt.bubbles.size());
+
+        const float radiusSq = radius * radius;
+
+        spatialGrid.forEachIndexInRadius(center,
+                                         radius,
+                                         [&](const SizeT index) __attribute__((always_inline, flatten))
+        {
+            if (predicate(pt.bubbles[index]) && (pt.bubbles[index].position - center).lengthSquared() <= radiusSq)
+                bubbleIndexBuffer.push_back(index);
+
+            return ControlFlow::Continue;
+        });
+
+        if (bubbleIndexBuffer.empty())
+            return nullptr;
+
+        return &pt.bubbles[bubbleIndexBuffer[rng.getI<SizeT>(0, bubbleIndexBuffer.size() - 1)]];
+
+#else
+        const float radiusSq = radius * radius;
+
+        const SizeT result = spatialGrid.pickRandomIndexInRadiusMatching(rng,
+                                                                         center,
+                                                                         radius,
+                                                                         [&](const SizeT index)
+                                                                             __attribute__((always_inline, flatten))
+        { return (pt.bubbles[index].position - center).lengthSquared() <= radiusSq && predicate(pt.bubbles[index]); });
+
+        if (result == static_cast<SizeT>(-1u))
+            return nullptr;
+
+        return &pt.bubbles[result];
+#endif
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] Bubble* pickRandomBubbleInRadius(const sf::Vector2f center, const float radius)
+    {
+        return pickRandomBubbleInRadiusMatching(center,
+                                                radius,
+                                                [](const Bubble&) __attribute__((always_inline, flatten))
+        { return true; });
     }
 
     ////////////////////////////////////////////////////////////
@@ -731,6 +772,26 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
+    void uiBeginTooltip() const
+    {
+        const float tooltipWidth = 400.f;
+
+        ImGui::SetNextWindowSizeConstraints(ImVec2(tooltipWidth, 0), ImVec2(tooltipWidth, FLT_MAX));
+
+        ImGui::BeginTooltip();
+        ImGui::PushFont(fontImGuiMouldyCheese);
+        ImGui::SetWindowFontScale(toolTipFontScale);
+    }
+
+    ////////////////////////////////////////////////////////////
+    void uiEndTooltip() const
+    {
+        ImGui::SetWindowFontScale(normalFontScale);
+        ImGui::PopFont();
+        ImGui::EndTooltip();
+    }
+
+    ////////////////////////////////////////////////////////////
     void uiMakeTooltip()
     {
         if (!ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) || std::strlen(tooltipBuffer) == 0u)
@@ -739,17 +800,186 @@ struct Main
         const float tooltipWidth = 400.f;
 
         ImGui::SetNextWindowPos(ImVec2(ImGui::GetMousePos().x - tooltipWidth, ImGui::GetMousePos().y + 20));
-        ImGui::SetNextWindowSizeConstraints(ImVec2(tooltipWidth, 0), ImVec2(tooltipWidth, FLT_MAX));
-
-        ImGui::BeginTooltip();
-        ImGui::PushFont(fontImGuiMouldyCheese);
-        ImGui::SetWindowFontScale(toolTipFontScale);
+        uiBeginTooltip();
 
         ImGui::TextWrapped("%s", tooltipBuffer);
 
-        ImGui::SetWindowFontScale(normalFontScale);
-        ImGui::PopFont();
-        ImGui::EndTooltip();
+        uiEndTooltip();
+    }
+
+    ////////////////////////////////////////////////////////////
+    void uiMakeCatTooltip(const sf::Vector2f mousePos)
+    {
+        Shrine* hoveredShrine = nullptr;
+
+        for (Shrine& shrine : pt.shrines)
+            if ((mousePos - shrine.position).lengthSquared() <= shrine.getRadiusSquared())
+            {
+                hoveredShrine = &shrine;
+                break;
+            }
+
+
+        Cat* hoveredCat = nullptr;
+
+        if (hoveredShrine == nullptr)
+            for (Cat& cat : pt.cats)
+                if ((mousePos - cat.position).lengthSquared() <= cat.getRadiusSquared())
+                {
+                    hoveredCat = &cat;
+                    break;
+                }
+
+        if ((hoveredShrine == nullptr && hoveredCat == nullptr) || std::strlen(tooltipBuffer) == 0u)
+            return;
+
+        ImGui::SetNextWindowPos(ImVec2(getResolution().x - 15.f, getResolution().y - 15.f), 0, ImVec2(1, 1));
+        uiBeginTooltip();
+
+        if (hoveredShrine != nullptr)
+        {
+            constexpr const char* shrineTooltipsByType[nShrineTypes]{
+                R"(
+~~ Shrine Of Magic ~~
+
+Effects: none.
+
+Rewards: wizardcat and magic spells!)",
+                R"(
+~~ Shrine Of Clicking ~~
+
+Effects: TODO P1: complete
+
+Rewards: mousecat and global 1.5x click value multiplier.)",
+                R"(
+~~ Shrine Of Automation ~~
+
+Effects: TODO P1: complete
+
+Rewards: TODO P1: complete)",
+                R"(
+~~ Shrine Of Repulsion ~~
+
+Effects: TODO P1: complete
+
+Rewards: TODO P1: complete)",
+                R"(
+~~ Shrine Of Attraction ~~
+
+Effects: TODO P1: complete
+
+Rewards: TODO P1: complete)",
+                R"(
+~~ Shrine Of Decay ~~
+
+Effects: TODO P1: complete
+
+Rewards: TODO P1: complete)",
+                R"(
+~~ Shrine Of Chaos ~~
+
+Effects: TODO P1: complete
+
+Rewards: TODO P1: complete)",
+                R"(
+~~ Shrine Of Transmutation ~~
+
+Effects: TODO P1: complete
+
+Rewards: TODO P1: complete)",
+                R"(
+~~ Shrine Of Victory ~~
+
+Effects: TODO P1: complete
+
+Rewards: TODO P1: complete)",
+            };
+
+            std::sprintf(tooltipBuffer, "%s", shrineTooltipsByType[static_cast<SizeT>(hoveredShrine->type)] + 1);
+        }
+        else
+        {
+            const char* catNormalTooltip = R"(
+~~ Cat ~~
+
+Pops bubbles or bombs.)";
+
+            if (pt.geniusCatsPurchased)
+            {
+                catNormalTooltip =
+                    R"(
+~~ Genius Cat ~~
+
+Pops bubbles or bombs. Prioritizes bombs, then star bubbles, then normal bubbles. Can be instructed to ignore specific bubble types.)";
+            }
+            else if (pt.smartCatsPurchased)
+            {
+                catNormalTooltip =
+                    R"(
+~~ Smart Cat ~~
+
+Pops bubbles or bombs. Prioritizes bombs and star bubbles over normal bubbles.)";
+            }
+
+            const char* catAstroTooltip = R"(
+~~ Astrocat ~~
+
+Flies across the map, popping bubbles with a x20 multiplier.)";
+
+            if (pt.astroCatInspirePurchased)
+            {
+                catAstroTooltip =
+                    R"(
+~~ Propagandist Astrocat ~~
+
+Flies across the map, popping bubbles with a x20 multiplier.
+
+Inspires other cats to work faster when flying by.)";
+            }
+
+            const char* catTooltipsByType[nCatTypes]{
+                catNormalTooltip,
+                R"(
+~~ Unicat ~~
+
+Transforms bubbles or bombs into star bubbles, worth x25 more.)",
+                R"(
+~~ Devilcat ~~
+
+Transforms bubbles into bombs. Bubbles caught in explosions are worth x10 more.)",
+                R"(
+~~ Witchcat ~~
+(unique cat)
+
+TODO P1: complete)",
+                catAstroTooltip,
+                R"(
+~~ Wizardcat ~~
+(unique cat)
+
+Can cast spells from the 'magic' menu.
+
+Learns new spells by absorbing wisdom from star bubbles.)",
+                R"(
+~~ Mousecat ~~
+(unique cat)
+
+Pops bubbles or bombs, keeping up a combo like for manual popping.
+
+Nearby cats pop bubbles with the same combo value as the mousecat.
+
+Provides a global x1.5 multiplier to all clicked bubbles.
+)",
+            };
+
+
+            SFML_BASE_ASSERT(hoveredCat != nullptr);
+            std::sprintf(tooltipBuffer, "%s", catTooltipsByType[static_cast<SizeT>(hoveredCat->type)] + 1);
+        }
+
+        ImGui::TextWrapped("%s", tooltipBuffer);
+
+        uiEndTooltip();
     }
 
     ////////////////////////////////////////////////////////////
@@ -798,7 +1028,7 @@ struct Main
         else
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wformat-nonliteral"
-            std::sprintf(buffer, currencyFmt, toStringWithSeparators(cost).c_str(), widgetId++);
+            std::sprintf(buffer, currencyFmt, toStringWithSeparators(cost), widgetId++);
 #pragma clang diagnostic pop
 
         ImGui::BeginDisabled(maxedOut || availability < cost || cost == 0u);
@@ -817,16 +1047,45 @@ struct Main
 
     ////////////////////////////////////////////////////////////
     template <typename T>
-    static std::string toStringWithSeparators(const T value)
+    static const char* toStringWithSeparators(const T value)
     {
-        // TODO P1: optimize to use buffer and return const char*
+        // Thread-local buffer to store the result
+        // Size should be 27 (max 20 digits for 64-bit integer + up to 6 separators + null terminator)
+        // Using 32 for addinional safety just in case
+        static thread_local char buffer[32];
 
-        std::string str = std::to_string(value);
+        // First, convert to string from right to left
+        char* end = buffer + sizeof(buffer) - 1;
+        char* ptr = end;
+        *ptr      = '\0';
 
-        for (int i = static_cast<int>(str.size()) - 3; i > 0; i -= 3)
-            str.insert(static_cast<SizeT>(i), ".");
+        // Handle negative numbers
+        const bool isNegative = value < 0;
+        T          absValue   = isNegative ? -value : value;
 
-        return str;
+        // Handle zero specially
+        if (absValue == 0)
+        {
+            *--ptr = '0';
+            return ptr;
+        }
+
+        // Convert digits and add separators
+        int digitCount = 0;
+        while (absValue > 0)
+        {
+            if (digitCount > 0 && digitCount % 3 == 0)
+                *--ptr = '.';
+
+            *--ptr = '0' + (absValue % 10);
+            absValue /= 10;
+            digitCount++;
+        }
+
+        if (isNegative)
+            *--ptr = '-';
+
+        return ptr;
     }
 
     ////////////////////////////////////////////////////////////
@@ -857,7 +1116,7 @@ struct Main
         else
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wformat-nonliteral"
-            std::sprintf(buffer, currencyFmt, toStringWithSeparators(cost).c_str(), widgetId++);
+            std::sprintf(buffer, currencyFmt, toStringWithSeparators(cost), widgetId++);
 #pragma clang diagnostic pop
 
         ImGui::BeginDisabled(done || availability < cost);
@@ -922,12 +1181,12 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    void uiDraw(const sf::View& gameView)
+    void uiDraw(const sf::View& gameView, const sf::Vector2f mousePos)
     {
         widgetId = 0u;
 
         ImGui::SetNextWindowPos({getResolution().x - 15.f, 15.f}, 0, {1.f, 0.f});
-        ImGui::SetNextWindowSizeConstraints(ImVec2(windowWidth, 0.f), ImVec2(windowWidth, getResolution().y - 15.f));
+        ImGui::SetNextWindowSizeConstraints(ImVec2(windowWidth, 0.f), ImVec2(windowWidth, getResolution().y - 30.f));
         ImGui::PushFont(fontImGuiSuperBakery);
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.f); // Set corner radius
@@ -953,6 +1212,8 @@ struct Main
             uiTabBar(gameView);
             ImGui::EndTabBar();
         }
+
+        uiMakeCatTooltip(mousePos);
 
         ImGui::End();
         ImGui::PopFont();
@@ -1013,6 +1274,11 @@ struct Main
         const auto nCatDevil  = pt.getCatCountByType(CatType::Devil);
         const auto nCatWitch  = pt.getCatCountByType(CatType::Witch);
         const auto nCatAstro  = pt.getCatCountByType(CatType::Astro);
+
+        Cat* catWizard = findCatWizard();
+        Cat* catMouse  = findCatMouse();
+
+        const bool anyUniqueCat = catWizard != nullptr || catMouse != nullptr;
 
         uiBeginColumns();
 
@@ -1096,14 +1362,11 @@ struct Main
         if (pt.comboPurchased && pt.psvComboStartTime.nPurchases > 0)
         {
             std::sprintf(tooltipBuffer,
-                         "Cats periodically pop nearby bubbles or bombs. Their cooldown and range can be "
-                         "upgraded. Their behavior can be permanently upgraded with prestige "
-                         "points.\n\nCats "
-                         "can be dragged around to position them strategically.\n\nNo, cats cannot be "
-                         "removed "
-                         "once purchased, you monster.");
+                         "Cats pop nearby bubbles or bombs. Their cooldown and range can be upgraded. Their behavior "
+                         "can be permanently upgraded with prestige points.\n\nCats can be dragged around to position "
+                         "them strategically.\n\nNo, cats cannot be removed once purchased, you monster.");
             std::sprintf(labelBuffer, "%zu cats", nCatNormal);
-            if (makePSVButton("Cat", pt.getPSVByCatType(CatType::Normal)))
+            if (makePSVButton("Cat", pt.psvPerCatType[asIdx(CatType::Normal)]))
             {
                 spawnCat(gameView, CatType::Normal, {0.f, 0.f}, /* hue */ rng.getF(-20.f, 20.f));
 
@@ -1118,7 +1381,7 @@ struct Main
 
         const auto makeCooldownButton = [this](const char* label, const CatType catType)
         {
-            auto& psv = pt.getCooldownMultPSVByCatType(catType);
+            auto& psv = pt.psvCooldownMultsPerCatType[asIdx(catType)];
 
             std::sprintf(tooltipBuffer, "Decrease cooldown.");
             std::sprintf(labelBuffer, "%.2fs", static_cast<double>(pt.getComputedCooldownByCatType(catType) / 1000.f));
@@ -1127,7 +1390,7 @@ struct Main
 
         const auto makeRangeButton = [this](const char* label, const CatType catType)
         {
-            auto& psv = pt.getRangeDivPSVByCatType(catType);
+            auto& psv = pt.psvRangeDivsPerCatType[asIdx(catType)];
 
             std::sprintf(tooltipBuffer, "Increase range.");
             std::sprintf(labelBuffer, "%.2fpx", static_cast<double>(pt.getComputedRangeByCatType(catType)));
@@ -1150,17 +1413,14 @@ struct Main
         {
             std::sprintf(tooltipBuffer,
                          "Unicats transform bubbles into star bubbles, which are worth x25 more!\n\nHave "
-                         "your "
-                         "cats pop them for you, or pop them near the end of a combo for huge rewards!");
+                         "your cats pop them for you, or pop them near the end of a combo for huge rewards!");
             std::sprintf(labelBuffer, "%zu unicats", nCatUni);
-            if (makePSVButton("Unicat", pt.getPSVByCatType(CatType::Uni)))
+            if (makePSVButton("Unicat", pt.psvPerCatType[asIdx(CatType::Uni)]))
             {
                 spawnCat(gameView, CatType::Uni, {0.f, -100.f}, /* hue */ rng.getF(0.f, 360.f));
 
                 if (nCatUni == 0)
-                {
                     doTip("Unicats transform bubbles in star bubbles,\nworth x25! Pop them at the end of a combo!");
-                }
             }
 
             if (catUnicornUpgradesUnlocked)
@@ -1178,21 +1438,18 @@ struct Main
         if (catDevilUnlocked)
         {
             std::sprintf(tooltipBuffer,
-                         "Devilcats transform bubbles into bombs that explode when popped. Bubbles "
-                         "affected by "
-                         "the explosion are worth x10 more! Bomb explosion range can be upgraded.");
+                         "Devilcats transform bubbles into bombs that explode when popped. Bubbles affected by the "
+                         "explosion are worth x10 more! Bomb explosion range can be upgraded.");
             std::sprintf(labelBuffer, "%zu devilcats", nCatDevil);
-            if (makePSVButton("Devilcat", pt.getPSVByCatType(CatType::Devil)))
+            if (makePSVButton("Devilcat", pt.psvPerCatType[asIdx(CatType::Devil)]))
             {
                 spawnCat(gameView, CatType::Devil, {0.f, 100.f}, /* hue */ rng.getF(-20.f, 20.f));
 
                 if (nCatDevil == 0)
-                {
                     doTip(
                         "Devilcats transform bubbles in bombs!\nExplode them to pop nearby "
                         "bubbles\nwith a x10 money multiplier!",
                         /* maxPrestigeLevel */ 1);
-                }
             }
 
             std::sprintf(tooltipBuffer, "Increase bomb explosion radius.");
@@ -1214,28 +1471,48 @@ struct Main
         if (astroCatUnlocked)
         {
             std::sprintf(tooltipBuffer,
-                         "Astrocats periodically fly across the map, popping bubbles they hit with a huge "
-                         "x20 "
-                         "money multiplier!\n\nThey can be permanently upgraded with prestige points to "
-                         "inspire cats watching them fly past to pop bubbles faster.");
+                         "Astrocats periodically fly across the map, popping bubbles they hit with a huge x20 money "
+                         "multiplier!\n\nThey can be permanently upgraded with prestige points to inspire cats "
+                         "watching them fly past to pop bubbles faster.");
             std::sprintf(labelBuffer, "%zu astrocats", nCatAstro);
-            if (makePSVButton("Astrocat", pt.getPSVByCatType(CatType::Astro)))
+            if (makePSVButton("Astrocat", pt.psvPerCatType[asIdx(CatType::Astro)]))
             {
                 spawnCat(gameView, CatType::Astro, {-64.f, 0.f}, /* hue */ rng.getF(-20.f, 20.f));
 
                 if (nCatAstro == 0)
-                {
                     doTip(
                         "Astrocats periodically fly across\nthe entire map, with a huge\nx20 "
                         "money multiplier!",
                         /* maxPrestigeLevel */ 1);
-                }
             }
 
             if (astroCatUpgradesUnlocked)
             {
                 makeCooldownButton("- cooldown", CatType::Astro);
                 makeRangeButton("- range", CatType::Astro);
+            }
+
+            ImGui::Separator();
+        }
+
+        // UNIQUE CAT BONUSES
+        if (anyUniqueCat)
+        {
+            ImGui::Text("Unique cats");
+
+            ImGui::NextColumn();
+            ImGui::NextColumn();
+
+            if (catWizard != nullptr)
+            {
+                makeCooldownButton("- wizardcat cooldown", CatType::Wizard);
+                makeRangeButton("- wizardcat range", CatType::Wizard);
+            }
+
+            if (catMouse != nullptr)
+            {
+                makeCooldownButton("- mousecat cooldown", CatType::Mouse);
+                makeRangeButton("- mousecat range", CatType::Mouse);
             }
 
             ImGui::Separator();
@@ -1415,7 +1692,7 @@ struct Main
 
         const auto currentMult = static_cast<SizeT>(pt.psvBubbleValue.currentValue()) + 1u;
 
-        ImGui::Text("(next prestige: $%s)", toStringWithSeparators(nextCost).c_str());
+        ImGui::Text("(next prestige: $%s)", toStringWithSeparators(nextCost));
 
         if (maxCost == 0u)
             ImGui::Text("- not enough money to prestige");
@@ -1569,20 +1846,71 @@ struct Main
     ////////////////////////////////////////////////////////////
     [[nodiscard]] bool isWizardBusy() const
     {
-        return pt.absorbingWisdom;
+        const Cat* wizardCat = findCatWizard();
+
+        if (wizardCat == nullptr)
+            return false;
+
+        return pt.absorbingWisdom || wizardCat->cooldown.value != 0.f;
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] Cat* findWizard()
+    [[nodiscard]] Cat* findFirstCatByType(const CatType& catType)
     {
-        const auto wizardCatIt = sf::base::findIf(pt.cats.begin(),
-                                                  pt.cats.end(),
-                                                  [](const Cat& cat) { return cat.type == CatType::Wizard; });
+        const auto it = sf::base::findIf(pt.cats.begin(),
+                                         pt.cats.end(),
+                                         [&](const Cat& cat) { return cat.type == catType; });
 
-        if (wizardCatIt == pt.cats.end())
+        if (it == pt.cats.end())
             return nullptr;
 
-        return &*wizardCatIt;
+        return &*it;
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] Cat* findCatWizard()
+    {
+        return findFirstCatByType(CatType::Wizard);
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] const Cat* findCatWizard() const
+    {
+        return const_cast<Main*>(this)->findFirstCatByType(CatType::Wizard);
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] Cat* findCatMouse()
+    {
+        return findFirstCatByType(CatType::Mouse);
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] const Cat* findCatMouse() const
+    {
+        return const_cast<Main*>(this)->findFirstCatByType(CatType::Mouse);
+    }
+
+    ////////////////////////////////////////////////////////////
+    void addCombo(int& xCombo, Countdown& xComboCountdown) const
+    {
+        if (xCombo == 0)
+        {
+            xCombo                = 1;
+            xComboCountdown.value = pt.psvComboStartTime.currentValue() * 1000.f;
+        }
+        else
+        {
+            xCombo += 1;
+            xComboCountdown.value += 150.f - sf::base::clamp(static_cast<float>(xCombo) * 10.f, 0.f, 100.f);
+        }
+    }
+
+    ////////////////////////////////////////////////////////////
+    static void checkComboEnd(const float deltaTimeMs, int& xCombo, Countdown& xComboCountdown)
+    {
+        if (xComboCountdown.updateAndStop(deltaTimeMs) == CountdownStatusStop::AlreadyFinished)
+            xCombo = 0;
     }
 
     ////////////////////////////////////////////////////////////
@@ -1590,7 +1918,7 @@ struct Main
     {
         ImGui::SetWindowFontScale(normalFontScale);
 
-        Cat* wizardCat = findWizard();
+        Cat* wizardCat = findCatWizard();
 
         if (wizardCat == nullptr)
         {
@@ -1598,7 +1926,8 @@ struct Main
             return;
         }
 
-        const auto range = pt.getComputedRangeByCatType(CatType::Wizard);
+        const auto range       = pt.getComputedRangeByCatType(CatType::Wizard);
+        const auto maxCooldown = pt.getComputedCooldownByCatType(CatType::Wizard);
 
         ImGui::Text("Your wizard is %s!", shuffledCatNames[wizardCat->nameIdx].c_str());
 
@@ -1636,6 +1965,8 @@ struct Main
         ImGui::ProgressBar(pt.manaTimer / pt.getComputedManaCooldown());
         ImGui::PopStyleColor();
 
+        ImGui::Text("Wizard cooldown: %.2fs", static_cast<double>(wizardCat->cooldown.value / 1000.f));
+
         ImGui::Separator();
 
         if (pt.psvSpellCount.nPurchases == 0)
@@ -1655,7 +1986,7 @@ struct Main
                 std::sprintf(tooltipBuffer, "TODO");
                 std::sprintf(labelBuffer, "TODO");
                 bool done = false;
-                // TODO: give it a name, also make it ignore bombs
+                // TODO P0: give it a name, balance
                 if (makePurchasableButtonOneTimeByCurrency("Spell", done, ManaType{1}, pt.mana, "%s mana##%u"))
                 {
                     playSound(sounds.cast0);
@@ -1665,18 +1996,20 @@ struct Main
                                             rng.getF(0.25f, 1.25f),
                                             rng.getF(0.50f, 3.f));
 
-                    forEachBubbleInRadius(wizardCat->position,
-                                          range,
-                                          [&](Bubble& bubble)
+                    for (const SizeT bi : getBubbleIndicesInRadius(wizardCat->position, range))
                     {
-                        spawnParticles(4, bubble.position, ParticleType::Star, 0.5f, 0.35f);
-                        bubble.type = BubbleType::Star;
+                        Bubble& bubble = pt.bubbles[bi];
 
-                        return ControlFlow::Continue;
-                    });
+                        if (bubble.type == BubbleType::Normal)
+                        {
+                            bubble.type = BubbleType::Star;
+                            bubble.velocity.y -= rng.getF(0.15f, 0.35f);
+                        }
+                    }
 
                     done = false;
                     ++wizardCat->hits;
+                    wizardCat->cooldown.value = maxCooldown * 2.f;
                 }
             }
 
@@ -1700,6 +2033,7 @@ struct Main
 
                     done = false;
                     ++wizardCat->hits;
+                    wizardCat->cooldown.value = maxCooldown * 2.f;
                 }
             }
 
@@ -1708,6 +2042,18 @@ struct Main
             ImGui::EndDisabled();
         }
     }
+
+    static constexpr auto formatTime(const sf::base::U64 seconds)
+    {
+        struct Result
+        {
+            sf::base::U64 h;
+            sf::base::U64 m;
+            sf::base::U64 s;
+        };
+
+        return Result{seconds / 3600u, (seconds / 60u) % 60u, seconds % 60u};
+    };
 
     ////////////////////////////////////////////////////////////
     void uiTabBarStats()
@@ -1721,29 +2067,27 @@ struct Main
             ImGui::SetColumnWidth(0, windowWidth / 2.f);
             ImGui::SetColumnWidth(1, windowWidth / 2.f);
 
-            const auto secondsToDisplay = sf::base::U64{stats.secondsPlayed % 60u};
-            const auto minutesToDisplay = sf::base::U64{(stats.secondsPlayed / 60u) % 60u};
-            const auto hoursToDisplay   = sf::base::U64{stats.secondsPlayed / 3600u};
-            ImGui::Text("Time played: %lluh %llum %llus", hoursToDisplay, minutesToDisplay, secondsToDisplay);
+            const auto [h, m, s] = formatTime(stats.secondsPlayed);
+            ImGui::Text("Time played: %lluh %llum %llus", h, m, s);
 
             ImGui::Spacing();
             ImGui::Spacing();
 
-            ImGui::Text("Bubbles popped: %s", toStringWithSeparators(stats.bubblesPopped).c_str());
+            ImGui::Text("Bubbles popped: %s", toStringWithSeparators(stats.bubblesPopped));
             ImGui::Indent();
-            ImGui::Text("Clicked: %s", toStringWithSeparators(stats.bubblesHandPopped).c_str());
-            ImGui::Text("By cats: %s", toStringWithSeparators(stats.bubblesPopped - stats.bubblesHandPopped).c_str());
+            ImGui::Text("Clicked: %s", toStringWithSeparators(stats.bubblesHandPopped));
+            ImGui::Text("By cats: %s", toStringWithSeparators(stats.bubblesPopped - stats.bubblesHandPopped));
             ImGui::Unindent();
 
             ImGui::NextColumn();
 
-            ImGui::Text("Revenue: $%s", toStringWithSeparators(stats.bubblesPoppedRevenue).c_str());
+            ImGui::Text("Revenue: $%s", toStringWithSeparators(stats.bubblesPoppedRevenue));
             ImGui::Indent();
-            ImGui::Text("Clicked: $%s", toStringWithSeparators(stats.bubblesHandPoppedRevenue).c_str());
+            ImGui::Text("Clicked: $%s", toStringWithSeparators(stats.bubblesHandPoppedRevenue));
             ImGui::Text("By cats: $%s",
-                        toStringWithSeparators(stats.bubblesPoppedRevenue - stats.bubblesHandPoppedRevenue).c_str());
-            ImGui::Text("Bombs:  $%s", toStringWithSeparators(stats.explosionRevenue).c_str());
-            ImGui::Text("Flights: $%s", toStringWithSeparators(stats.flightRevenue).c_str());
+                        toStringWithSeparators(stats.bubblesPoppedRevenue - stats.bubblesHandPoppedRevenue));
+            ImGui::Text("Bombs:  $%s", toStringWithSeparators(stats.explosionRevenue));
+            ImGui::Text("Flights: $%s", toStringWithSeparators(stats.flightRevenue));
             ImGui::Unindent();
 
             ImGui::Columns(1);
@@ -1756,17 +2100,17 @@ struct Main
             {
                 ImGui::SetWindowFontScale(0.75f);
 
-                uiCenteredText(" -- Lifetime values -- ");
+                uiCenteredText(" ~~ Lifetime ~~ ");
                 displayStats(profile.statsLifetime);
 
                 ImGui::Separator();
 
-                uiCenteredText(" -- Playthrough values -- ");
+                uiCenteredText(" ~~ This playthrough ~~ ");
                 displayStats(pt.statsTotal);
 
                 ImGui::Separator();
 
-                uiCenteredText(" -- Prestige values -- ");
+                uiCenteredText(" ~~ This prestige ~~ ");
                 displayStats(pt.statsSession);
 
                 ImGui::SetWindowFontScale(normalFontScale);
@@ -1787,11 +2131,8 @@ struct Main
                         return;
                     }
 
-                    const auto secondsToDisplay = sf::base::U64{value % 60u};
-                    const auto minutesToDisplay = sf::base::U64{(value / 60u) % 60u};
-                    const auto hoursToDisplay   = sf::base::U64{value / 3600u};
-
-                    ImGui::Text("%s: %lluh %llum %llus", name, hoursToDisplay, minutesToDisplay, secondsToDisplay);
+                    const auto [h, m, s] = formatTime(value);
+                    ImGui::Text("%s: %lluh %llum %llus", name, h, m, s);
                 };
 
                 doMilestone("1st Cat", pt.milestones.firstCat);
@@ -1836,6 +2177,14 @@ struct Main
                 doMilestone("$100.000.000 Revenue", pt.milestones.revenue100000000);
                 doMilestone("$1.000.000.000 Revenue", pt.milestones.revenue1000000000);
 
+                ImGui::Separator();
+
+                for (SizeT i = 0u; i < nShrineTypes; ++i)
+                {
+                    const char* shrineName = i >= pt.getMapLimitIncreases() ? "Shrine Of ???" : shrineNames[i];
+                    doMilestone(shrineName, pt.milestones.shrineCompletions[i]);
+                }
+
                 ImGui::EndTabItem();
             }
 
@@ -1854,17 +2203,17 @@ struct Main
         ImGui::SetWindowFontScale(normalFontScale);
     }
 
-    [[nodiscard]] MoneyType computeFinalReward(const sf::Vector2f bubblePosition, const MoneyType computedReward, const bool applyCombo)
+    [[nodiscard]] MoneyType computeFinalReward(const sf::Vector2f bubblePosition, const MoneyType computedReward, const int xCombo)
     {
-        Cat* wizardCat = findWizard();
+        Cat* wizardCat = findCatWizard();
 
-        const bool inRangeOfWizard = wizardCat != nullptr && (wizardCat->position - bubblePosition).length() <=
-                                                                 pt.getComputedRangeByCatType(CatType::Wizard);
+        const bool inRangeOfWizard = wizardCat != nullptr && (wizardCat->position - bubblePosition).lengthSquared() <=
+                                                                 pt.getComputedSquaredRangeByCatType(CatType::Wizard);
 
-        const float comboValueMult = applyCombo ? getComboValueMult(combo) : 1.f;
         const float arcaneAuraMult = (pt.arcaneAuraTimer > 0.f && inRangeOfWizard) ? 5.f : 1.f;
 
-        return static_cast<MoneyType>(sf::base::ceil(static_cast<float>(computedReward) * comboValueMult * arcaneAuraMult));
+        return static_cast<MoneyType>(
+            sf::base::ceil(static_cast<float>(computedReward) * getComboValueMult(xCombo) * arcaneAuraMult));
     }
 
     ////////////////////////////////////////////////////////////
@@ -1919,6 +2268,66 @@ struct Main
 
         uiPopButtonColors();
         buttonHueMod = 0.f;
+
+        if (true /* TODO P0: cheats */)
+        {
+            ImGui::Separator();
+
+            ImGui::PushFont(fontImGuiMouldyCheese);
+            ImGui::SetWindowFontScale(toolTipFontScale);
+
+            SizeT step    = 1u;
+            SizeT counter = 0u;
+
+            const auto psvScalarInput = [&](const char* label, PurchasableScalingValue& psv)
+            {
+                std::string lbuf = label;
+                lbuf += "##";
+                lbuf += std::to_string(counter++);
+
+                ImGui::SetNextItemWidth(140.f);
+                if (ImGui::InputScalar(lbuf.c_str(), ImGuiDataType_U64, &psv.nPurchases, &step, nullptr, nullptr, ImGuiInputTextFlags_CharsDecimal))
+                    psv.nPurchases = sf::base::clamp(psv.nPurchases, SizeT{0u}, psv.data->nMaxPurchases);
+            };
+
+            psvScalarInput("ComboStartTime", pt.psvComboStartTime);
+            psvScalarInput("MapExtension", pt.psvMapExtension);
+            psvScalarInput("ShrineActivation", pt.psvShrineActivation);
+            psvScalarInput("BubbleCount", pt.psvBubbleCount);
+            psvScalarInput("SpellCount", pt.psvSpellCount);
+            psvScalarInput("BubbleValue", pt.psvBubbleValue);
+            psvScalarInput("ExplosionRadiusMult", pt.psvExplosionRadiusMult);
+
+            ImGui::Separator();
+
+            for (SizeT i = 0u; i < nCatTypes; ++i)
+            {
+                constexpr const char* catNames[nCatTypes] = {
+                    "Normal",
+                    "Uni",
+                    "Devil",
+                    "Witch",
+                    "Astro",
+                    "Wizard",
+                    "Mouse",
+                };
+
+                ImGui::Text("%s", catNames[i]);
+                psvScalarInput("PerCatType", pt.psvPerCatType[i]);
+                psvScalarInput("CooldownMultsPerCatType", pt.psvCooldownMultsPerCatType[i]);
+                psvScalarInput("RangeDivsPerCatType", pt.psvRangeDivsPerCatType[i]);
+
+                ImGui::Separator();
+            }
+
+            psvScalarInput("PPMultiPopRange", pt.psvPPMultiPopRange);
+            psvScalarInput("PPInspireDurationMult", pt.psvPPInspireDurationMult);
+            psvScalarInput("PPManaCooldownMult", pt.psvPPManaCooldownMult);
+            psvScalarInput("PPManaMaxMult", pt.psvPPManaMaxMult);
+
+            ImGui::SetWindowFontScale(normalFontScale);
+            ImGui::PopFont();
+        }
     }
 
     ////////////////////////////////////////////////////////////
@@ -1971,7 +2380,7 @@ struct Main
 
                 const MoneyType newReward = computeFinalReward(bubble.position,
                                                                pt.getComputedRewardByBubbleType(bubble.type) * 10u,
-                                                               /* applyCombo */ false);
+                                                               /* combo */ 1);
 
                 statExplosionRevenue(newReward);
 
@@ -2034,7 +2443,10 @@ struct Main
                       popSoundOverlap);
 
         if (collectorShrine == nullptr)
-            addReward(reward);
+        {
+            pt.money += reward;
+            moneyTextShakeEffect.bump(rng, 1.f + static_cast<float>(combo) * 0.1f);
+        }
 
         bubble = makeRandomBubble(rng, pt.getMapLimit(), 0.f);
         bubble.position.y -= bubble.getRadius();
@@ -2110,6 +2522,317 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
+    void gameLoopUpdateCatActionNormal(const float /* deltaTimeMs */, Cat& cat)
+    {
+        const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
+        const auto range       = pt.getComputedRangeByCatType(cat.type);
+        const auto [cx, cy]    = cat.position + cat.rangeOffset;
+
+        const auto normalCatPopBubble = [&](Bubble& bubble)
+        {
+            cat.pawPosition = bubble.position;
+            cat.pawOpacity  = 255.f;
+            cat.pawRotation = (bubble.position - cat.position).angle() + sf::degrees(45);
+
+            const Cat* mouseCat = findCatMouse();
+
+            const bool inMouseCatRange = mouseCat != nullptr && (mouseCat->position - cat.position).lengthSquared() <=
+                                                                    pt.getComputedSquaredRangeByCatType(CatType::Mouse);
+
+            const int comboMult = inMouseCatRange ? pt.mouseCatCombo : 1;
+
+            popWithRewardAndReplaceBubble(computeFinalReward(bubble.position,
+                                                             pt.getComputedRewardByBubbleType(bubble.type),
+                                                             /* combo */ comboMult),
+                                          /* byHand */ false,
+                                          bubble,
+                                          /* combo */ comboMult,
+                                          /* popSoundOverlap */ true);
+
+            cat.textStatusShakeEffect.bump(rng, 1.5f);
+            ++cat.hits;
+
+            cat.cooldown.value = maxCooldown;
+        };
+
+        if (!pt.smartCatsPurchased)
+        {
+            if (Bubble* b = pickRandomBubbleInRadius({cx, cy}, range))
+                normalCatPopBubble(*b);
+
+            return;
+        }
+
+        const auto pickAny = [&](const auto... types) -> Bubble*
+        {
+            return pickRandomBubbleInRadiusMatching({cx, cy},
+                                                    range,
+                                                    [&](Bubble& b) { return ((b.type == types) || ...); });
+        };
+
+        if (!pt.geniusCatsPurchased)
+        {
+            if (Bubble* specialBubble = pickAny(BubbleType::Star, BubbleType::Bomb))
+                normalCatPopBubble(*specialBubble);
+            else if (Bubble* b = pickRandomBubbleInRadius({cx, cy}, range))
+                normalCatPopBubble(*b);
+
+            return;
+        }
+
+        if (Bubble* bBomb = pickAny(BubbleType::Bomb); bBomb != nullptr && !pt.geniusCatIgnoreBombBubbles)
+            normalCatPopBubble(*bBomb);
+        else if (Bubble* bStar = pickAny(BubbleType::Star); bStar != nullptr && !pt.geniusCatIgnoreStarBubbles)
+            normalCatPopBubble(*bStar);
+        else if (Bubble* bNormal = pickAny(BubbleType::Normal); bNormal != nullptr && !pt.geniusCatIgnoreNormalBubbles)
+            normalCatPopBubble(*bNormal);
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopUpdateCatActionUni(const float /* deltaTimeMs */, Cat& cat)
+    {
+        const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
+        const auto range       = pt.getComputedRangeByCatType(cat.type);
+
+        Bubble* b = pickRandomBubbleInRadiusMatching(cat.position,
+                                                     range,
+                                                     [&](Bubble& bubble) { return bubble.type == BubbleType::Normal; });
+
+        if (b == nullptr)
+            return;
+
+        Bubble& bubble = *b;
+
+        cat.pawPosition = bubble.position;
+        cat.pawOpacity  = 255.f;
+        cat.pawRotation = (bubble.position - cat.position).angle() + sf::degrees(45);
+
+        bubble.type       = BubbleType::Star;
+        bubble.velocity.y = rng.getF(-0.1f, -0.05f);
+        sounds.shine.setPosition({bubble.position.x, bubble.position.y});
+        playSound(sounds.shine);
+
+        spawnParticles(4, bubble.position, ParticleType::Star, 0.5f, 0.35f);
+
+        cat.textStatusShakeEffect.bump(rng, 1.5f);
+        ++cat.hits;
+
+        cat.cooldown.value = maxCooldown;
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopUpdateCatActionDevil(const float /* deltaTimeMs */, Cat& cat)
+    {
+        const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
+        const auto range       = pt.getComputedRangeByCatType(cat.type);
+
+        Bubble* b = pickRandomBubbleInRadius(cat.position, range);
+        if (b == nullptr)
+            return;
+
+        Bubble& bubble = *b;
+
+        cat.pawPosition = bubble.position;
+        cat.pawOpacity  = 255.f;
+        cat.pawRotation = (bubble.position - cat.position).angle() + sf::degrees(45);
+
+        bubble.type = BubbleType::Bomb;
+        bubble.velocity.y += rng.getF(0.1f, 0.2f);
+        sounds.makeBomb.setPosition({bubble.position.x, bubble.position.y});
+        playSound(sounds.makeBomb);
+
+        spawnParticles(8, bubble.position, ParticleType::Fire, 1.25f, 0.35f);
+
+        cat.textStatusShakeEffect.bump(rng, 1.5f);
+        ++cat.hits;
+
+        cat.cooldown.value = maxCooldown;
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopUpdateCatActionWitch(const float /* deltaTimeMs */, Cat& cat) // TODO P1: change
+    {
+        const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
+        const auto range       = pt.getComputedRangeByCatType(cat.type);
+        const auto [cx, cy]    = cat.position + cat.rangeOffset;
+
+        sf::base::U32 witchHits = 0u;
+        bool          pawSet    = false;
+
+        for (auto& otherCat : pt.cats)
+        {
+            if (otherCat.type == CatType::Witch)
+                continue;
+
+            if ((otherCat.position - cat.position).length() > range)
+                continue;
+
+            otherCat.cooldown.value = pt.getComputedCooldownByCatType(cat.type);
+            ++witchHits;
+
+            if (!pawSet && rng.getF(0.f, 100.f) > 50.f)
+            {
+                pawSet = true;
+
+                cat.pawPosition = otherCat.position;
+                cat.pawOpacity  = 255.f;
+                cat.pawRotation = (otherCat.position - cat.position).angle() + sf::degrees(45);
+            }
+
+            spawnParticles(8, otherCat.position, ParticleType::Hex, 0.5f, 0.35f);
+        }
+
+        if (witchHits > 0)
+        {
+            sounds.hex.setPosition({cx, cy});
+            playSound(sounds.hex);
+
+            cat.textStatusShakeEffect.bump(rng, 1.5f);
+            cat.hits += witchHits;
+        }
+
+        cat.cooldown.value = maxCooldown;
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopUpdateCatActionAstro(const float /* deltaTimeMs */, Cat& cat)
+    {
+        const auto [cx, cy] = cat.position + cat.rangeOffset;
+
+        if (cat.astroState.hasValue())
+            return;
+
+        sounds.launch.setPosition({cx, cy});
+        playSound(sounds.launch, /* overlap */ true);
+
+        ++cat.hits;
+        cat.astroState.emplace(/* startX */ cat.position.x, /* velocityX */ 0.f, /* wrapped */ false);
+        --cat.position.x;
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopUpdateCatActionWizard(const float deltaTimeMs, Cat& cat)
+    {
+        if (!pt.absorbingWisdom)
+            return;
+
+        const auto maxCooldown  = pt.getComputedCooldownByCatType(cat.type);
+        const auto range        = pt.getComputedRangeByCatType(cat.type);
+        const auto [cx, cy]     = cat.position + cat.rangeOffset;
+        const auto drawPosition = cat.getDrawPosition();
+
+        Bubble* starBubble = nullptr;
+
+        const auto findRotatedStarBubble = [&](Bubble& bubble)
+        {
+            if (bubble.type != BubbleType::Star || bubble.rotation == 0.f)
+                return ControlFlow::Continue;
+
+            starBubble = &bubble;
+            return ControlFlow::Break;
+        };
+
+        forEachBubbleInRadius({cx, cy}, range, findRotatedStarBubble);
+
+        if (starBubble == nullptr)
+            starBubble = pickRandomBubbleInRadiusMatching({cx, cy},
+                                                          range,
+                                                          [&](Bubble& bubble) { return bubble.type == BubbleType::Star; });
+
+        if (starBubble == nullptr)
+            return;
+
+        Bubble& bubble = *starBubble;
+
+        cat.pawPosition = bubble.position;
+        cat.pawOpacity  = 255.f;
+        cat.pawRotation = (bubble.position - cat.position).angle() + sf::degrees(45);
+
+        bubble.rotation += deltaTimeMs * 0.025f;
+        spawnParticlesWithHue(230.f, 1, bubble.position, ParticleType::Star, 0.5f, 0.35f);
+
+        if (bubble.rotation >= sf::base::tau)
+        {
+            const auto wisdomReward = pt.getComputedRewardByBubbleType(bubble.type);
+
+            auto& tp = textParticles.emplace_back(
+                TextParticle{.buffer = {},
+                             .data   = {.position      = {drawPosition.x, drawPosition.y - 10.f},
+                                        .velocity      = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
+                                        .scale         = 1.25f,
+                                        .accelerationY = 0.0042f,
+                                        .opacity       = 1.f,
+                                        .opacityDecay  = 0.00175f,
+                                        .rotation      = 0.f,
+                                        .torque        = rng.getF(-0.002f, 0.002f)}});
+
+            std::snprintf(tp.buffer, sizeof(tp.buffer), "+%llu WP", wisdomReward);
+
+            // TODO P1: change sound
+            sounds.pop.setPosition({bubble.position.x, bubble.position.y});
+            sounds.pop.setPitch(1.f);
+            playSound(sounds.pop);
+
+            spawnParticlesWithHue(230.f, 16, bubble.position, ParticleType::Star, 0.5f, 0.35f);
+
+            pt.wisdom += wisdomReward;
+            bubble.type     = BubbleType::Normal;
+            bubble.rotation = 0.f;
+
+            cat.cooldown.value = maxCooldown;
+        }
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopUpdateCatActionMouse(const float /* deltaTimeMs */, Cat& cat)
+    {
+        const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
+        const auto range       = pt.getComputedRangeByCatType(cat.type);
+
+        Bubble* b = pickRandomBubbleInRadius(cat.position, range);
+        if (b == nullptr)
+            return;
+
+        Bubble& bubble = *b;
+
+        cat.pawPosition = bubble.position;
+        cat.pawOpacity  = 255.f;
+
+        addCombo(pt.mouseCatCombo, pt.mouseCatComboCountdown);
+
+        const auto savedBubblePos = bubble.position;
+        const auto reward         = computeFinalReward(savedBubblePos,
+                                               pt.getComputedRewardByBubbleType(bubble.type),
+                                               /* combo */ pt.mouseCatCombo);
+
+        popWithRewardAndReplaceBubble(reward,
+                                      /* byHand */ false,
+                                      bubble,
+                                      /* combo */ pt.mouseCatCombo,
+                                      /* popSoundOverlap */ true);
+
+        if (pt.multiPopEnabled)
+            forEachBubbleInRadius(savedBubblePos,
+                                  pt.getComputedMultiPopRange(),
+                                  [&](Bubble& otherBubble)
+            {
+                if (&otherBubble != &bubble)
+                    popWithRewardAndReplaceBubble(reward,
+                                                  /* byHand */ true,
+                                                  otherBubble,
+                                                  /* combo */ pt.mouseCatCombo,
+                                                  /* popSoundOverlap */ false);
+
+                return ControlFlow::Continue;
+            });
+
+        cat.textStatusShakeEffect.bump(rng, 1.5f);
+        ++cat.hits;
+
+        cat.cooldown.value = maxCooldown;
+    }
+
+    ////////////////////////////////////////////////////////////
     void gameLoopUpdateCatActions(const float deltaTimeMs)
     {
         for (Cat& cat : pt.cats)
@@ -2123,8 +2846,9 @@ struct Main
                 cat.position.y = sf::base::clamp(cat.position.y, catRadius, boundaries.y - catRadius);
             }
 
-            const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
-            const auto range       = pt.getComputedRangeByCatType(cat.type);
+            const auto maxCooldown  = pt.getComputedCooldownByCatType(cat.type);
+            const auto range        = pt.getComputedRangeByCatType(cat.type);
+            const auto rangeSquared = range * range;
 
             const auto drawPosition = cat.getDrawPosition();
 
@@ -2183,7 +2907,7 @@ struct Main
                 {
                     const MoneyType newReward = computeFinalReward(bubble.position,
                                                                    pt.getComputedRewardByBubbleType(bubble.type) * 20u,
-                                                                   /* applyCombo */ false);
+                                                                   /* combo */ 1);
 
                     statFlightRevenue(newReward);
 
@@ -2242,242 +2966,47 @@ struct Main
                 }
             }
 
+            if (cat.type == CatType::Mouse)
+            {
+                for (const Cat& otherCat : pt.cats)
+                {
+                    if (otherCat.type != CatType::Normal)
+                        continue;
+
+                    if ((otherCat.position - cat.position).lengthSquared() > rangeSquared)
+                        continue;
+
+                    if (rng.getF(0.f, 1.f) > 0.85f)
+                        particles.push_back(
+                            {.data = {.position = otherCat.getDrawPosition() +
+                                                  sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius - 25.f},
+                                      .velocity      = rng.getVec2f({-0.01f, -0.05f}, {0.01f, 0.05f}),
+                                      .scale         = rng.getF(0.08f, 0.27f) * 0.2f,
+                                      .accelerationY = -0.00015f,
+                                      .opacity       = 255.f,
+                                      .opacityDecay  = rng.getF(0.0003f, 0.002f),
+                                      .rotation      = -0.6f,
+                                      .torque        = 0.f},
+                             .type = ParticleType::Cursor});
+                }
+            }
+
             if (!cat.updateCooldown(deltaTimeMs))
                 continue;
 
-            const auto action = [&](Bubble& bubble)
-            {
-                if (cat.type == CatType::Uni && bubble.type != BubbleType::Normal)
-                    return ControlFlow::Continue;
+            using FnPtr = void (Main::*)(const float, Cat&);
 
-                cat.pawPosition = bubble.position;
-                cat.pawOpacity  = 255.f;
-                cat.pawRotation = (bubble.position - cat.position).angle() + sf::degrees(45);
-
-                if (cat.type == CatType::Uni)
-                {
-                    bubble.type       = BubbleType::Star;
-                    bubble.velocity.y = rng.getF(-0.1f, -0.05f);
-                    sounds.shine.setPosition({bubble.position.x, bubble.position.y});
-                    playSound(sounds.shine);
-
-                    spawnParticles(4, bubble.position, ParticleType::Star, 0.5f, 0.35f);
-
-                    cat.textStatusShakeEffect.bump(rng, 1.5f);
-                    ++cat.hits;
-                }
-                else if (cat.type == CatType::Normal)
-                {
-                    popWithRewardAndReplaceBubble(computeFinalReward(bubble.position,
-                                                                     pt.getComputedRewardByBubbleType(bubble.type),
-                                                                     /* applyCombo */ false),
-                                                  /* byHand */ false,
-                                                  bubble,
-                                                  /* combo */ 1,
-                                                  /* popSoundOverlap */ true);
-
-                    cat.textStatusShakeEffect.bump(rng, 1.5f);
-                    ++cat.hits;
-                }
-                else if (cat.type == CatType::Devil)
-                {
-                    bubble.type = BubbleType::Bomb;
-                    bubble.velocity.y += rng.getF(0.1f, 0.2f);
-                    sounds.makeBomb.setPosition({bubble.position.x, bubble.position.y});
-                    playSound(sounds.makeBomb);
-
-                    spawnParticles(8, bubble.position, ParticleType::Fire, 1.25f, 0.35f);
-
-                    cat.textStatusShakeEffect.bump(rng, 1.5f);
-                    ++cat.hits;
-                }
-
-                cat.cooldown.value = maxCooldown;
-                return ControlFlow::Break;
+            const FnPtr fnPtrs[nCatTypes]{
+                &Main::gameLoopUpdateCatActionNormal,
+                &Main::gameLoopUpdateCatActionUni,
+                &Main::gameLoopUpdateCatActionDevil,
+                &Main::gameLoopUpdateCatActionWitch,
+                &Main::gameLoopUpdateCatActionAstro,
+                &Main::gameLoopUpdateCatActionWizard,
+                &Main::gameLoopUpdateCatActionMouse,
             };
 
-            if (cat.type == CatType::Wizard)
-            {
-                if (pt.absorbingWisdom)
-                {
-                    Bubble* starBubble = nullptr;
-
-                    const auto findRotatedStarBubble = [&](Bubble& bubble)
-                    {
-                        if (bubble.type != BubbleType::Star || bubble.rotation == 0.f)
-                            return ControlFlow::Continue;
-
-                        starBubble = &bubble;
-                        return ControlFlow::Break;
-                    };
-
-                    const auto findStarBubble = [&](Bubble& bubble)
-                    {
-                        if (bubble.type != BubbleType::Star)
-                            return ControlFlow::Continue;
-
-                        starBubble = &bubble;
-                        return ControlFlow::Break;
-                    };
-
-                    forEachBubbleInRadius({cx, cy}, range, findRotatedStarBubble);
-
-                    if (starBubble == nullptr)
-                        forEachBubbleInRadius({cx, cy}, range, findStarBubble);
-
-                    if (starBubble != nullptr)
-                    {
-                        Bubble& bubble = *starBubble;
-
-                        cat.pawPosition = bubble.position;
-                        cat.pawOpacity  = 255.f;
-                        cat.pawRotation = (bubble.position - cat.position).angle() + sf::degrees(45);
-
-                        bubble.rotation += deltaTimeMs * 0.025f;
-                        spawnParticlesWithHue(230.f, 1, bubble.position, ParticleType::Star, 0.5f, 0.35f);
-
-                        if (bubble.rotation >= sf::base::tau)
-                        {
-                            const auto wisdomReward = pt.getComputedRewardByBubbleType(bubble.type);
-
-                            auto& tp = textParticles.emplace_back(
-                                TextParticle{.buffer = {},
-                                             .data   = {.position = {drawPosition.x, drawPosition.y - 10.f},
-                                                        .velocity = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
-                                                        .scale         = 1.25f,
-                                                        .accelerationY = 0.0042f,
-                                                        .opacity       = 1.f,
-                                                        .opacityDecay  = 0.00175f,
-                                                        .rotation      = 0.f,
-                                                        .torque        = rng.getF(-0.002f, 0.002f)}});
-
-                            std::snprintf(tp.buffer, sizeof(tp.buffer), "+%llu WP", wisdomReward);
-
-                            // TODO P1: change sound
-                            sounds.pop.setPosition({bubble.position.x, bubble.position.y});
-                            sounds.pop.setPitch(1.f);
-                            playSound(sounds.pop);
-
-                            spawnParticlesWithHue(230.f, 16, bubble.position, ParticleType::Star, 0.5f, 0.35f);
-
-                            pt.wisdom += wisdomReward;
-                            bubble.type     = BubbleType::Normal;
-                            bubble.rotation = 0.f;
-
-                            cat.cooldown.value = maxCooldown;
-                        }
-                    }
-                }
-
-                continue;
-            }
-
-            if (cat.type == CatType::Astro)
-            {
-                if (!cat.astroState.hasValue())
-                {
-                    sounds.launch.setPosition({cx, cy});
-                    playSound(sounds.launch, /* overlap */ true);
-
-                    ++cat.hits;
-                    cat.astroState.emplace(/* startX */ cat.position.x, /* velocityX */ 0.f, /* wrapped */ false);
-                    --cat.position.x;
-                }
-            }
-
-            if (cat.type == CatType::Witch) // TODO P1: change
-            {
-                sf::base::U32 witchHits = 0u;
-                bool          pawSet    = false;
-
-                for (auto& otherCat : pt.cats)
-                {
-                    if (otherCat.type == CatType::Witch)
-                        continue;
-
-                    if ((otherCat.position - cat.position).length() > range)
-                        continue;
-
-                    otherCat.cooldown.value = pt.getComputedCooldownByCatType(cat.type);
-                    ++witchHits;
-
-                    if (!pawSet && rng.getF(0.f, 100.f) > 50.f)
-                    {
-                        pawSet = true;
-
-                        cat.pawPosition = otherCat.position;
-                        cat.pawOpacity  = 255.f;
-                        cat.pawRotation = (otherCat.position - cat.position).angle() + sf::degrees(45);
-                    }
-
-                    spawnParticles(8, otherCat.position, ParticleType::Hex, 0.5f, 0.35f);
-                }
-
-                if (witchHits > 0)
-                {
-                    sounds.hex.setPosition({cx, cy});
-                    playSound(sounds.hex);
-
-                    cat.textStatusShakeEffect.bump(rng, 1.5f);
-                    cat.hits += witchHits;
-                }
-
-                cat.cooldown.value = maxCooldown;
-                continue;
-            }
-
-            if (cat.type == CatType::Normal && pt.smartCatsPurchased)
-            {
-                Bubble* firstSpecialBubble = nullptr;
-                Bubble* firstNormalBubble  = nullptr;
-                Bubble* firstStarBubble    = nullptr;
-                Bubble* firstBombBubble    = nullptr;
-
-                const auto findBubblesByType = [&](Bubble& bubble)
-                {
-                    if (bubble.type == BubbleType::Normal && firstNormalBubble == nullptr)
-                    {
-                        firstNormalBubble = &bubble;
-                    }
-                    else if (bubble.type == BubbleType::Star && firstStarBubble == nullptr)
-                    {
-                        firstStarBubble = &bubble;
-                        if (firstSpecialBubble == nullptr)
-                            firstSpecialBubble = &bubble;
-                    }
-                    else if (bubble.type == BubbleType::Bomb && firstBombBubble == nullptr)
-                    {
-                        firstBombBubble = &bubble;
-                        if (firstSpecialBubble == nullptr)
-                            firstSpecialBubble = &bubble;
-                    }
-
-                    return ControlFlow::Continue;
-                };
-
-                forEachBubbleInRadius({cx, cy}, range, findBubblesByType);
-
-                if (!pt.geniusCatsPurchased)
-                {
-                    if (firstSpecialBubble != nullptr)
-                        (void)action(*firstSpecialBubble);
-                    else if (firstNormalBubble != nullptr)
-                        (void)action(*firstNormalBubble);
-                }
-                else
-                {
-                    if (firstBombBubble != nullptr && !pt.geniusCatIgnoreBombBubbles)
-                        (void)action(*firstBombBubble);
-                    else if (firstStarBubble != nullptr && !pt.geniusCatIgnoreStarBubbles)
-                        (void)action(*firstStarBubble);
-                    else if (firstNormalBubble != nullptr && !pt.geniusCatIgnoreNormalBubbles)
-                        (void)action(*firstNormalBubble);
-                }
-            }
-            else
-            {
-                forEachBubbleInRadius({cx, cy}, range, action);
-            }
+            (this->*fnPtrs[asIdx(cat.type)])(deltaTimeMs, cat);
         }
     }
 
@@ -2617,6 +3146,7 @@ struct Main
                     if (cdStatus == CountdownStatusStop::JustFinished)
                     {
                         playSound(sounds.woosh);
+                        ++pt.nShrinesCompleted;
 
                         // TODO P0: handle all shrine death rewards
                         if (shrine.type == ShrineType::Magic)
@@ -2625,12 +3155,16 @@ struct Main
                             c.position = shrine.position;
 
                             pt.magicUnlocked = true;
+                            // ++pt.psvPerCatType[static_cast<SizeT>(CatType::Wizard)].nPurchases;
+
                             doTip("TODO: wizard tip");
                         }
                         else if (shrine.type == ShrineType::Clicking)
                         {
                             auto& c    = spawnCat(gameView, CatType::Mouse, {0.f, 0.f}, /* hue */ 0.f);
                             c.position = shrine.position;
+
+                            // ++pt.psvPerCatType[static_cast<SizeT>(CatType::Mouse)].nPurchases;
 
                             doTip("TODO: mouse tip");
                         }
@@ -2664,6 +3198,13 @@ struct Main
         if (!pt.magicUnlocked)
             return;
 
+        Cat* wizardCat = findCatWizard();
+
+        if (wizardCat == nullptr)
+            return;
+
+        //
+        // Mana
         if (pt.mana < pt.getComputedMaxMana())
             pt.manaTimer += deltaTimeMs;
         else
@@ -2677,10 +3218,21 @@ struct Main
                 pt.mana += 1u;
         }
 
+        //
+        // Arcane aura spell
         if (pt.arcaneAuraTimer > 0.f)
         {
             pt.arcaneAuraTimer -= deltaTimeMs;
             pt.arcaneAuraTimer = sf::base::max(pt.arcaneAuraTimer, 0.f);
+
+            for (SizeT i = 0u; i < 8u; ++i)
+                spawnParticlesWithHueNoGravity(230.f,
+                                               1,
+                                               rng.getPointInCircle(wizardCat->position,
+                                                                    pt.getComputedRangeByCatType(CatType::Wizard)),
+                                               ParticleType::Star,
+                                               0.15f,
+                                               0.05f);
         }
     }
 
@@ -2779,6 +3331,12 @@ struct Main
 
         if (pt.statsTotal.bubblesPoppedRevenue >= 1'000'000'000)
             updateMilestone("$1.000.000.000 Revenue", pt.milestones.revenue1000000000);
+
+        for (SizeT i = 0u; i < pt.nShrinesCompleted; ++i)
+        {
+            const char* shrineName = i >= pt.getMapLimitIncreases() ? "Shrine Of ???" : shrineNames[i];
+            updateMilestone(shrineName, pt.milestones.shrineCompletions[i]);
+        }
     }
 
     ////////////////////////////////////////////////////////////
@@ -2794,7 +3352,7 @@ struct Main
 
             bubble.applyToSprite(tempSprite);
 
-            tempSprite.textureRect = bubbleRects[static_cast<U8>(bubble.type)];
+            tempSprite.textureRect = bubbleRects[asIdx(bubble.type)];
             tempSprite.origin      = tempSprite.textureRect.size / 2.f;
             tempSprite.scale *= bubble.type == BubbleType::Bomb ? 1.65f : 1.f;
 
@@ -2841,19 +3399,17 @@ struct Main
 
         for (Cat& cat : pt.cats)
         {
-            float opacityMod      = 1.f;
-            U8    rangeInnerAlpha = 0u;
+            U8 rangeInnerAlpha = 0u;
 
             if (!anyCatHovered && &cat != draggedCat && !cat.isAstroAndInFlight() &&
-                (mousePos - cat.position).length() <= cat.getRadius() && !mBtnDown(sf::Mouse::Button::Left))
+                (mousePos - cat.position).lengthSquared() <= cat.getRadiusSquared() && !mBtnDown(sf::Mouse::Button::Left))
             {
                 anyCatHovered   = true;
-                opacityMod      = 0.5f;
                 rangeInnerAlpha = 75u;
             }
 
-            const auto& catTxr    = *catTxrsByType[static_cast<U8>(cat.type)];
-            const auto& catPawTxr = *catPawTxrsByType[static_cast<U8>(cat.type)];
+            const auto& catTxr    = *catTxrsByType[asIdx(cat.type)];
+            const auto& catPawTxr = *catPawTxrsByType[asIdx(cat.type)];
 
             const auto maxCooldown  = pt.getComputedCooldownByCatType(cat.type);
             const auto cooldownDiff = cat.cooldown.value;
@@ -2871,14 +3427,14 @@ struct Main
             }
 
             const auto range    = pt.getComputedRangeByCatType(cat.type);
-            const auto alpha    = static_cast<U8>(cat.mainOpacity * opacityMod);
+            const auto alpha    = static_cast<U8>(cat.mainOpacity);
             const auto catColor = hueColor(wrapHue(cat.hue), alpha);
 
             const auto circleAlpha = cat.cooldown.value < 0.f
                                          ? static_cast<U8>(0u)
                                          : static_cast<U8>(255.f - (cat.cooldown.value / maxCooldown * 225.f));
 
-            const auto circleColor = CatConstants::colors[static_cast<U8>(cat.type)].withHueMod(cat.hue).withLightness(0.75f);
+            const auto circleColor = CatConstants::colors[asIdx(cat.type)].withHueMod(cat.hue).withLightness(0.75f);
             const sf::Color outlineColor = circleColor.withLightness(0.25f);
 
             // TODO P2: (lib) make it possible to draw a circle directly via batching without any of this stuff,
@@ -2906,7 +3462,7 @@ struct Main
                 sf::Sprite{.position    = cat.pawPosition,
                            .scale       = {0.1f, 0.1f},
                            .origin      = catPawTxr.size / 2.f,
-                           .rotation    = cat.pawRotation,
+                           .rotation    = cat.type == CatType::Mouse ? sf::radians(-0.6f) : cat.pawRotation,
                            .textureRect = catPawTxr,
                            .color       = catColor.withAlpha(static_cast<U8>(cat.pawOpacity))});
 
@@ -2917,8 +3473,11 @@ struct Main
             textNameBuffer.setOutlineColor(outlineColor);
             cpuDrawableBatch.add(textNameBuffer);
 
-            textStatusBuffer.setString(
-                std::to_string(cat.hits) + " " + CatConstants::actionNames[static_cast<U8>(cat.type)]);
+            std::string actionString = std::to_string(cat.hits) + " " + CatConstants::actionNames[asIdx(cat.type)];
+            if (cat.type == CatType::Mouse)
+                actionString += " (x" + std::to_string(pt.mouseCatCombo + 1) + ")";
+
+            textStatusBuffer.setString(actionString);
             textStatusBuffer.position = cat.position + sf::Vector2f{0.f, 68.f};
             textStatusBuffer.origin   = textStatusBuffer.getLocalBounds().size / 2.f;
             textStatusBuffer.setOutlineColor(outlineColor);
@@ -2929,10 +3488,21 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    void gameLoopDrawShrines()
+    void gameLoopDrawShrines(const sf::Vector2f mousePos)
     {
+        Shrine* hoveredShrine = nullptr;
+
         for (Shrine& shrine : pt.shrines)
         {
+            U8 rangeInnerAlpha = 0u;
+
+            if (hoveredShrine == nullptr && (mousePos - shrine.position).lengthSquared() <= shrine.getRadiusSquared() &&
+                !mBtnDown(sf::Mouse::Button::Left))
+            {
+                hoveredShrine   = &shrine;
+                rangeInnerAlpha = 75u;
+            }
+
             const float invDeathProgress = 1.f - shrine.getDeathProgress();
 
             const auto shrineAlpha = static_cast<U8>(remap(shrine.getActivationProgress(), 0.f, 1.f, 128.f, 255.f));
@@ -2958,10 +3528,10 @@ struct Main
             circleShapeBuffer.setPointCount(64);
             circleShapeBuffer.setRadius(range);
             circleShapeBuffer.setOutlineColor(circleColor);
-            circleShapeBuffer.setFillColor(sf::Color::Transparent);
+            circleShapeBuffer.setFillColor(circleShapeBuffer.getOutlineColor().withAlpha(rangeInnerAlpha));
             cpuDrawableBatch.add(circleShapeBuffer);
 
-            textNameBuffer.setString(shrineNames[static_cast<U8>(shrine.type)]);
+            textNameBuffer.setString(shrineNames[asIdx(shrine.type)]);
             textNameBuffer.position = shrine.position + sf::Vector2f{0.f, 48.f};
             textNameBuffer.origin   = textNameBuffer.getLocalBounds().size / 2.f;
             textNameBuffer.scale    = sf::Vector2f{0.5f, 0.5f} * invDeathProgress;
@@ -2970,8 +3540,15 @@ struct Main
 
             if (shrine.isActive())
             {
-                textStatusBuffer.setString("$" + toStringWithSeparators(shrine.collectedReward) + " / $" +
-                                           toStringWithSeparators(pt.getComputedRequiredRewardByShrineType(shrine.type)));
+                // TODO P1: move to member data
+                static thread_local std::string shrineStatus;
+
+                shrineStatus = "$";
+                shrineStatus += toStringWithSeparators(shrine.collectedReward);
+                shrineStatus += " / $";
+                shrineStatus += toStringWithSeparators(pt.getComputedRequiredRewardByShrineType(shrine.type));
+
+                textStatusBuffer.setString(shrineStatus);
             }
             else
             {
@@ -2993,13 +3570,17 @@ struct Main
     {
         sf::Sprite tempSprite;
 
-        const sf::FloatRect
-            particleRects[nParticleTypes]{txrParticle, txrStarParticle, txrFireParticle, txrHexParticle, txrShrineParticle};
+        const sf::FloatRect particleRects[nParticleTypes]{txrParticle,
+                                                          txrStarParticle,
+                                                          txrFireParticle,
+                                                          txrHexParticle,
+                                                          txrShrineParticle,
+                                                          txrMouseCatPaw};
 
         for (const auto& particle : particles)
         {
             particle.applyToSprite(tempSprite);
-            tempSprite.textureRect = particleRects[static_cast<U8>(particle.type)];
+            tempSprite.textureRect = particleRects[asIdx(particle.type)];
             tempSprite.origin      = tempSprite.textureRect.size / 2.f;
 
             cpuDrawableBatch.add(tempSprite);
@@ -3319,16 +3900,26 @@ struct Main
                         }
                     }
                 }
-                else if (pt.bubbles.size() < targetBubbleCount)
+                else
                 {
-                    const SizeT times = (targetBubbleCount - pt.bubbles.size()) > 500 ? 25 : 1;
-
-                    for (SizeT i = 0; i < times; ++i)
+                    if (pt.bubbles.size() < targetBubbleCount)
                     {
-                        const auto bPos = pt.bubbles.emplace_back(makeRandomBubble(rng, pt.getMapLimit(), boundaries.y)).position;
+                        const SizeT times = (targetBubbleCount - pt.bubbles.size()) > 500 ? 25 : 1;
 
-                        spawnParticles(8, bPos, ParticleType::Bubble, 0.5f, 0.5f);
-                        playReversePopAt(bPos);
+                        for (SizeT i = 0; i < times; ++i)
+                        {
+                            const auto bPos = pt.bubbles
+                                                  .emplace_back(makeRandomBubble(rng, pt.getMapLimit(), boundaries.y))
+                                                  .position;
+
+                            spawnParticles(8, bPos, ParticleType::Bubble, 0.5f, 0.5f);
+                            playReversePopAt(bPos);
+                        }
+                    }
+                    else if (pt.bubbles.size() > targetBubbleCount)
+                    {
+                        // Should only be triggered in testing via cheats
+                        pt.bubbles.resize(targetBubbleCount);
                     }
                 }
             }
@@ -3363,34 +3954,26 @@ struct Main
 
             const auto clickAction = [&](Bubble& bubble)
             {
-                if ((clickPos - bubble.position).length() > bubble.getRadius())
+                if ((clickPos - bubble.position).lengthSquared() > bubble.getRadiusSquared())
                     return ControlFlow::Continue;
 
                 anyBubblePoppedByClicking = true;
 
                 if (pt.comboPurchased)
                 {
-                    if (combo == 0)
-                    {
-                        combo                = 1;
-                        comboCountdown.value = pt.psvComboStartTime.currentValue() * 1000.f;
-                    }
-                    else
-                    {
-                        combo += 1;
-                        comboCountdown.value += 150.f - sf::base::clamp(static_cast<float>(combo) * 10.f, 0.f, 100.f);
-
-                        comboTextShakeEffect.bump(rng, 1.f + static_cast<float>(combo) * 0.2f);
-                    }
+                    addCombo(combo, comboCountdown);
+                    comboTextShakeEffect.bump(rng, 1.f + static_cast<float>(combo) * 0.2f);
                 }
                 else
                 {
                     combo = 1;
                 }
 
-                const auto reward = computeFinalReward(bubble.position,
-                                                       pt.getComputedRewardByBubbleType(bubble.type),
-                                                       /* applyCombo */ true);
+                MoneyType reward = computeFinalReward(bubble.position, pt.getComputedRewardByBubbleType(bubble.type), combo);
+
+                if (findCatMouse() != nullptr)
+                    reward = reward * 3u / 2u;
+
                 popWithRewardAndReplaceBubble(reward, /* byHand */ true, bubble, combo, /* popSoundOverlap */ true);
 
                 if (pt.multiPopEnabled)
@@ -3414,6 +3997,11 @@ struct Main
 
             forEachBubbleInRadius(clickPos, 128.f, clickAction);
         }
+
+        //
+        // Combo failure due to timer end
+        checkComboEnd(deltaTimeMs, combo, comboCountdown);
+        checkComboEnd(deltaTimeMs, pt.mouseCatCombo, pt.mouseCatComboCountdown);
 
         //
         // Combo failure due to missed click
@@ -3504,9 +4092,6 @@ struct Main
         updateParticleLike(particles);
         updateParticleLike(textParticles);
 
-        if (comboCountdown.updateAndStop(deltaTimeMs) == CountdownStatusStop::AlreadyFinished)
-            combo = 0;
-
         const float volumeMult = profile.playAudioInBackground || window.hasFocus() ? 1.f : 0.f;
 
         listener.volume = profile.masterVolume * volumeMult;
@@ -3540,7 +4125,7 @@ struct Main
         const bool shouldDrawUI = inPrestigeTransition == 0 && splashCountdown.value <= 0.f;
 
         if (shouldDrawUI)
-            uiDraw(gameView);
+            uiDraw(gameView, mousePos);
 
         window.clear(sf::Color{157, 171, 191});
 
@@ -3551,11 +4136,23 @@ struct Main
 
         gameLoopDrawBubbles();
         gameLoopDrawCats(deltaTimeMs, mousePos);
-        gameLoopDrawShrines();
+        gameLoopDrawShrines(mousePos);
         gameLoopDrawParticles();
         gameLoopDrawTextParticles();
 
         window.draw(cpuDrawableBatch, {.texture = &textureAtlas.getTexture(), .shader = &shader});
+
+        //
+        // Draw border around gameview
+        window.setView(sf::View{.center = resolution / 2.f, .size = resolution});
+
+        // TODO P2: (lib) make it possible to draw a rectangle directly via batching without any of this stuff
+        window.draw(sf::RectangleShape{{.position         = gameView.viewport.position.componentWiseMul(resolution),
+                                        .fillColor        = sf::Color::Transparent,
+                                        .outlineColor     = colorBlueOutline,
+                                        .outlineThickness = 4.f,
+                                        .size             = gameView.viewport.size.componentWiseMul(resolution)}},
+                    /* texture */ nullptr);
 
         const auto createScaledHudView = [](const sf::Vector2f& resolution, float scale) -> sf::View
         { return {.center = {resolution.x / (2.f * scale), resolution.y / (2.f * scale)}, .size = resolution / scale}; };
@@ -3563,7 +4160,7 @@ struct Main
         const sf::View hudView = createScaledHudView(resolution, profile.hudScale);
         window.setView(hudView);
 
-        moneyText.setString("$" + toStringWithSeparators(pt.money));
+        moneyText.setString("$" + std::string(toStringWithSeparators(pt.money)));
         moneyText.scale  = {0.5f, 0.5f};
         moneyText.origin = moneyText.getLocalBounds().size / 2.f;
 

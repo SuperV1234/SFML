@@ -27,7 +27,13 @@ enum class [[nodiscard]] CatType : sf::base::U8
 };
 
 ////////////////////////////////////////////////////////////
-inline constexpr auto nCatTypes = static_cast<sf::base::SizeT>(CatType::Count);
+[[nodiscard, gnu::always_inline, gnu::const]] inline constexpr auto asIdx(const CatType type) noexcept
+{
+    return static_cast<sf::base::SizeT>(type);
+}
+
+////////////////////////////////////////////////////////////
+inline constexpr auto nCatTypes = asIdx(CatType::Count);
 
 ////////////////////////////////////////////////////////////
 [[nodiscard, gnu::const]] inline constexpr bool isUniqueCatType(const CatType catType) noexcept
@@ -39,7 +45,7 @@ inline constexpr auto nCatTypes = static_cast<sf::base::SizeT>(CatType::Count);
 struct [[nodiscard]] Cat
 {
     sf::Vector2f position;
-    sf::Vector2f rangeOffset;
+    sf::Vector2f rangeOffset; // TODO P1: hardcode per cat type
 
     float     wobbleRadians;
     Countdown cooldown;
@@ -83,7 +89,7 @@ struct [[nodiscard]] Cat
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline sf::Vector2f getDrawPosition() const
+    [[nodiscard, gnu::always_inline, gnu::pure]] inline sf::Vector2f getDrawPosition() const
     {
         return position + sf::Vector2f{0.f, std::sin(wobbleRadians * 2.f) * 7.5f};
     }
@@ -96,13 +102,20 @@ struct [[nodiscard]] Cat
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline float getRadius() const noexcept
+    [[nodiscard, gnu::always_inline, gnu::pure]] inline float getRadius() const noexcept
     {
         return 64.f;
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline bool isCloseToStartX() const noexcept
+    [[nodiscard, gnu::always_inline, gnu::flatten, gnu::pure]] inline float getRadiusSquared() const
+    {
+        const float radius = getRadius();
+        return radius * radius;
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline, gnu::pure]] inline bool isCloseToStartX() const noexcept
     {
         SFML_BASE_ASSERT(type == CatType::Astro);
         SFML_BASE_ASSERT(astroState.hasValue());
@@ -111,13 +124,13 @@ struct [[nodiscard]] Cat
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline bool isAstroAndInFlight() const noexcept
+    [[nodiscard, gnu::always_inline, gnu::pure]] inline bool isAstroAndInFlight() const noexcept
     {
         return type == CatType::Astro && astroState.hasValue();
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline bool hasUniqueType() const noexcept
+    [[nodiscard, gnu::always_inline, gnu::pure]] inline bool hasUniqueType() const noexcept
     {
         return isUniqueCatType(type);
     }

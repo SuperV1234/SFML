@@ -59,6 +59,7 @@ Checks: >
   -modernize-macro-to-enum,
   -modernize-use-designated-initializers,
   -modernize-use-trailing-return-type,
+  -modernize-use-ranges,
   -modernize-use-std-numbers,
   -performance-avoid-endl,
   -performance-enum-size,

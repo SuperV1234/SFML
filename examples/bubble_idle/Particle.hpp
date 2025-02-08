@@ -17,12 +17,19 @@ enum class [[nodiscard]] ParticleType : sf::base::U8
     Fire   = 2u,
     Hex    = 3u,
     Shrine = 4u,
+    Cursor = 5u,
 
     Count
 };
 
 ////////////////////////////////////////////////////////////
-inline constexpr auto nParticleTypes = static_cast<sf::base::SizeT>(ParticleType::Count);
+[[nodiscard, gnu::always_inline, gnu::const]] inline constexpr auto asIdx(const ParticleType type) noexcept
+{
+    return static_cast<sf::base::SizeT>(type);
+}
+
+////////////////////////////////////////////////////////////
+inline constexpr auto nParticleTypes = asIdx(ParticleType::Count);
 
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] Particle

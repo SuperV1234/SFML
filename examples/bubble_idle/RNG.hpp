@@ -46,6 +46,16 @@ public:
     }
 
     ////////////////////////////////////////////////////////////
+    template <typename T>
+    [[nodiscard, gnu::always_inline, gnu::flatten]] inline T getI(const T min, const T max)
+    {
+        SFML_BASE_ASSERT(min <= max);
+        SFML_BASE_ASSUME(min <= max);
+
+        return std::uniform_int_distribution<T>{min, max}(m_engine);
+    }
+
+    ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline, gnu::flatten]] inline float getF(const float min, const float max)
     {
         SFML_BASE_ASSERT(min <= max);
@@ -64,5 +74,15 @@ public:
     [[nodiscard, gnu::always_inline, gnu::flatten]] inline sf::Vector2f getVec2f(const sf::Vector2f maxs)
     {
         return {getF(0.f, maxs.x), getF(0.f, maxs.y)};
+    }
+
+    [[nodiscard, gnu::always_inline, gnu::flatten]] inline sf::Vector2f getPointInCircle(const sf::Vector2f center,
+                                                                                         const float        radius)
+    {
+        const float angle    = getF(0.f, sf::base::tau);
+        const float distance = radius * std::sqrt(getF(0.f, 1.f));
+
+        // Compute the point's coordinates using polar-to-Cartesian conversion.
+        return {center.x + distance * std::cos(angle), center.y + distance * std::sin(angle)};
     }
 };

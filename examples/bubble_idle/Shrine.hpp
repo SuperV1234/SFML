@@ -27,7 +27,13 @@ enum class ShrineType : U8
 };
 
 ////////////////////////////////////////////////////////////
-inline constexpr auto nShrineTypes = static_cast<sf::base::SizeT>(ShrineType::Count);
+[[nodiscard, gnu::always_inline, gnu::const]] inline constexpr auto asIdx(const ShrineType catType) noexcept
+{
+    return static_cast<sf::base::SizeT>(catType);
+}
+
+////////////////////////////////////////////////////////////
+inline constexpr auto nShrineTypes = asIdx(ShrineType::Count);
 
 ////////////////////////////////////////////////////////////
 inline constexpr const char* shrineNames[nShrineTypes]{
@@ -107,5 +113,18 @@ struct [[nodiscard]] Shrine
     [[nodiscard, gnu::always_inline]] inline float getHue() const
     {
         return wrapHue(static_cast<float>(type) * 85.f);
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline]] inline float getRadius() const noexcept
+    {
+        return 64.f;
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline, gnu::flatten]] inline float getRadiusSquared() const
+    {
+        const float radius = getRadius();
+        return radius * radius;
     }
 };

@@ -2,6 +2,7 @@
 
 #include "Constants.hpp"
 #include "ControlFlow.hpp"
+#include "RNG.hpp"
 
 #include "SFML/Base/SizeT.hpp"
 
@@ -22,13 +23,17 @@ private:
     static inline constexpr auto nCellsTotal = nCellsX * nCellsY;
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline static constexpr SizeT convert2DTo1D(const SizeT x, const SizeT y, const SizeT width)
+    [[nodiscard, gnu::always_inline, gnu::const]] inline static constexpr SizeT convert2DTo1D(
+        const SizeT x,
+        const SizeT y,
+        const SizeT width)
     {
         return y * width + x;
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline constexpr auto computeGridRange(const sf::Vector2f center, const float radius) const
+    [[nodiscard, gnu::always_inline, gnu::const]] inline static constexpr auto computeGridRange(const sf::Vector2f center,
+                                                                                                const float radius)
     {
         const float minX = center.x - radius;
         const float minY = center.y - radius;
@@ -53,13 +58,13 @@ private:
 
 public:
     ////////////////////////////////////////////////////////////
-    void forEachIndexInRadius(const sf::Vector2f center, const float radius, auto&& func)
+    void forEachIndexInRadius(const sf::Vector2f center, const float radius, auto&& func) const
     {
         const auto [xStartIdx, yStartIdx, xEndIdx, yEndIdx] = computeGridRange(center, radius);
 
         // Check all candidate cells
-        for (SizeT cellX = xStartIdx; cellX <= xEndIdx; ++cellX)
-            for (SizeT cellY = yStartIdx; cellY <= yEndIdx; ++cellY)
+        for (SizeT cellY = yStartIdx; cellY <= yEndIdx; ++cellY)
+            for (SizeT cellX = xStartIdx; cellX <= xEndIdx; ++cellX)
             {
                 const SizeT cellIdx = convert2DTo1D(cellX, cellY, nCellsX);
 
@@ -72,6 +77,39 @@ public:
                     if (func(m_objectIndices[i]) == ControlFlow::Break)
                         return;
             }
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] SizeT pickRandomIndexInRadiusMatching(RNG& rng, const sf::Vector2f center, const float radius, auto&& predicate) const
+    {
+        const auto [xStartIdx, yStartIdx, xEndIdx, yEndIdx] = computeGridRange(center, radius);
+
+        const SizeT totalCells  = (xEndIdx - xStartIdx + 1u) * (yEndIdx - yStartIdx + 1u);
+        const SizeT maxAttempts = totalCells; // Prevent infinite loop in worst-case.
+
+        for (SizeT attempts = 0u; attempts < maxAttempts; ++attempts)
+        {
+            // Pick a random cell within the range.
+            const SizeT cellX   = xStartIdx + rng.getI<SizeT>(0, (xEndIdx - xStartIdx + 1u) - 1u);
+            const SizeT cellY   = yStartIdx + rng.getI<SizeT>(0, (yEndIdx - yStartIdx + 1u) - 1u);
+            const SizeT cellIdx = convert2DTo1D(cellX, cellY, nCellsX);
+            const SizeT start   = m_cellStartIndices[cellIdx];
+            const SizeT end     = m_cellStartIndices[cellIdx + 1];
+            const SizeT count   = end - start;
+
+            if (count == 0u)
+                continue;
+
+            const auto candidateIdx = m_objectIndices[start + rng.getI<SizeT>(0, count - 1)];
+
+            if (!predicate(candidateIdx))
+                continue;
+
+            return candidateIdx;
+        }
+
+        // If no object was found after maxAttempts, return invalid index.
+        return static_cast<SizeT>(-1u);
     }
 
     ////////////////////////////////////////////////////////////
@@ -106,8 +144,8 @@ public:
             const auto [xStartIdx, yStartIdx, xEndIdx, yEndIdx] = computeGridRange(bubble.position, bubble.getRadius());
 
             // For each cell the bubble covers, increment the count
-            for (SizeT x = xStartIdx; x <= xEndIdx; ++x)
-                for (SizeT y = yStartIdx; y <= yEndIdx; ++y)
+            for (SizeT y = yStartIdx; y <= yEndIdx; ++y)
+                for (SizeT x = xStartIdx; x <= xEndIdx; ++x)
                 {
                     const SizeT cellIdx = convert2DTo1D(x, y, nCellsX) + 1; // +1 offsets for prefix sum
                     ++m_cellStartIndices[sf::base::min(cellIdx, m_cellStartIndices.size() - 1)];
@@ -136,8 +174,8 @@ public:
             const auto [xStartIdx, yStartIdx, xEndIdx, yEndIdx] = computeGridRange(bubble.position, bubble.getRadius());
 
             // Insert the bubble index into all overlapping cells
-            for (SizeT x = xStartIdx; x <= xEndIdx; ++x)
-                for (SizeT y = yStartIdx; y <= yEndIdx; ++y)
+            for (SizeT y = yStartIdx; y <= yEndIdx; ++y)
+                for (SizeT x = xStartIdx; x <= xEndIdx; ++x)
                 {
                     const SizeT cellIdx        = convert2DTo1D(x, y, nCellsX);
                     const SizeT insertPos      = m_cellInsertionPositions[cellIdx]++;

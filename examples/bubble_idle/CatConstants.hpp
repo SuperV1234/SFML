@@ -38,8 +38,8 @@ static inline constexpr float baseCooldowns[nCatTypes]{
     2000.f,  // Witch
     10000.f, // Astro
 
-    100.f, // Wizard
-    100.f, // Mouse
+    1500.f, // Wizard
+    500.f, // Mouse
 };
 
 ////////////////////////////////////////////////////////////
@@ -51,7 +51,7 @@ static inline constexpr float baseRanges[nCatTypes]{
     48.f,  // Astro
 
     384.f, // Wizard
-    256.f, // Mouse
+    128.f, // Mouse
 };
 
 } // namespace CatConstants

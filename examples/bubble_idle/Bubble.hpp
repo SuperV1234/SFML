@@ -18,7 +18,13 @@ enum class [[nodiscard]] BubbleType : U8
 };
 
 ////////////////////////////////////////////////////////////
-inline constexpr auto nBubbleTypes = static_cast<sf::base::SizeT>(BubbleType::Count);
+[[nodiscard, gnu::always_inline, gnu::const]] inline constexpr auto asIdx(const BubbleType type) noexcept
+{
+    return static_cast<sf::base::SizeT>(type);
+}
+
+////////////////////////////////////////////////////////////
+inline constexpr auto nBubbleTypes = asIdx(BubbleType::Count);
 
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] Bubble
@@ -46,8 +52,15 @@ struct [[nodiscard]] Bubble
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline float getRadius() const
+    [[nodiscard, gnu::always_inline, gnu::pure]] inline float getRadius() const
     {
         return 256.f * scale;
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline, gnu::flatten, gnu::pure]] inline float getRadiusSquared() const
+    {
+        const float radius = getRadius();
+        return radius * radius;
     }
 };

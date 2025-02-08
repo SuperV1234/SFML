@@ -70,17 +70,17 @@ inline constexpr PSVData catDevilRangeDiv //
      .cost          = {.initial = 150'000.f, .exponential = 1.85f, .flat = 0.f},
      .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
 
-// TODO P1: test
+// TODO P1: ??
 inline constexpr PSVData catWitch //
     {.nMaxPurchases = 64u, .cost = {.initial = 1000000.f, .exponential = 1.5}, .value = {}};
 
-// TODO P1: test
+// TODO P1: ??
 inline constexpr PSVData catWitchCooldownMult //
     {.nMaxPurchases = 12u,
      .cost          = {.initial = 3'500'000.f, .exponential = 1.68f, .flat = -1500.f},
      .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
 
-// TODO P1: test
+// TODO P1: ??
 inline constexpr PSVData catWitchRangeDiv //
     {.nMaxPurchases = 9u,
      .cost          = {.initial = 5'500'000.f, .exponential = 1.85f, .flat = -2500.f},
@@ -88,15 +88,35 @@ inline constexpr PSVData catWitchRangeDiv //
 
 // TODO P0: test
 inline constexpr PSVData catWizard //
-    {.nMaxPurchases = 64u, .cost = {.initial = 1000000.f, .exponential = 1.5}, .value = {}};
+    {.nMaxPurchases = 64u, .cost = {.initial = 1.f}, .value = {}};
 
 // TODO P0: test
 inline constexpr PSVData catWizardCooldownMult //
-    {.nMaxPurchases = 1u, .cost = {.initial = 1.f}, .value = {.initial = 1.f}};
+    {.nMaxPurchases = 12u,
+     .cost          = {.initial = 2000.f, .exponential = 1.68f, .flat = -1500.f},
+     .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
 
 // TODO P0: test
 inline constexpr PSVData catWizardRangeDiv //
-    {.nMaxPurchases = 1u, .cost = {.initial = 1.f}, .value = {.initial = 1.f}};
+    {.nMaxPurchases = 9u,
+     .cost          = {.initial = 4000.f, .exponential = 1.85f, .flat = -2500.f},
+     .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
+
+// TODO P0: test
+inline constexpr PSVData catMouse //
+    {.nMaxPurchases = 64u, .cost = {.initial = 1.f}, .value = {}};
+
+// TODO P0: test
+inline constexpr PSVData catMouseCooldownMult //
+    {.nMaxPurchases = 12u,
+     .cost          = {.initial = 2000.f, .exponential = 1.68f, .flat = -1500.f},
+     .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
+
+// TODO P0: test
+inline constexpr PSVData catMouseRangeDiv //
+    {.nMaxPurchases = 9u,
+     .cost          = {.initial = 4000.f, .exponential = 1.85f, .flat = -2500.f},
+     .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
 
 inline constexpr PSVData catAstro //
     {.nMaxPurchases = 64u, .cost = {.initial = 150000.f, .exponential = 1.5}, .value = {}};
@@ -121,19 +141,19 @@ inline constexpr PSVData inspireDurationMult //
      .cost          = {.initial = 1.f, .linear = 1.f, .exponential = 1.5f},
      .value         = {.initial = 1.f, .linear = 0.2f}};
 
-// TODO: put real numbers
+// TODO P0: put real numbers
 inline constexpr PSVData manaCooldownMult //
     {.nMaxPurchases = 20u,
      .cost          = {.initial = 1.f, .linear = 1.f, .exponential = 1.5f},
      .value         = {.initial = 1.f, .exponential = 0.8f}};
 
-// TODO: put real numbers
+// TODO P0: put real numbers
 inline constexpr PSVData manaMaxMult //
     {.nMaxPurchases = 20u,
      .cost          = {.initial = 1.f, .linear = 1.f, .exponential = 1.5f},
      .value         = {.initial = 1.f, .linear = 0.2f}};
 
-// TODO: balance
+// TODO P0: balance
 inline constexpr PSVData spellCount //
     {.nMaxPurchases = 4u,
      .cost          = {.initial = 75.f, .linear = 1500.f, .exponential = 2.5f},

@@ -44,8 +44,8 @@ struct Playthrough
         {&PSVDataConstants::catWitch},
         {&PSVDataConstants::catAstro},
 
-        {&PSVDataConstants::catWizard}, // TODO: unused?
-        {&PSVDataConstants::catWizard}, // TODO: unused?
+        {&PSVDataConstants::catWizard}, // TODO P1: unused?
+        {&PSVDataConstants::catMouse},  // TODO P1: unused?
     };
 
     PurchasableScalingValue psvCooldownMultsPerCatType[nCatTypes]{
@@ -55,8 +55,8 @@ struct Playthrough
         {&PSVDataConstants::catWitchCooldownMult},
         {&PSVDataConstants::catAstroCooldownMult},
 
-        {&PSVDataConstants::catWizardCooldownMult}, // TODO: unused? or change to PP
-        {&PSVDataConstants::catWizardCooldownMult}, // TODO: unused? or change to PP
+        {&PSVDataConstants::catWizardCooldownMult}, // TODO P0: unused? or change to PP (if changed to PP needs a different array)
+        {&PSVDataConstants::catMouseCooldownMult}, // TODO P0: unused? or change to PP
     };
 
     PurchasableScalingValue psvRangeDivsPerCatType[nCatTypes]{
@@ -66,8 +66,8 @@ struct Playthrough
         {&PSVDataConstants::catWitchRangeDiv},
         {&PSVDataConstants::catAstroRangeDiv},
 
-        {&PSVDataConstants::catWizardRangeDiv}, // TODO: unused? or change to PP
-        {&PSVDataConstants::catWizardRangeDiv}, // TODO: unused? or change to PP
+        {&PSVDataConstants::catWizardRangeDiv}, // TODO P0: unused? or change to PP
+        {&PSVDataConstants::catMouseRangeDiv},  // TODO P0: unused? or change to PP
     };
 
     //
@@ -100,6 +100,11 @@ struct Playthrough
     float     arcaneAuraTimer = 0.f;
 
     //
+    // Mouse cat
+    int       mouseCatCombo = 0u;
+    Countdown mouseCatComboCountdown;
+
+    //
     // Permanent purchases
     bool multiPopPurchased        = false;
     bool smartCatsPurchased       = false;
@@ -120,6 +125,11 @@ struct Playthrough
     std::vector<Bubble> bubbles;
     std::vector<Cat>    cats;
     std::vector<Shrine> shrines;
+
+
+    //
+    // Shrines
+    SizeT nShrinesCompleted = 0u;
 
     //
     // Statistics
@@ -182,9 +192,14 @@ struct Playthrough
         wisdom          = 0u;
         arcaneAuraTimer = 0.f;
 
+        mouseCatCombo                = 0.f;
+        mouseCatComboCountdown.value = 0.f;
+
         windEnabled = false;
 
         // bubbles, cats, and shrines are cleaned in the game loop
+
+        nShrinesCompleted = 0u;
 
         statsSession = {};
 
@@ -212,7 +227,7 @@ struct Playthrough
             1u,  // Bomb
         };
 
-        return baseRewards[static_cast<U8>(type)] * static_cast<MoneyType>(psvBubbleValue.currentValue() + 1.f);
+        return baseRewards[asIdx(type)] * static_cast<MoneyType>(psvBubbleValue.currentValue() + 1.f);
     }
 
     ////////////////////////////////////////////////////////////
@@ -231,40 +246,32 @@ struct Playthrough
         };
 
         return static_cast<MoneyType>(
-            static_cast<float>(baseRequiredRewards[static_cast<U8>(type)]) * getComputedGlobalCostMultiplier());
+            static_cast<float>(baseRequiredRewards[asIdx(type)]) * getComputedGlobalCostMultiplier());
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline PurchasableScalingValue& getPSVByCatType(const CatType catType)
+    [[nodiscard, gnu::always_inline]] inline float getComputedCooldownByCatType(const CatType catType) const
     {
-        return psvPerCatType[static_cast<U8>(catType)];
+        return CatConstants::baseCooldowns[asIdx(catType)] * psvCooldownMultsPerCatType[asIdx(catType)].currentValue();
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline PurchasableScalingValue& getCooldownMultPSVByCatType(const CatType catType)
+    [[nodiscard, gnu::always_inline]] inline float getComputedRangeByCatType(const CatType catType) const
     {
-        return psvCooldownMultsPerCatType[static_cast<U8>(catType)];
-    }
+        const auto result = CatConstants::baseRanges[asIdx(catType)] /
+                            psvRangeDivsPerCatType[asIdx(catType)].currentValue();
 
-    ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline PurchasableScalingValue& getRangeDivPSVByCatType(const CatType catType)
-    {
-        return psvRangeDivsPerCatType[static_cast<U8>(catType)];
-    }
-
-    ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline float getComputedCooldownByCatType(const CatType catType)
-    {
-        return CatConstants::baseCooldowns[static_cast<U8>(catType)] * getCooldownMultPSVByCatType(catType).currentValue();
-    }
-
-    ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline float getComputedRangeByCatType(const CatType catType)
-    {
         if (catType == CatType::Wizard && absorbingWisdom)
-            return CatConstants::baseRanges[static_cast<U8>(catType)] / 2.f;
+            return result / 2.f;
 
-        return CatConstants::baseRanges[static_cast<U8>(catType)] / getRangeDivPSVByCatType(catType).currentValue();
+        return result;
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline, gnu::flatten]] inline float getComputedSquaredRangeByCatType(const CatType catType) const
+    {
+        const float range = getComputedRangeByCatType(catType);
+        return range * range;
     }
 
     ////////////////////////////////////////////////////////////
@@ -300,7 +307,7 @@ struct Playthrough
     ////////////////////////////////////////////////////////////
     [[nodiscard]] SizeT getCatCountByType(const CatType type) const
     {
-        return psvPerCatType[static_cast<U8>(type)].nPurchases;
+        return psvPerCatType[asIdx(type)].nPurchases;
     }
 
     ////////////////////////////////////////////////////////////

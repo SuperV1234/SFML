@@ -130,7 +130,10 @@ template <SizeT N>
 // NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
 void to_json(nlohmann::json& j, const PurchasableScalingValue (&p)[N])
 {
-    j = nlohmann::json::array({p[0].nPurchases, p[1].nPurchases, p[2].nPurchases, p[3].nPurchases, p[4].nPurchases});
+    j = nlohmann::json::array();
+
+    for (SizeT i = 0u; i < N; ++i)
+        j[i] = p[i].nPurchases;
 }
 
 ////////////////////////////////////////////////////////////
@@ -138,11 +141,8 @@ template <SizeT N>
 // NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
 void from_json(const nlohmann::json& j, PurchasableScalingValue (&p)[N])
 {
-    p[0].nPurchases = j[0];
-    p[1].nPurchases = j[1];
-    p[2].nPurchases = j[2];
-    p[3].nPurchases = j[3];
-    p[4].nPurchases = j[4];
+    for (SizeT i = 0u; i < N; ++i)
+        p[i].nPurchases = j.at(i);
 }
 
 ////////////////////////////////////////////////////////////
@@ -192,7 +192,9 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     revenue1000000,
     revenue10000000,
     revenue100000000,
-    revenue1000000000);
+    revenue1000000000,
+
+    shrineCompletions);
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
@@ -250,6 +252,9 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     wisdom,
     arcaneAuraTimer,
 
+    mouseCatCombo,
+    mouseCatComboCountdown,
+
     multiPopPurchased,
     smartCatsPurchased,
     geniusCatsPurchased,
@@ -265,6 +270,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     bubbles,
     cats,
     shrines,
+
+    nShrinesCompleted,
 
     statsTotal,
     statsSession,
