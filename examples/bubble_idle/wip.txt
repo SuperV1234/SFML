@@ -1,0 +1,67 @@
+    ////////////////////////////////////////////////////////////
+    void pushAllIndicesInRadius(const sf::Vector2f center, const float radius, auto& vec) const
+    {
+        const auto [xStartIdx, yStartIdx, xEndIdx, yEndIdx] = computeGridRange(center, radius);
+
+        // Check all candidate cells
+        for (SizeT cellY = yStartIdx; cellY <= yEndIdx; ++cellY)
+            for (SizeT cellX = xStartIdx; cellX <= xEndIdx; ++cellX)
+            {
+                const SizeT cellIdx = convert2DTo1D(cellX, cellY, nCellsX);
+
+                // Get range of bubbles in this cell
+                const SizeT start = m_cellStartIndices[cellIdx];
+                const SizeT end   = m_cellStartIndices[cellIdx + 1];
+
+                // Insert
+                vec.insert(vec.end(), m_objectIndices.begin() + start, m_objectIndices.begin() + end);
+            }
+    }
+
+
+    ////////////////////////////////////////////////////////////
+    const std::vector<SizeT>& getBubbleIndicesInRadius(const sf::Vector2f center, const float radius)
+    {
+        bubbleIndexBuffer0.clear();
+        bubbleIndexBuffer0.reserve(pt.bubbles.size());
+
+        spatialGrid.pushAllIndicesInRadius(center, radius, bubbleIndexBuffer0);
+
+        std::sort(bubbleIndexBuffer0.begin(), bubbleIndexBuffer0.end());
+
+        bubbleIndexBuffer0.erase(std::unique(bubbleIndexBuffer0.begin(), bubbleIndexBuffer0.end()),
+                                 bubbleIndexBuffer0.end());
+
+        const float radiusSq = radius * radius;
+        std::erase_if(bubbleIndexBuffer0,
+                      [&](const SizeT index) { return (pt.bubbles[index].position - center).lengthSquared() > radiusSq; });
+
+        std::shuffle(bubbleIndexBuffer0.begin(), bubbleIndexBuffer0.end(), rng.getEngine());
+
+        return bubbleIndexBuffer0;
+    }
+
+    ////////////////////////////////////////////////////////////
+    const std::vector<Bubble*>& getBubblesInRadius(const sf::Vector2f center, const float radius)
+    {
+        bubbleBuffer0.clear();
+        bubbleBuffer0.reserve(pt.bubbles.size());
+
+        const float radiusSq = radius * radius;
+
+        spatialGrid.forEachIndexInRadius(center,
+                                         radius,
+                                         [&](const SizeT index)
+        {
+            if ((pt.bubbles[index].position - center).lengthSquared() <= radiusSq)
+                bubbleBuffer0.push_back(&pt.bubbles[index]);
+
+            return ControlFlow::Continue;
+        });
+
+        std::sort(bubbleBuffer0.begin(), bubbleBuffer0.end());
+        bubbleBuffer0.erase(std::unique(bubbleBuffer0.begin(), bubbleBuffer0.end()), bubbleBuffer0.end());
+        std::shuffle(bubbleBuffer0.begin(), bubbleBuffer0.end(), rng.getEngine());
+
+        return bubbleBuffer0;
+    }
