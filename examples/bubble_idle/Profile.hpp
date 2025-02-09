@@ -13,6 +13,7 @@ struct [[nodiscard]] Profile
     float minimapScale          = 20.f;
     float hudScale              = 1.f;
     bool  tipsEnabled           = true;
+    float backgroundOpacity     = 1.f;
 
     Stats statsLifetime;
 };

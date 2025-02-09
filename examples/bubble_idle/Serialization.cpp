@@ -208,6 +208,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     minimapScale,
     hudScale,
     tipsEnabled,
+    backgroundOpacity,
 
     statsLifetime);
 
@@ -313,43 +314,43 @@ try
 } // namespace
 
 ////////////////////////////////////////////////////////////
-void saveProfileToFile(const Profile& profile)
+void saveProfileToFile(const Profile& profile, const char* filename)
 try
 {
-    doRotatingBackup("profile.json");
-    std::ofstream("profile.json") << nlohmann::json(profile).dump(4);
+    doRotatingBackup(filename);
+    std::ofstream(filename) << nlohmann::json(profile).dump(4);
 } catch (const std::exception& ex)
 {
-    std::cout << "Failed to save profile to file (" << ex.what() << ")\n";
+    std::cout << "Failed to save profile to file '" << filename << "' (" << ex.what() << ")\n";
 }
 
 ////////////////////////////////////////////////////////////
-void loadProfileFromFile(Profile& profile)
+void loadProfileFromFile(Profile& profile, const char* filename)
 try
 {
-    nlohmann::json::parse(std::ifstream{"profile.json"}).get_to(profile);
+    nlohmann::json::parse(std::ifstream{filename}).get_to(profile);
 } catch (const std::exception& ex)
 {
-    std::cout << "Failed to load profile from file (" << ex.what() << ")\n";
+    std::cout << "Failed to load profile from file '" << filename << "' (" << ex.what() << ")\n";
 }
 
 ////////////////////////////////////////////////////////////
-void savePlaythroughToFile(const Playthrough& playthrough)
+void savePlaythroughToFile(const Playthrough& playthrough, const char* filename)
 try
 {
-    doRotatingBackup("playthrough.json");
-    std::ofstream("playthrough.json") << nlohmann::json(playthrough).dump(4);
+    doRotatingBackup(filename);
+    std::ofstream(filename) << nlohmann::json(playthrough).dump(4);
 } catch (const std::exception& ex)
 {
-    std::cout << "Failed to save playthrough to file (" << ex.what() << ")\n";
+    std::cout << "Failed to save playthrough to file '" << filename << "' (" << ex.what() << ")\n";
 }
 
 ////////////////////////////////////////////////////////////
-void loadPlaythroughFromFile(Playthrough& playthrough)
+void loadPlaythroughFromFile(Playthrough& playthrough, const char* filename)
 try
 {
-    nlohmann::json::parse(std::ifstream{"playthrough.json"}).get_to(playthrough);
+    nlohmann::json::parse(std::ifstream{filename}).get_to(playthrough);
 } catch (const std::exception& ex)
 {
-    std::cout << "Failed to load playthrough from file (" << ex.what() << ")\n";
+    std::cout << "Failed to load playthrough from file '" << filename << "' (" << ex.what() << ")\n";
 }

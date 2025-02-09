@@ -161,7 +161,21 @@ struct Playthrough
     }
 
     ////////////////////////////////////////////////////////////
-    void onPrestige(const PrestigePointsType prestigeCount)
+    [[nodiscard]] PrestigePointsType calculatePrestigePointReward(const PrestigePointsType prestigeCount) const
+    {
+        const auto currentPrestigeLevel = static_cast<PrestigePointsType>(psvBubbleValue.currentValue());
+        const auto targetPrestigeLevel  = currentPrestigeLevel + prestigeCount;
+
+        PrestigePointsType pointsToAdd = 0u;
+
+        for (auto i = currentPrestigeLevel; i < targetPrestigeLevel; ++i)
+            pointsToAdd += static_cast<PrestigePointsType>(std::pow(2.f, static_cast<float>(i)));
+
+        return pointsToAdd;
+    }
+
+    ////////////////////////////////////////////////////////////
+    void onPrestige(const PrestigePointsType prestigePointReward)
     {
         psvComboStartTime.nPurchases      = 0u;
         psvMapExtension.nPurchases        = 0u;
@@ -180,7 +194,7 @@ struct Playthrough
             psv.nPurchases = 0u;
 
         money = 0u;
-        prestigePoints += prestigeCount;
+        prestigePoints += prestigePointReward;
 
         comboPurchased = false;
         mapPurchased   = false;
@@ -234,14 +248,14 @@ struct Playthrough
     [[nodiscard, gnu::always_inline]] inline MoneyType getComputedRequiredRewardByShrineType(const ShrineType type) const
     {
         constexpr MoneyType baseRequiredRewards[nShrineTypes]{
-            1'0 /*00*/,    // Magic // TODO P0: decide on values, implement all magic spells
-            1'000,         // Clicking
-            1'000,         // Automation
-            10'000,        // Repulsion
-            100'000,       // Attraction
-            1'000'000,     // Decay
-            10'000'000,    // Chaos
-            100'000'000,   // Transmutation
+            1'000,         // Magic // TODO P0: decide on values, implement all magic spells
+            10'000,        // Clicking
+            50'000,        // Automation
+            150'000,       // Repulsion
+            500'000,       // Attraction
+            1'500'000,     // Decay
+            25'000'000,    // Chaos
+            500'000'000,   // Transmutation
             1'000'000'000, // Victory
         };
 

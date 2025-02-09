@@ -64,6 +64,7 @@ struct Sounds
     LoadedSound earthquakeFast{"earthquakefast.ogg"};
     LoadedSound woosh{"woosh.ogg"};
     LoadedSound cast0{"cast0.ogg"};
+    LoadedSound notification{"notification.ogg"};
 
     ////////////////////////////////////////////////////////////
     std::vector<sf::Sound> soundsBeingPlayed;
@@ -104,6 +105,7 @@ struct Sounds
         setupUISound(buy);
         setupUISound(byteSpeak);
         setupUISound(prestige);
+        setupUISound(notification);
 
         scratch.setVolume(35.f);
         buy.setVolume(75.f);
@@ -121,7 +123,7 @@ struct Sounds
             soundsBeingPlayed.begin(),
             soundsBeingPlayed.end(),
             [&ls](const sf::Sound& sound)
-            { return sound.getStatus() == sf::Sound::Status::Playing && &sound.getBuffer() == &ls.asBuffer(); });
+        { return sound.getStatus() == sf::Sound::Status::Playing && &sound.getBuffer() == &ls.asBuffer(); });
     }
 
     ////////////////////////////////////////////////////////////

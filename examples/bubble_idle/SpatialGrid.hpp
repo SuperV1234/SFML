@@ -80,39 +80,6 @@ public:
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] SizeT pickRandomIndexInRadiusMatching(RNG& rng, const sf::Vector2f center, const float radius, auto&& predicate) const
-    {
-        const auto [xStartIdx, yStartIdx, xEndIdx, yEndIdx] = computeGridRange(center, radius);
-
-        const SizeT totalCells  = (xEndIdx - xStartIdx + 1u) * (yEndIdx - yStartIdx + 1u);
-        const SizeT maxAttempts = totalCells; // Prevent infinite loop in worst-case.
-
-        for (SizeT attempts = 0u; attempts < maxAttempts; ++attempts)
-        {
-            // Pick a random cell within the range.
-            const SizeT cellX   = xStartIdx + rng.getI<SizeT>(0, (xEndIdx - xStartIdx + 1u) - 1u);
-            const SizeT cellY   = yStartIdx + rng.getI<SizeT>(0, (yEndIdx - yStartIdx + 1u) - 1u);
-            const SizeT cellIdx = convert2DTo1D(cellX, cellY, nCellsX);
-            const SizeT start   = m_cellStartIndices[cellIdx];
-            const SizeT end     = m_cellStartIndices[cellIdx + 1];
-            const SizeT count   = end - start;
-
-            if (count == 0u)
-                continue;
-
-            const auto candidateIdx = m_objectIndices[start + rng.getI<SizeT>(0, count - 1)];
-
-            if (!predicate(candidateIdx))
-                continue;
-
-            return candidateIdx;
-        }
-
-        // If no object was found after maxAttempts, return invalid index.
-        return static_cast<SizeT>(-1u);
-    }
-
-    ////////////////////////////////////////////////////////////
     void forEachUniqueIndexPair(auto&& func)
     {
         for (SizeT cellIdx = 0; cellIdx < nCellsTotal; ++cellIdx)

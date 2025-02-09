@@ -302,7 +302,7 @@ namespace
 ////////////////////////////////////////////////////////////
 [[nodiscard]] ImTextureID convertGLTextureHandleToImTextureID(unsigned int glTextureHandle)
 {
-    ImTextureID textureID = nullptr;
+    ImTextureID textureID{};
     SFML_BASE_MEMCPY(&textureID, &glTextureHandle, sizeof(unsigned int));
     return textureID;
 }
@@ -936,24 +936,22 @@ struct [[nodiscard]] ImGuiPerWindowContext
         ImGuiKey finalKey{};
         switch (key)
         {
-            case ImGuiNavInput_Activate:
+            case ImGuiKey_GamepadFaceDown:
                 finalKey = ImGuiKey_GamepadFaceDown;
                 break;
-            case ImGuiNavInput_Cancel:
+            case ImGuiKey_GamepadFaceRight:
                 finalKey = ImGuiKey_GamepadFaceRight;
                 break;
-            case ImGuiNavInput_Input:
+            case ImGuiKey_GamepadFaceUp:
                 finalKey = ImGuiKey_GamepadFaceUp;
                 break;
-            case ImGuiNavInput_Menu:
+            case ImGuiKey_GamepadFaceLeft:
                 finalKey = ImGuiKey_GamepadFaceLeft;
                 break;
-            case ImGuiNavInput_FocusPrev:
-            case ImGuiNavInput_TweakSlow:
+            case ImGuiKey_GamepadL1:
                 finalKey = ImGuiKey_GamepadL1;
                 break;
-            case ImGuiNavInput_FocusNext:
-            case ImGuiNavInput_TweakFast:
+            case ImGuiKey_GamepadR1:
                 finalKey = ImGuiKey_GamepadR1;
                 break;
             default:
@@ -1160,19 +1158,18 @@ bool ImGuiContext::init(Window& window, Vector2f displaySize, bool loadDefaultFo
     thread_local std::string* clipboardTextPtr;
     clipboardTextPtr = &m_impl->clipboardText;
 
-    return m_impl->currentPerWindowContext->init(
-        displaySize,
-        loadDefaultFont,
+    return m_impl->currentPerWindowContext->init(displaySize,
+                                                 loadDefaultFont,
 
-        [](void* /*userData*/, const char* text)
-        { Clipboard::setString(StringUtfUtils::fromUtf8(text, text + SFML_BASE_STRLEN(text))); },
+                                                 [](void* /*userData*/, const char* text)
+    { Clipboard::setString(StringUtfUtils::fromUtf8(text, text + SFML_BASE_STRLEN(text))); },
 
-        [](void* /*userData*/)
-        {
-            auto tmp = Clipboard::getString().toUtf8<std::u8string>();
-            clipboardTextPtr->assign(tmp.begin(), tmp.end());
-            return clipboardTextPtr->c_str();
-        });
+                                                 [](void* /*userData*/)
+    {
+        auto tmp = Clipboard::getString().toUtf8<std::u8string>();
+        clipboardTextPtr->assign(tmp.begin(), tmp.end());
+        return clipboardTextPtr->c_str();
+    });
 }
 
 
@@ -1182,7 +1179,7 @@ void ImGuiContext::setCurrentWindow(const Window& window)
     auto found = base::findIf(m_impl->perWindowContexts.begin(),
                               m_impl->perWindowContexts.end(),
                               [&](base::UniquePtr<ImGuiPerWindowContext>& ctx)
-                              { return ctx->window->getNativeHandle() == window.getNativeHandle(); });
+    { return ctx->window->getNativeHandle() == window.getNativeHandle(); });
 
     SFML_BASE_ASSERT(found != m_impl->perWindowContexts.end() &&
                      "Failed to find the window. Forgot to call init for the window?");
@@ -1268,7 +1265,7 @@ void ImGuiContext::shutdown(const Window& window)
     auto found = base::findIf(m_impl->perWindowContexts.begin(),
                               m_impl->perWindowContexts.end(),
                               [&](base::UniquePtr<ImGuiPerWindowContext>& ctx)
-                              { return ctx->window->getNativeHandle() == window.getNativeHandle(); });
+    { return ctx->window->getNativeHandle() == window.getNativeHandle(); });
 
     SFML_BASE_ASSERT(found != m_impl->perWindowContexts.end() &&
                      "Window wasn't inited properly: forgot to call init(window)?");

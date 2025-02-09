@@ -146,6 +146,7 @@ struct [[nodiscard]] OptionalTargetedCountdown : private sf::base::Optional<Targ
     ////////////////////////////////////////////////////////////
     using BaseType::emplace;
     using BaseType::hasValue;
+    using BaseType::reset;
     using BaseType::value;
     using BaseType::operator->;
 };

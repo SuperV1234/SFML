@@ -6,7 +6,7 @@ struct Profile;
 struct Playthrough;
 
 ////////////////////////////////////////////////////////////
-void saveProfileToFile(const Profile& profile);
-void loadProfileFromFile(Profile& profile);
-void savePlaythroughToFile(const Playthrough& playthrough);
-void loadPlaythroughFromFile(Playthrough& playthrough);
+void saveProfileToFile(const Profile& profile, const char* filename = "profile.json");
+void loadProfileFromFile(Profile& profile, const char* filename = "profile.json");
+void savePlaythroughToFile(const Playthrough& playthrough, const char* filename = "playthrough.json");
+void loadPlaythroughFromFile(Playthrough& playthrough, const char* filename = "playthrough.json");
