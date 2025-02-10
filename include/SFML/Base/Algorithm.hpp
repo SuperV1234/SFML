@@ -116,6 +116,14 @@ template <typename T, auto N>
 
 
 ////////////////////////////////////////////////////////////
+template <typename S, typename T, auto N>
+[[nodiscard, gnu::always_inline, gnu::const]] consteval auto getArraySize(const T (S::*)[N]) noexcept
+{
+    return N;
+}
+
+
+////////////////////////////////////////////////////////////
 template <typename T>
 class BackInserter
 {

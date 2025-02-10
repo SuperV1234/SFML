@@ -5,6 +5,7 @@
 #include "Cat.hpp"
 #include "CatConstants.hpp"
 #include "Constants.hpp"
+#include "ExactArray.hpp"
 #include "Milestones.hpp"
 #include "PSVDataConstants.hpp"
 #include "PurchasableScalingValue.hpp"
@@ -36,39 +37,56 @@ struct Playthrough
     PurchasableScalingValue psvSpellCount{&PSVDataConstants::spellCount};
     PurchasableScalingValue psvBubbleValue{&PSVDataConstants::bubbleValue}; // also tracks prestige level
     PurchasableScalingValue psvExplosionRadiusMult{&PSVDataConstants::explosionRadiusMult};
+    PurchasableScalingValue psvStarpawPercentage{&PSVDataConstants::starpawPercentage};
+    PurchasableScalingValue psvMewltiplierMult{&PSVDataConstants::mewltiplierMult};
 
-    PurchasableScalingValue psvPerCatType[nCatTypes]{
-        {&PSVDataConstants::catNormal},
-        {&PSVDataConstants::catUni},
-        {&PSVDataConstants::catDevil},
-        {&PSVDataConstants::catWitch},
-        {&PSVDataConstants::catAstro},
+    EXACT_ARRAY(PurchasableScalingValue,
+                psvPerCatType,
+                nCatTypes,
+                {
+                    {&PSVDataConstants::catNormal},
+                    {&PSVDataConstants::catUni},
+                    {&PSVDataConstants::catDevil},
+                    {&PSVDataConstants::catWitch},
+                    {&PSVDataConstants::catAstro},
 
-        {&PSVDataConstants::catWizard}, // TODO P1: unused?
-        {&PSVDataConstants::catMouse},  // TODO P1: unused?
-    };
+                    {&PSVDataConstants::catWizard},  // TODO P1: unused?
+                    {&PSVDataConstants::catMouse},   // TODO P1: unused?
+                    {&PSVDataConstants::catEngi},    // TODO P1: unused?
+                    {&PSVDataConstants::catRepulso}, // TODO P1: unused?
+                });
 
-    PurchasableScalingValue psvCooldownMultsPerCatType[nCatTypes]{
-        {&PSVDataConstants::catNormalCooldownMult},
-        {&PSVDataConstants::catUniCooldownMult},
-        {&PSVDataConstants::catDevilCooldownMult},
-        {&PSVDataConstants::catWitchCooldownMult},
-        {&PSVDataConstants::catAstroCooldownMult},
+    EXACT_ARRAY(PurchasableScalingValue,
+                psvCooldownMultsPerCatType,
+                nCatTypes,
+                {
+                    {&PSVDataConstants::catNormalCooldownMult},
+                    {&PSVDataConstants::catUniCooldownMult},
+                    {&PSVDataConstants::catDevilCooldownMult},
+                    {&PSVDataConstants::catWitchCooldownMult},
+                    {&PSVDataConstants::catAstroCooldownMult},
 
-        {&PSVDataConstants::catWizardCooldownMult}, // TODO P0: unused? or change to PP (if changed to PP needs a different array)
-        {&PSVDataConstants::catMouseCooldownMult}, // TODO P0: unused? or change to PP
-    };
+                    {&PSVDataConstants::catWizardCooldownMult},
+                    {&PSVDataConstants::catMouseCooldownMult},
+                    {&PSVDataConstants::catEngiCooldownMult},
+                    {&PSVDataConstants::catRepulsoCooldownMult},
+                });
 
-    PurchasableScalingValue psvRangeDivsPerCatType[nCatTypes]{
-        {&PSVDataConstants::catNormalRangeDiv},
-        {&PSVDataConstants::catUniRangeDiv},
-        {&PSVDataConstants::catDevilRangeDiv},
-        {&PSVDataConstants::catWitchRangeDiv},
-        {&PSVDataConstants::catAstroRangeDiv},
+    EXACT_ARRAY(PurchasableScalingValue,
+                psvRangeDivsPerCatType,
+                nCatTypes,
+                {
+                    {&PSVDataConstants::catNormalRangeDiv},
+                    {&PSVDataConstants::catUniRangeDiv},
+                    {&PSVDataConstants::catDevilRangeDiv},
+                    {&PSVDataConstants::catWitchRangeDiv},
+                    {&PSVDataConstants::catAstroRangeDiv},
 
-        {&PSVDataConstants::catWizardRangeDiv}, // TODO P0: unused? or change to PP
-        {&PSVDataConstants::catMouseRangeDiv},  // TODO P0: unused? or change to PP
-    };
+                    {&PSVDataConstants::catWizardRangeDiv},
+                    {&PSVDataConstants::catMouseRangeDiv},
+                    {&PSVDataConstants::catEngiRangeDiv},
+                    {&PSVDataConstants::catRepulsoRangeDiv},
+                });
 
     //
     // Permanent PSV instances
@@ -76,6 +94,9 @@ struct Playthrough
     PurchasableScalingValue psvPPInspireDurationMult{&PSVDataConstants::inspireDurationMult};
     PurchasableScalingValue psvPPManaCooldownMult{&PSVDataConstants::manaCooldownMult};
     PurchasableScalingValue psvPPManaMaxMult{&PSVDataConstants::manaMaxMult};
+    PurchasableScalingValue psvPPMouseCatGlobalBonusMult{&PSVDataConstants::mouseCatGlobalBonusMult};
+    PurchasableScalingValue psvPPEngiCatGlobalBonusMult{&PSVDataConstants::engiCatGlobalBonusMult};
+    PurchasableScalingValue psvPPRepulsoCatConverterChance{&PSVDataConstants::repulsoCatConverterChance};
 
     //
     // Currencies
@@ -92,7 +113,6 @@ struct Playthrough
 
     //
     // Magic
-    bool      magicUnlocked   = false;
     float     manaTimer       = 0.f;
     ManaType  mana            = 0u;
     bool      absorbingWisdom = false;
@@ -106,26 +126,32 @@ struct Playthrough
 
     //
     // Permanent purchases
-    bool multiPopPurchased        = false;
-    bool smartCatsPurchased       = false;
-    bool geniusCatsPurchased      = false; // if true, `smartCatsPurchased` must be true
-    bool windPurchased            = false;
-    bool astroCatInspirePurchased = false;
+    bool multiPopPurchased            = false;
+    bool smartCatsPurchased           = false;
+    bool geniusCatsPurchased          = false; // if true, `smartCatsPurchased` must be true
+    bool windPurchased                = false;
+    bool astroCatInspirePurchased     = false;
+    bool starpawConversionIgnoreBombs = false;
+    bool repulsoCatFilterPurchased    = false;
+    bool repulsoCatConverterPurchased = false;
 
     //
     // Permanent purchases settings
-    bool multiPopEnabled              = false;
-    bool windEnabled                  = false;
-    bool geniusCatIgnoreNormalBubbles = false;
-    bool geniusCatIgnoreStarBubbles   = false;
-    bool geniusCatIgnoreBombBubbles   = false;
+    bool multiPopEnabled               = false;
+    bool windEnabled                   = false;
+    bool geniusCatIgnoreNormalBubbles  = false;
+    bool geniusCatIgnoreStarBubbles    = false;
+    bool geniusCatIgnoreBombBubbles    = false;
+    bool repulsoCatIgnoreNormalBubbles = false;
+    bool repulsoCatIgnoreStarBubbles   = false;
+    bool repulsoCatIgnoreBombBubbles   = false;
+    bool repulsoCatConverterEnabled    = false;
 
     //
     // Object state
     std::vector<Bubble> bubbles;
     std::vector<Cat>    cats;
     std::vector<Shrine> shrines;
-
 
     //
     // Shrines
@@ -199,7 +225,6 @@ struct Playthrough
         comboPurchased = false;
         mapPurchased   = false;
 
-        magicUnlocked   = false;
         manaTimer       = 0.f;
         mana            = 0u;
         absorbingWisdom = false;
@@ -235,11 +260,14 @@ struct Playthrough
     ////////////////////////////////////////////////////////////
     [[nodiscard]] constexpr MoneyType getComputedRewardByBubbleType(const BubbleType type) const
     {
-        constexpr MoneyType baseRewards[nBubbleTypes]{
-            1u,  // Normal
-            25u, // Star
-            1u,  // Bomb
-        };
+        constexpr EXACT_ARRAY(MoneyType,
+                              baseRewards,
+                              nBubbleTypes,
+                              {
+                                  1u,  // Normal
+                                  25u, // Star
+                                  1u,  // Bomb
+                              });
 
         return baseRewards[asIdx(type)] * static_cast<MoneyType>(psvBubbleValue.currentValue() + 1.f);
     }
@@ -247,17 +275,20 @@ struct Playthrough
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline MoneyType getComputedRequiredRewardByShrineType(const ShrineType type) const
     {
-        constexpr MoneyType baseRequiredRewards[nShrineTypes]{
-            1'000,         // Magic // TODO P0: decide on values, implement all magic spells
-            10'000,        // Clicking
-            50'000,        // Automation
-            150'000,       // Repulsion
-            500'000,       // Attraction
-            1'500'000,     // Decay
-            25'000'000,    // Chaos
-            500'000'000,   // Transmutation
-            1'000'000'000, // Victory
-        };
+        constexpr EXACT_ARRAY(MoneyType,
+                              baseRequiredRewards,
+                              nShrineTypes,
+                              {
+                                  1'000,         // Magic // TODO P0: decide on values, implement all magic spells
+                                  10'000,        // Clicking
+                                  50'000,        // Automation
+                                  150'000,       // Repulsion
+                                  500'000,       // Attraction
+                                  1'500'000,     // Decay
+                                  25'000'000,    // Chaos
+                                  500'000'000,   // Transmutation
+                                  1'000'000'000, // Victory
+                              });
 
         return static_cast<MoneyType>(
             static_cast<float>(baseRequiredRewards[asIdx(type)]) * getComputedGlobalCostMultiplier());

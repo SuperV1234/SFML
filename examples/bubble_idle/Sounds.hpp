@@ -65,6 +65,7 @@ struct Sounds
     LoadedSound woosh{"woosh.ogg"};
     LoadedSound cast0{"cast0.ogg"};
     LoadedSound notification{"notification.ogg"};
+    LoadedSound failpop{"failpop.ogg"};
 
     ////////////////////////////////////////////////////////////
     std::vector<sf::Sound> soundsBeingPlayed;
@@ -96,6 +97,7 @@ struct Sounds
         setupWorldSound(earthquakeFast, /* attenuationMult */ 0.1f);
         setupWorldSound(woosh, /* attenuationMult */ 0.1f);
         setupWorldSound(cast0, /* attenuationMult */ 0.1f);
+        setupWorldSound(failpop);
 
         setupUISound(click);
         setupUISound(byteMeow);

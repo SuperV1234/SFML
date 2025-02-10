@@ -22,6 +22,8 @@ enum class [[nodiscard]] CatType : sf::base::U8
 
     Wizard = 5u,
     Mouse  = 6u,
+    Engi   = 7u,
+    Repulso   = 8u,
 
     Count
 };
@@ -59,6 +61,7 @@ struct [[nodiscard]] Cat
     float hue = 0.f;
 
     Countdown inspiredCountdown;
+    Countdown boostCountdown;
 
     SizeT nameIdx;
 
@@ -97,7 +100,10 @@ struct [[nodiscard]] Cat
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline bool updateCooldown(const float deltaTime)
     {
-        const float cooldownSpeed = inspiredCountdown.updateAndIsActive(deltaTime) ? 2.f : 1.f;
+        const float ispiredMult   = inspiredCountdown.updateAndIsActive(deltaTime) ? 2.f : 1.f;
+        const float boostMult     = boostCountdown.updateAndIsActive(deltaTime) ? 2.f : 1.f;
+        const float cooldownSpeed = ispiredMult * boostMult;
+
         return cooldown.updateAndStop(deltaTime * cooldownSpeed) == CountdownStatusStop::AlreadyFinished;
     }
 

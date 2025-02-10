@@ -67,16 +67,15 @@
 #include "SFML/Base/Macros.hpp"
 #include "SFML/Base/Math/Ceil.hpp"
 #include "SFML/Base/Optional.hpp"
-#include "SFML/Base/SizeT.hpp"
 
 #include <imgui.h>
 
 #include <algorithm>
 #include <array>
-#include <charconv>
 #include <iostream>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <cmath>
@@ -148,6 +147,7 @@ bool handleCatShrineCollision(const float deltaTimeMs, Cat& cat, Shrine& shrine)
             .velocity = rng.getVec2f({-0.1f, -0.1f}, {0.1f, 0.1f}),
             .scale    = rng.getF(0.07f, 0.16f),
             .rotation = 0.f,
+            .hueMod   = 0.f,
             .type     = BubbleType::Normal};
 }
 
@@ -155,7 +155,7 @@ bool handleCatShrineCollision(const float deltaTimeMs, Cat& cat, Shrine& shrine)
 [[nodiscard, gnu::always_inline]] inline constexpr float getComboValueMult(const int n)
 {
     constexpr float initial = 1.f;
-    constexpr float decay   = 0.9f;
+    constexpr float decay   = 0.95f;
 
     return initial * (1.f - std::pow(decay, static_cast<float>(n))) / (1.f - decay);
 }
@@ -226,8 +226,11 @@ void drawMinimap(sf::Shader&             shader,
 
     //
     // Draw minimap contents
-    window.setView(minimapView);                                                     // Use minimap projection
-    window.draw(txBackground, {.scale = {hudScale, hudScale}}, {.shader = &shader}); // Draw world background
+    window.setView(minimapView); // Use minimap projection
+    window.draw(sf::RectangleShape{{.fillColor = sf::Color::Black, .size = boundaries}}, /* texture */ nullptr);
+    window.draw(txBackground,
+                {.scale = {hudScale, hudScale}, .color = sf::Color::White.withAlpha(128)},
+                {.shader = &shader}); // Draw world background
     cpuDrawableBatch.scale = {hudScale, hudScale};
     window.draw(cpuDrawableBatch, {.texture = &textureAtlas.getTexture(), .shader = &shader}); // Draw game objects
     cpuDrawableBatch.scale = {1.f, 1.f};
@@ -341,6 +344,7 @@ struct Main
     sf::FloatRect txrFireParticle{addImgResourceToAtlas("fireparticle.png")};
     sf::FloatRect txrHexParticle{addImgResourceToAtlas("hexparticle.png")};
     sf::FloatRect txrShrineParticle{addImgResourceToAtlas("shrineparticle.png")};
+    sf::FloatRect txrCogParticle{addImgResourceToAtlas("cogparticle.png")};
     sf::FloatRect txrWitchCat{addImgResourceToAtlas("witchcat.png")};
     sf::FloatRect txrWitchCatPaw{addImgResourceToAtlas("witchcatpaw.png")};
     sf::FloatRect txrAstroCat{addImgResourceToAtlas("astromeow.png")};
@@ -351,6 +355,10 @@ struct Main
     sf::FloatRect txrWizardCatPaw{addImgResourceToAtlas("wizardcatpaw.png")};
     sf::FloatRect txrMouseCat{addImgResourceToAtlas("mousecat.png")};
     sf::FloatRect txrMouseCatPaw{addImgResourceToAtlas("mousecatpaw.png")};
+    sf::FloatRect txrEngiCat{addImgResourceToAtlas("engicat.png")};
+    sf::FloatRect txrEngiCatPaw{addImgResourceToAtlas("engicatpaw.png")};
+    sf::FloatRect txrRepulsoCat{addImgResourceToAtlas("repulsocat.png")};
+    sf::FloatRect txrRepulsoCatPaw{addImgResourceToAtlas("repulsocatpaw.png")};
 
     ///////////////////////////////////////////////////////////
     // Profile (stores settings)
@@ -432,6 +440,7 @@ struct Main
 
     ////////////////////////////////////////////////////////////
     // Batch for drawing
+    sf::CPUDrawableBatch bubbleDrawableBatch;
     sf::CPUDrawableBatch cpuDrawableBatch;
 
     ////////////////////////////////////////////////////////////
@@ -444,6 +453,24 @@ struct Main
     // Screen shake effect state
     float screenShakeAmount{0.f};
     float screenShakeTimer{0.f};
+
+    ////////////////////////////////////////////////////////////
+    // Cached culling boundaries
+    struct CullingBoundaries
+    {
+        float left;
+        float right;
+        float top;
+        float bottom;
+
+        [[nodiscard, gnu::always_inline, gnu::flatten]] inline bool isInside(const sf::Vector2f point) const
+        {
+            return (point.x >= left) & (point.x <= right) & (point.y >= top) & (point.y <= bottom);
+        }
+    };
+
+    CullingBoundaries particleCullingBoundaries{};
+    CullingBoundaries bubbleCullingBoundaries{};
 
     ////////////////////////////////////////////////////////////
     // Cat dragging state
@@ -490,32 +517,50 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    void spawnParticles(const SizeT n, auto&&... args)
+    void spawnParticle(const ParticleData& particleData, const float hue, const ParticleType particleType)
     {
-        for (SizeT i = 0; i < n; ++i)
-            particles.emplace_back(makeParticle(rng, SFML_BASE_FORWARD(args)...));
+        if (!profile.showParticles || !particleCullingBoundaries.isInside(particleData.position))
+            return;
+
+        particles.emplace_back(particleData, hue, particleType);
     }
 
     ////////////////////////////////////////////////////////////
-    void spawnParticlesWithHue(const float hue, const SizeT n, auto&&... args)
+    void spawnParticles(const SizeT n, const sf::Vector2f position, auto&&... args)
     {
+        if (!profile.showParticles || !particleCullingBoundaries.isInside(position))
+            return;
+
         for (SizeT i = 0; i < n; ++i)
-            particles.emplace_back(makeParticle(rng, SFML_BASE_FORWARD(args)...)).hue = hue;
+            particles.emplace_back(makeParticle(rng, position, SFML_BASE_FORWARD(args)...));
     }
 
     ////////////////////////////////////////////////////////////
-    void spawnParticlesNoGravity(const SizeT n, auto&&... args)
+    void spawnParticlesWithHue(const float hue, const SizeT n, const sf::Vector2f position, auto&&... args)
     {
+        if (!profile.showParticles || !particleCullingBoundaries.isInside(position))
+            return;
+
         for (SizeT i = 0; i < n; ++i)
-            particles.emplace_back(makeParticle(rng, SFML_BASE_FORWARD(args)...)).data.accelerationY = 0.f;
+            particles.emplace_back(makeParticle(rng, position, SFML_BASE_FORWARD(args)...)).hue = hue;
     }
 
     ////////////////////////////////////////////////////////////
-    void spawnParticlesWithHueNoGravity(const float hue, const SizeT n, auto&&... args)
+    void spawnParticlesNoGravity(const SizeT n, const sf::Vector2f position, auto&&... args)
+    {
+        if (!profile.showParticles || !particleCullingBoundaries.isInside(position))
+            return;
+
+        for (SizeT i = 0; i < n; ++i)
+            particles.emplace_back(makeParticle(rng, position, SFML_BASE_FORWARD(args)...)).data.accelerationY = 0.f;
+    }
+
+    ////////////////////////////////////////////////////////////
+    void spawnParticlesWithHueNoGravity(const float hue, const SizeT n, const sf::Vector2f position, auto&&... args)
     {
         for (SizeT i = 0; i < n; ++i)
         {
-            auto& p              = particles.emplace_back(makeParticle(rng, SFML_BASE_FORWARD(args)...));
+            auto& p              = particles.emplace_back(makeParticle(rng, position, SFML_BASE_FORWARD(args)...));
             p.data.accelerationY = 0.f;
             p.hue                = hue;
         }
@@ -662,6 +707,7 @@ struct Main
                 .pawRotation           = sf::radians(0.f),
                 .hue                   = hue,
                 .inspiredCountdown     = {},
+                .boostCountdown        = {},
                 .nameIdx               = getNextCatNameIdx(),
                 .textStatusShakeEffect = {},
                 .type                  = catType,
@@ -797,7 +843,7 @@ struct Main
 
         if (hoveredShrine != nullptr)
         {
-            constexpr const char* shrineTooltipsByType[nShrineTypes]{
+            constexpr const char* shrineTooltipsByType[]{
                 R"(
 ~~ Shrine Of Magic ~~
 
@@ -809,13 +855,13 @@ Rewards: wizardcat and magic spells!)",
 
 Effects: TODO P1: complete
 
-Rewards: mousecat and global 1.5x click value multiplier.)",
+Rewards: mousecat and global click reward value multiplier (starting at 1.25x, upgradable with prestige points).)",
                 R"(
 ~~ Shrine Of Automation ~~
 
 Effects: TODO P1: complete
 
-Rewards: TODO P1: complete)",
+Rewards: engicat and global cat reward value multiplier (starting at 1.25x, upgradable with prestige points).)",
                 R"(
 ~~ Shrine Of Repulsion ~~
 
@@ -853,6 +899,8 @@ Effects: TODO P1: complete
 
 Rewards: TODO P1: complete)",
             };
+
+            static_assert(sf::base::getArraySize(shrineTooltipsByType) == nShrineTypes);
 
             std::sprintf(tooltipBuffer, "%s", shrineTooltipsByType[static_cast<SizeT>(hoveredShrine->type)] + 1);
         }
@@ -896,7 +944,7 @@ Flies across the map, popping bubbles with a x20 multiplier.
 Inspires other cats to work faster when flying by.)";
             }
 
-            const char* catTooltipsByType[nCatTypes]{
+            const char* catTooltipsByType[]{
                 catNormalTooltip,
                 R"(
 ~~ Unicat ~~
@@ -927,10 +975,27 @@ Pops bubbles or bombs, keeping up a combo like for manual popping.
 
 Nearby cats pop bubbles with the same combo value as the mousecat.
 
-Provides a global x1.5 multiplier to all clicked bubbles.
+Provides a global click reward value multiplier by merely existing.
+)",
+                R"(
+~~ Engicat ~~
+(unique cat)
+
+Periodically performs maintenance on all nearby cats, temporarily increasing their speed. This buff stacks with Propagandists Astrocats.
+
+Provides a global cat reward value multiplier by merely existing.
+)",
+                R"(
+~~ Repulsocat ~~
+(unique cat)
+
+Continuously pushes bubbles away from itself with his huge magnet. This effect is applied even while Repulsocat is being dragged.
+
+Can be upgraded to filter repelled bubble types via prestige points.
 )",
             };
 
+            static_assert(sf::base::getArraySize(catTooltipsByType) == nCatTypes);
 
             SFML_BASE_ASSERT(hoveredCat != nullptr);
             std::sprintf(tooltipBuffer, "%s", catTooltipsByType[static_cast<SizeT>(hoveredCat->type)] + 1);
@@ -1191,7 +1256,7 @@ Provides a global x1.5 multiplier to all clicked bubbles.
             ImGui::EndTabItem();
         }
 
-        if (pt.magicUnlocked && ImGui::BeginTabItem("Magic"))
+        if (findCatWizard() != nullptr && ImGui::BeginTabItem("Magic"))
         {
             uiTabBarMagic();
             ImGui::EndTabItem();
@@ -1234,10 +1299,12 @@ Provides a global x1.5 multiplier to all clicked bubbles.
         const auto nCatWitch  = pt.getCatCountByType(CatType::Witch);
         const auto nCatAstro  = pt.getCatCountByType(CatType::Astro);
 
-        Cat* catWizard = findCatWizard();
-        Cat* catMouse  = findCatMouse();
+        Cat* catWizard  = findCatWizard();
+        Cat* catMouse   = findCatMouse();
+        Cat* catEngi    = findCatEngi();
+        Cat* catRepulso = findCatRepulso();
 
-        const bool anyUniqueCat = catWizard != nullptr || catMouse != nullptr;
+        const bool anyUniqueCat = catWizard != nullptr || catMouse != nullptr || catEngi != nullptr || catRepulso != nullptr;
 
         uiBeginColumns();
 
@@ -1454,6 +1521,18 @@ Provides a global x1.5 multiplier to all clicked bubbles.
             {
                 makeCooldownButton("- mousecat cooldown", CatType::Mouse);
                 makeRangeButton("- mousecat range", CatType::Mouse);
+            }
+
+            if (catEngi != nullptr)
+            {
+                makeCooldownButton("- engicat cooldown", CatType::Engi);
+                makeRangeButton("- engicat range", CatType::Engi);
+            }
+
+            if (catRepulso != nullptr)
+            {
+                // makeCooldownButton("- repulsocat cooldown", CatType::Repulso);
+                makeRangeButton("- repulsocat range", CatType::Repulso);
             }
 
             ImGui::Separator();
@@ -1736,7 +1815,7 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                      "A giant fan (off-screen) will produce an intense wind, making bubbles move and "
                      "flow much faster.\n\nNote: this effect can be toggled at will.");
         std::sprintf(labelBuffer, "");
-        if (makePurchasablePPButtonOneTime("Giant fan", 4u, pt.windPurchased))
+        if (makePurchasablePPButtonOneTime("Giant fan", 8u, pt.windPurchased))
             doTip("Hold onto something!", /* maxPrestigeLevel */ UINT_MAX);
 
         if (pt.windPurchased)
@@ -1754,7 +1833,7 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                      "Astrocats are now equipped with fancy patriotic flags, inspiring cats watching "
                      "them fly by to work faster!");
         std::sprintf(labelBuffer, "");
-        if (makePurchasablePPButtonOneTime("Space propaganda", 16u, pt.astroCatInspirePurchased))
+        if (makePurchasablePPButtonOneTime("Space propaganda", 32u, pt.astroCatInspirePurchased))
             doTip("Astrocats will inspire other cats\nto work faster when flying by!",
                   /* maxPrestigeLevel */ UINT_MAX);
 
@@ -1766,13 +1845,16 @@ Provides a global x1.5 multiplier to all clicked bubbles.
             makePrestigePurchasablePPButtonPSV("- buff duration", pt.psvPPInspireDurationMult);
         }
 
-        ImGui::Separator();
-
-        if (pt.magicUnlocked || pt.psvBubbleValue.nPurchases >= 3)
+        if (findCatWizard() != nullptr || pt.psvBubbleValue.nPurchases >= 3)
         {
+            ImGui::Separator();
+
             ImGui::Columns(1);
-            ImGui::Text("Wizard cat");
+            ImGui::Text("Wizardcat");
             uiBeginColumns();
+
+            // TODO P1: unshackle
+            // TODO P1: autocast
 
             std::sprintf(tooltipBuffer, "Increase the speed of mana generation.");
             std::sprintf(labelBuffer, "%.2fs", static_cast<double>(pt.getComputedManaCooldown() / 1000.f));
@@ -1781,6 +1863,98 @@ Provides a global x1.5 multiplier to all clicked bubbles.
             std::sprintf(tooltipBuffer, "Increase the maximum mana.");
             std::sprintf(labelBuffer, "%llu mana", pt.getComputedMaxMana());
             makePrestigePurchasablePPButtonPSV("- Mana limit", pt.psvPPManaMaxMult);
+
+            std::sprintf(tooltipBuffer,
+                         "Starpaw conversion ignores bombs, transforming only normal bubbles around the wizard into "
+                         "star bubbles.");
+            std::sprintf(labelBuffer, "");
+            (void)makePurchasablePPButtonOneTime("- Selective starpaw", 64u, pt.astroCatInspirePurchased);
+        }
+
+        if (findCatMouse() != nullptr || pt.psvBubbleValue.nPurchases >= 4)
+        {
+            ImGui::Separator();
+
+            ImGui::Columns(1);
+            ImGui::Text("Mousecat");
+            uiBeginColumns();
+
+            // TODO P1: unshackle
+
+            std::sprintf(tooltipBuffer, "Increase the global click reward value multiplier.");
+            std::sprintf(labelBuffer, "x%.2f", static_cast<double>(pt.psvPPMouseCatGlobalBonusMult.currentValue()));
+            makePrestigePurchasablePPButtonPSV("- Global click mult", pt.psvPPMouseCatGlobalBonusMult);
+        }
+
+        if (findCatEngi() != nullptr || pt.psvBubbleValue.nPurchases >= 5)
+        {
+            ImGui::Separator();
+
+            ImGui::Columns(1);
+            ImGui::Text("Engicat");
+            uiBeginColumns();
+
+            // TODO P1: unshackle
+
+            std::sprintf(tooltipBuffer, "Increase the global cat reward value multiplier.");
+            std::sprintf(labelBuffer, "x%.2f", static_cast<double>(pt.psvPPEngiCatGlobalBonusMult.currentValue()));
+            makePrestigePurchasablePPButtonPSV("- Global cat mult", pt.psvPPEngiCatGlobalBonusMult);
+        }
+
+        if (findCatRepulso() != nullptr || pt.psvBubbleValue.nPurchases >= 5)
+        {
+            ImGui::Separator();
+
+            ImGui::Columns(1);
+            ImGui::Text("Repulsocat");
+            uiBeginColumns();
+
+            // TODO P1: unshackle
+
+            std::sprintf(tooltipBuffer,
+                         "The Repulsocat does some quantum science stuff to its magnet to allow filtering of repelled "
+                         "bubbles by type.");
+            std::sprintf(labelBuffer, "");
+            (void)makePurchasablePPButtonOneTime("- Repulsion filter", 64u, pt.repulsoCatFilterPurchased);
+
+            if (pt.repulsoCatFilterPurchased)
+            {
+                ImGui::Columns(1);
+                ImGui::SetWindowFontScale(subBulletFontScale);
+
+                ImGui::Text("- ignore: ");
+                ImGui::SameLine();
+
+                ImGui::Checkbox("normal", &pt.repulsoCatIgnoreNormalBubbles);
+                ImGui::SameLine();
+
+                ImGui::Checkbox("star", &pt.repulsoCatIgnoreStarBubbles);
+                ImGui::SameLine();
+
+                ImGui::Checkbox("bombs", &pt.repulsoCatIgnoreBombBubbles);
+
+                ImGui::SetWindowFontScale(normalFontScale);
+                uiBeginColumns();
+            }
+
+            std::sprintf(tooltipBuffer,
+                         "The Repulsocat does some more weird science to its magnet, giving it a chance to convert "
+                         "repelled bubbles to star bubbles.");
+            std::sprintf(labelBuffer, "");
+            (void)makePurchasablePPButtonOneTime("- Conversion field", 256u, pt.repulsoCatConverterPurchased);
+
+            if (pt.repulsoCatConverterPurchased)
+            {
+                ImGui::SetWindowFontScale(subBulletFontScale);
+                ImGui::Checkbox("enable ##repulsoconv", &pt.repulsoCatConverterEnabled);
+                ImGui::SetWindowFontScale(normalFontScale);
+                ImGui::NextColumn();
+                ImGui::NextColumn();
+
+                std::sprintf(tooltipBuffer, "Increase the repelled bubble conversion chance.");
+                std::sprintf(labelBuffer, "%.2f%%", static_cast<double>(pt.psvPPRepulsoCatConverterChance.currentValue()));
+                makePrestigePurchasablePPButtonPSV("- Conversion chance", pt.psvPPRepulsoCatConverterChance);
+            }
         }
 
         buttonHueMod = 0.f;
@@ -1813,28 +1987,22 @@ Provides a global x1.5 multiplier to all clicked bubbles.
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] Cat* findCatWizard()
-    {
-        return findFirstCatByType(CatType::Wizard);
+#define DEFINE_CAT_FINDER_BY_TYPE(type)                                    \
+    [[nodiscard]] Cat* findCat##type()                                     \
+    {                                                                      \
+        return findFirstCatByType(CatType::type);                          \
+    }                                                                      \
+                                                                           \
+    [[nodiscard]] const Cat* findCat##type() const                         \
+    {                                                                      \
+        return const_cast<Main*>(this)->findFirstCatByType(CatType::type); \
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] const Cat* findCatWizard() const
-    {
-        return const_cast<Main*>(this)->findFirstCatByType(CatType::Wizard);
-    }
-
-    ////////////////////////////////////////////////////////////
-    [[nodiscard]] Cat* findCatMouse()
-    {
-        return findFirstCatByType(CatType::Mouse);
-    }
-
-    ////////////////////////////////////////////////////////////
-    [[nodiscard]] const Cat* findCatMouse() const
-    {
-        return const_cast<Main*>(this)->findFirstCatByType(CatType::Mouse);
-    }
+    DEFINE_CAT_FINDER_BY_TYPE(Wizard);
+    DEFINE_CAT_FINDER_BY_TYPE(Mouse);
+    DEFINE_CAT_FINDER_BY_TYPE(Engi);
+    DEFINE_CAT_FINDER_BY_TYPE(Repulso);
 
     ////////////////////////////////////////////////////////////
     void addCombo(int& xCombo, Countdown& xComboCountdown) const
@@ -1867,7 +2035,7 @@ Provides a global x1.5 multiplier to all clicked bubbles.
 
         if (wizardCat == nullptr)
         {
-            ImGui::Text("The wizard cat is missing!");
+            ImGui::Text("The wizardcat is missing!");
             return;
         }
 
@@ -1881,15 +2049,17 @@ Provides a global x1.5 multiplier to all clicked bubbles.
         ImGui::Text("Wisdom points: %llu WP", pt.wisdom);
 
         ImGui::Checkbox("Absorb wisdom", &pt.absorbingWisdom);
-        std::sprintf(tooltipBuffer, "TODO");
+        std::sprintf(tooltipBuffer,
+                     "The wizardcat concentrates, absorbing wisdom points from nearby star bubbles. While the "
+                     "wizardcat is concentrating, it cannot cast spells nor be moved around.");
         uiMakeTooltip();
 
         uiBeginColumns();
         buttonHueMod = 45.f;
 
-        std::sprintf(tooltipBuffer, "TODO");
-        std::sprintf(labelBuffer, "TODO");
-        (void)makePSVButtonExByCurrency("Discover spell",
+        std::sprintf(tooltipBuffer, "The wizardcat taps into memories of past lives, remembering a powerful spell.");
+        std::sprintf(labelBuffer, "%zu/%zu", pt.psvSpellCount.nPurchases, pt.psvSpellCount.data->nMaxPurchases);
+        (void)makePSVButtonExByCurrency("Remember spell",
                                         pt.psvSpellCount,
                                         1u,
                                         static_cast<MoneyType>(
@@ -1929,10 +2099,11 @@ Provides a global x1.5 multiplier to all clicked bubbles.
             if (pt.psvSpellCount.nPurchases >= 1)
             {
                 std::sprintf(tooltipBuffer,
-                             "Transforms all normal bubbles around the wizard into star bubbles immediately.");
+                             "Transforms a percentage of bubbles around the wizard into star bubbles "
+                             "immediately.\n\nCan be upgraded to ignore bombs with prestige points.");
                 std::sprintf(labelBuffer, "");
                 bool done = false;
-                // TODO P0: balance
+
                 if (makePurchasableButtonOneTimeByCurrency("Starpaw Conversion",
                                                            done,
                                                            ManaType{10u},
@@ -1950,11 +2121,17 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                                           range,
                                           [&](Bubble& bubble)
                     {
-                        if (bubble.type == BubbleType::Normal)
-                        {
-                            bubble.type = BubbleType::Star;
-                            bubble.velocity.y -= rng.getF(0.15f, 0.35f);
-                        }
+                        if (pt.starpawConversionIgnoreBombs && bubble.type != BubbleType::Normal)
+                            return ControlFlow::Continue;
+
+                        if (rng.getF(0.f, 99.f) > pt.psvStarpawPercentage.currentValue())
+                            return ControlFlow::Continue;
+
+                        bubble.type   = BubbleType::Star;
+                        bubble.hueMod = rng.getF(0.f, 360.f);
+                        bubble.velocity.y -= rng.getF(0.025f, 0.05f);
+
+                        spawnParticles(1, bubble.position, ParticleType::Star, 0.5f, 0.35f);
 
                         return ControlFlow::Continue;
                     });
@@ -1963,15 +2140,28 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                     ++wizardCat->hits;
                     wizardCat->cooldown.value = maxCooldown * 2.f;
                 }
+
+                std::sprintf(tooltipBuffer, "Increase the percentage of bubbles converted into star bubbles.");
+                std::sprintf(labelBuffer, "%.2f%%", static_cast<double>(pt.psvStarpawPercentage.currentValue()));
+                (void)makePSVButtonExByCurrency("- higher percentage",
+                                                pt.psvStarpawPercentage,
+                                                1u,
+                                                static_cast<MoneyType>(pt.getComputedGlobalCostMultiplier() *
+                                                                       pt.psvStarpawPercentage.nextCost()),
+                                                pt.wisdom,
+                                                "%s WP##%u");
             }
 
             //
             // SPELL 1
             if (pt.psvSpellCount.nPurchases >= 2)
             {
+                ImGui::Separator();
+
                 std::sprintf(tooltipBuffer,
-                             "Creates a x5 multiplier aura around the wizard that affects all cats and bubbles. Lasts "
-                             "5 seconds.\n\nCasting this spell multiple times will accumulate the aura duration.");
+                             "Creates a value multiplier aura around the wizard that affects all cats and bubbles. "
+                             "Lasts 5 seconds.\n\nCasting this spell multiple times will accumulate the aura "
+                             "duration.");
                 std::sprintf(labelBuffer, "%.2fs", static_cast<double>(pt.arcaneAuraTimer / 1000.f));
                 bool done = false;
                 if (makePurchasableButtonOneTimeByCurrency("Mewltiplier Aura",
@@ -1993,10 +2183,40 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                     ++wizardCat->hits;
                     wizardCat->cooldown.value = maxCooldown * 2.f;
                 }
+
+                std::sprintf(tooltipBuffer, "Increase the multiplier applied while the aura is active.");
+                std::sprintf(labelBuffer, "x%.2f", static_cast<double>(pt.psvMewltiplierMult.currentValue()));
+                (void)makePSVButtonExByCurrency("- higher multiplier",
+                                                pt.psvMewltiplierMult,
+                                                1u,
+                                                static_cast<MoneyType>(pt.getComputedGlobalCostMultiplier() *
+                                                                       pt.psvMewltiplierMult.nextCost()),
+                                                pt.wisdom,
+                                                "%s WP##%u");
             }
 
             //
             // SPELL 2 (TODO P0: should cost 30 mana, and is usually unlocked around prestige 4, so both devils and astros exist)
+            // idea: stasis, makes all bubbles stationary and when popped they do not disappear (except bombs maybe)
+            if (pt.psvSpellCount.nPurchases >= 3)
+            {
+                ImGui::Separator();
+
+                std::sprintf(tooltipBuffer, "TODO");
+                std::sprintf(labelBuffer, "TODO");
+
+                bool done = false;
+                if (makePurchasableButtonOneTimeByCurrency("TODO", done, ManaType{30u}, pt.mana, "%s mana##%u"))
+                {
+                    playSound(sounds.cast0);
+
+                    // TODO: effect
+
+                    done = false;
+                    ++wizardCat->hits;
+                    wizardCat->cooldown.value = maxCooldown * 2.f;
+                }
+            }
 
             buttonHueMod = 0.f;
             ImGui::Columns(1);
@@ -2004,6 +2224,7 @@ Provides a global x1.5 multiplier to all clicked bubbles.
         }
     }
 
+    ////////////////////////////////////////////////////////////
     static constexpr auto formatTime(const sf::base::U64 seconds)
     {
         struct Result
@@ -2171,7 +2392,7 @@ Provides a global x1.5 multiplier to all clicked bubbles.
         const bool inRangeOfWizard = wizardCat != nullptr && (wizardCat->position - bubblePosition).lengthSquared() <=
                                                                  pt.getComputedSquaredRangeByCatType(CatType::Wizard);
 
-        const float arcaneAuraMult = (pt.arcaneAuraTimer > 0.f && inRangeOfWizard) ? 5.f : 1.f;
+        const float arcaneAuraMult = (pt.arcaneAuraTimer > 0.f && inRangeOfWizard) ? pt.psvMewltiplierMult.currentValue() : 1.f;
 
         return static_cast<MoneyType>(
             sf::base::ceil(static_cast<float>(computedReward) * getComboValueMult(xCombo) * arcaneAuraMult));
@@ -2199,6 +2420,10 @@ Provides a global x1.5 multiplier to all clicked bubbles.
 
         ImGui::SetNextItemWidth(210.f);
         ImGui::SliderFloat("Background Opacity", &profile.backgroundOpacity, 0.f, 100.f, "%.0f%%");
+
+        ImGui::Checkbox("Show cat text", &profile.showCatText);
+        ImGui::Checkbox("Show particles", &profile.showParticles);
+        ImGui::Checkbox("Show text particles", &profile.showTextParticles);
 
         const float fps = 1.f / fpsClock.getElapsedTime().asSeconds();
         ImGui::Text("FPS: %.2f", static_cast<double>(fps));
@@ -2264,7 +2489,7 @@ Provides a global x1.5 multiplier to all clicked bubbles.
             {
                 for (Shrine& shrine : pt.shrines)
                 {
-                    if (!shrine.isActive())
+                    if (!shrine.isActive() || shrine.tcDeath.hasValue())
                         continue;
 
                     const auto requiredReward = pt.getComputedRequiredRewardByShrineType(shrine.type);
@@ -2309,7 +2534,7 @@ Provides a global x1.5 multiplier to all clicked bubbles.
 
             for (SizeT i = 0u; i < nCatTypes; ++i)
             {
-                constexpr const char* catNames[nCatTypes] = {
+                constexpr const char* catNames[] = {
                     "Normal",
                     "Uni",
                     "Devil",
@@ -2317,7 +2542,11 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                     "Astro",
                     "Wizard",
                     "Mouse",
+                    "Engi",
+                    "Repulso",
                 };
+
+                static_assert(sf::base::getArraySize(catNames) == nCatTypes);
 
                 ImGui::Text("%s", catNames[i]);
                 psvScalarInput("PerCatType", pt.psvPerCatType[i]);
@@ -2331,6 +2560,9 @@ Provides a global x1.5 multiplier to all clicked bubbles.
             psvScalarInput("PPInspireDurationMult", pt.psvPPInspireDurationMult);
             psvScalarInput("PPManaCooldownMult", pt.psvPPManaCooldownMult);
             psvScalarInput("PPManaMaxMult", pt.psvPPManaMaxMult);
+            psvScalarInput("PPMouseCatGlobalBonusMult", pt.psvPPMouseCatGlobalBonusMult);
+            psvScalarInput("PPEngiCatGlobalBonusMult", pt.psvPPEngiCatGlobalBonusMult);
+            psvScalarInput("PPRepulsoCatConverterChance", pt.psvPPRepulsoCatConverterChance);
 
             ImGui::SetWindowFontScale(normalFontScale);
             ImGui::PopFont();
@@ -2348,18 +2580,21 @@ Provides a global x1.5 multiplier to all clicked bubbles.
     {
         statBubblePopped(byHand, reward);
 
-        auto& tp = textParticles.emplace_back(
-            TextParticle{.buffer = {},
-                         .data   = {.position = {tpPosition.x, tpPosition.y - 10.f},
-                                    .velocity = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
-                                    .scale = sf::base::clamp(1.f + 0.1f * static_cast<float>(combo + 1) / 1.75f, 1.f, 3.0f),
-                                    .accelerationY = 0.0042f,
-                                    .opacity       = 1.f,
-                                    .opacityDecay  = 0.00175f,
-                                    .rotation      = 0.f,
-                                    .torque        = rng.getF(-0.002f, 0.002f)}});
+        if (profile.showTextParticles)
+        {
+            auto& tp = textParticles.emplace_back(
+                TextParticle{.buffer = {},
+                             .data   = {.position = {tpPosition.x, tpPosition.y - 10.f},
+                                        .velocity = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
+                                        .scale = sf::base::clamp(1.f + 0.1f * static_cast<float>(combo + 1) / 1.75f, 1.f, 3.0f),
+                                        .accelerationY = 0.0042f,
+                                        .opacity       = 1.f,
+                                        .opacityDecay  = 0.00175f,
+                                        .rotation      = 0.f,
+                                        .torque        = rng.getF(-0.002f, 0.002f)}});
 
-        std::snprintf(tp.buffer, sizeof(tp.buffer), "+$%llu", reward);
+            std::snprintf(tp.buffer, sizeof(tp.buffer), "+$%llu", reward);
+        }
 
         sounds.pop.setPosition({position.x, position.y});
         sounds.pop.setPitch(remap(static_cast<float>(xCombo), 1, 10, 1.f, 2.f));
@@ -2380,7 +2615,9 @@ Provides a global x1.5 multiplier to all clicked bubbles.
 
             spawnParticles(32, position, ParticleType::Fire, 3.f, 1.f);
 
-            const auto explosionAction = [&](Bubble& bubble)
+            forEachBubbleInRadius(position,
+                                  pt.getComputedBombExplosionRadius(),
+                                  [&](Bubble& bubble)
             {
                 if (bubble.type == BubbleType::Bomb)
                     return ControlFlow::Continue;
@@ -2392,21 +2629,26 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                 statExplosionRevenue(newReward);
 
                 popWithRewardAndReplaceBubble(newReward,
-                                              byHand,
+                                              /* byHand */ false,
                                               bubble,
                                               /* combo */ 1,
                                               /* popSoundOverlap */ false);
 
                 return ControlFlow::Continue;
-            };
-
-            forEachBubbleInRadius(position, pt.getComputedBombExplosionRadius(), explosionAction);
+            });
         }
     }
 
     ////////////////////////////////////////////////////////////
-    void popWithRewardAndReplaceBubble(const MoneyType reward, const bool byHand, Bubble& bubble, int xCombo, bool popSoundOverlap)
+    void popWithRewardAndReplaceBubble(MoneyType reward, const bool byHand, Bubble& bubble, int xCombo, bool popSoundOverlap)
     {
+        if (byHand && findCatMouse() != nullptr)
+            reward = static_cast<MoneyType>(
+                sf::base::ceil(static_cast<float>(reward) * pt.psvPPMouseCatGlobalBonusMult.currentValue()));
+        else if (!byHand && findCatEngi() != nullptr)
+            reward = static_cast<MoneyType>(
+                sf::base::ceil(static_cast<float>(reward) * pt.psvPPEngiCatGlobalBonusMult.currentValue()));
+
         Shrine* collectorShrine = nullptr;
         for (Shrine& shrine : pt.shrines)
         {
@@ -2429,16 +2671,16 @@ Provides a global x1.5 multiplier to all clicked bubbles.
 
             spawnParticlesWithHue(shrine.getHue(), 6, shrine.getDrawPosition(), ParticleType::Shrine, rng.getF(0.6f, 1.f), 0.5f);
 
-            particles.emplace_back(ParticleData{.position      = bubble.position,
-                                                .velocity      = -diff.normalized() * 0.5f,
-                                                .scale         = 1.5f,
-                                                .accelerationY = 0.f,
-                                                .opacity       = 1.f,
-                                                .opacityDecay = 0.00135f + (shrine.getRange() - diff.length()) / 22000.f,
-                                                .rotation = 0.f,
-                                                .torque   = 0.f},
-                                   /* hue */ 0.f,
-                                   ParticleType::Bubble);
+            spawnParticle(ParticleData{.position      = bubble.position,
+                                       .velocity      = -diff.normalized() * 0.5f,
+                                       .scale         = 1.5f,
+                                       .accelerationY = 0.f,
+                                       .opacity       = 1.f,
+                                       .opacityDecay  = 0.00135f + (shrine.getRange() - diff.length()) / 22000.f,
+                                       .rotation      = 0.f,
+                                       .torque        = 0.f},
+                          /* hue */ 0.f,
+                          ParticleType::Bubble);
         }
 
         popBubbleImpl(byHand,
@@ -2484,12 +2726,23 @@ Provides a global x1.5 multiplier to all clicked bubbles.
     }
 
     ////////////////////////////////////////////////////////////
+    void turnBubbleNormal(Bubble& bubble)
+    {
+        bubble.type     = BubbleType::Normal;
+        bubble.rotation = 0.f;
+        bubble.hueMod   = 0.f;
+    }
+
+    ////////////////////////////////////////////////////////////
     void gameLoopUpdateBubbles(const float deltaTimeMs)
     {
         for (Bubble& bubble : pt.bubbles)
         {
             if (bubble.type == BubbleType::Bomb)
                 bubble.rotation += deltaTimeMs * 0.01f;
+
+            if (bubble.type == BubbleType::Star)
+                bubble.hueMod += deltaTimeMs * 0.1f;
 
             auto& pos = bubble.position;
 
@@ -2518,11 +2771,13 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                 if (sf::base::fabs(bubble.velocity.x) > 0.04f)
                     bubble.velocity.x = 0.04f;
 
-                bubble.type     = BubbleType::Normal;
-                bubble.rotation = 0.f;
+                turnBubbleNormal(bubble);
             }
             else if (pos.y + radius < 0.f)
-                pos.y = boundaries.y + radius;
+            {
+                turnBubbleNormal(bubble);
+                pos.y = radius; // TODO P0: test
+            }
 
             bubble.velocity.y += 0.00005f * deltaTimeMs;
         }
@@ -2615,6 +2870,7 @@ Provides a global x1.5 multiplier to all clicked bubbles.
         cat.pawRotation = (bubble.position - cat.position).angle() + sf::degrees(45);
 
         bubble.type       = BubbleType::Star;
+        bubble.hueMod     = rng.getF(0.f, 360.f);
         bubble.velocity.y = rng.getF(-0.1f, -0.05f);
         sounds.shine.setPosition({bubble.position.x, bubble.position.y});
         playSound(sounds.shine);
@@ -2762,18 +3018,21 @@ Provides a global x1.5 multiplier to all clicked bubbles.
         {
             const auto wisdomReward = pt.getComputedRewardByBubbleType(bubble.type);
 
-            auto& tp = textParticles.emplace_back(
-                TextParticle{.buffer = {},
-                             .data   = {.position      = {drawPosition.x, drawPosition.y - 10.f},
-                                        .velocity      = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
-                                        .scale         = 1.25f,
-                                        .accelerationY = 0.0042f,
-                                        .opacity       = 1.f,
-                                        .opacityDecay  = 0.00175f,
-                                        .rotation      = 0.f,
-                                        .torque        = rng.getF(-0.002f, 0.002f)}});
+            if (profile.showTextParticles)
+            {
+                auto& tp = textParticles.emplace_back(
+                    TextParticle{.buffer = {},
+                                 .data   = {.position      = {drawPosition.x, drawPosition.y - 10.f},
+                                            .velocity      = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
+                                            .scale         = 1.25f,
+                                            .accelerationY = 0.0042f,
+                                            .opacity       = 1.f,
+                                            .opacityDecay  = 0.00175f,
+                                            .rotation      = 0.f,
+                                            .torque        = rng.getF(-0.002f, 0.002f)}});
 
-            std::snprintf(tp.buffer, sizeof(tp.buffer), "+%llu WP", wisdomReward);
+                std::snprintf(tp.buffer, sizeof(tp.buffer), "+%llu WP", wisdomReward);
+            }
 
             // TODO P1: change sound
             sounds.pop.setPosition({bubble.position.x, bubble.position.y});
@@ -2783,8 +3042,7 @@ Provides a global x1.5 multiplier to all clicked bubbles.
             spawnParticlesWithHue(230.f, 16, bubble.position, ParticleType::Star, 0.5f, 0.35f);
 
             pt.wisdom += wisdomReward;
-            bubble.type     = BubbleType::Normal;
-            bubble.rotation = 0.f;
+            turnBubbleNormal(bubble);
 
             cat.cooldown.value = maxCooldown;
         }
@@ -2813,7 +3071,7 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                                                /* combo */ pt.mouseCatCombo);
 
         popWithRewardAndReplaceBubble(reward,
-                                      /* byHand */ false,
+                                      /* byHand */ true,
                                       bubble,
                                       /* combo */ pt.mouseCatCombo,
                                       /* popSoundOverlap */ true);
@@ -2840,12 +3098,98 @@ Provides a global x1.5 multiplier to all clicked bubbles.
     }
 
     ////////////////////////////////////////////////////////////
+    void gameLoopUpdateCatActionEngi(const float /* deltaTimeMs */, Cat& cat)
+    {
+        const auto maxCooldown  = pt.getComputedCooldownByCatType(cat.type);
+        const auto range        = pt.getComputedRangeByCatType(cat.type);
+        const auto rangeSquared = range * range;
+
+        bool anyCatHit = false;
+
+        for (Cat& otherCat : pt.cats)
+        {
+            if (otherCat.type == CatType::Engi)
+                continue;
+
+            if ((otherCat.position - cat.position).lengthSquared() > rangeSquared)
+                continue;
+
+            anyCatHit = true;
+
+            spawnParticles(8, otherCat.getDrawPosition(), ParticleType::Cog, 0.25f, 0.5f);
+
+            // TODO P1: change sound
+            sounds.rocket.setPosition({otherCat.position.x, otherCat.position.y});
+            playSound(sounds.woosh, /* overlap */ false);
+
+            otherCat.boostCountdown.value = 1500.f;
+        }
+
+        if (anyCatHit)
+        {
+            cat.textStatusShakeEffect.bump(rng, 1.5f);
+            ++cat.hits;
+        }
+
+        cat.cooldown.value = maxCooldown;
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopUpdateCatActionRepulso(const float /* deltaTimeMs */, Cat& cat)
+    {
+        const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
+        const auto range       = pt.getComputedRangeByCatType(cat.type);
+
+        if (pt.repulsoCatConverterEnabled && !pt.repulsoCatIgnoreNormalBubbles)
+        {
+            Bubble* b = pickRandomBubbleInRadiusMatching(cat.position,
+                                                         range,
+                                                         [&](Bubble& bubble) { return bubble.type != BubbleType::Star; });
+
+            if (b != nullptr && rng.getF(0.f, 100.f) < pt.psvPPRepulsoCatConverterChance.currentValue())
+            {
+                b->type   = BubbleType::Star;
+                b->hueMod = rng.getF(0.f, 360.f);
+                spawnParticles(2, b->position, ParticleType::Star, 0.5f, 0.35f);
+
+                cat.textStatusShakeEffect.bump(rng, 1.5f);
+                ++cat.hits;
+            }
+        }
+
+        cat.cooldown.value = maxCooldown;
+    }
+
+    ////////////////////////////////////////////////////////////
     void gameLoopUpdateCatActions(const float deltaTimeMs)
     {
         for (Cat& cat : pt.cats)
         {
             // Keep cat in boundaries
             const float catRadius = cat.getRadius();
+
+            // Keep cats away from shrine of clicking
+            // Buff cats in shrine of automation
+            for (Shrine& shrine : pt.shrines)
+            {
+                if (shrine.type == ShrineType::Clicking && shrine.isActive())
+                {
+                    const auto diff = (shrine.position - cat.position);
+                    if (diff.length() < shrine.getRange() * 1.35f)
+                    {
+                        const auto strength = (shrine.getRange() * 1.35f - diff.length()) * 0.00125f * deltaTimeMs;
+                        cat.position -= diff.normalized() * strength;
+                    }
+                }
+                else if (shrine.type == ShrineType::Automation && shrine.isActive())
+                {
+                    const auto diff = (shrine.position - cat.position);
+                    if (diff.length() < shrine.getRange())
+                    {
+                        cat.boostCountdown.value = 250.f;
+                    }
+                }
+            }
 
             if (!cat.astroState.hasValue())
             {
@@ -2880,20 +3224,36 @@ Provides a global x1.5 multiplier to all clicked bubbles.
 
             const auto [cx, cy] = cat.position + cat.rangeOffset;
 
-            if (cat.inspiredCountdown.value > 0.f)
+            if (cat.inspiredCountdown.value > 0.f && rng.getF(0.f, 1.f) > 0.5f)
             {
-                if (rng.getF(0.f, 1.f) > 0.5f)
-                    particles.push_back(
-                        {.data = {.position = drawPosition + sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius},
-                                  .velocity = rng.getVec2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
-                                  .scale    = rng.getF(0.08f, 0.27f) * 0.2f,
-                                  .accelerationY = -0.002f,
-                                  .opacity       = 255.f,
-                                  .opacityDecay  = rng.getF(0.00025f, 0.0015f),
-                                  .rotation      = rng.getF(0.f, sf::base::tau),
-                                  .torque        = rng.getF(-0.002f, 0.002f)},
-                         .type = ParticleType::Star});
+                spawnParticle({.position = drawPosition + sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius},
+                               .velocity = rng.getVec2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
+                               .scale    = rng.getF(0.08f, 0.27f) * 0.2f,
+                               .accelerationY = -0.002f,
+                               .opacity       = 255.f,
+                               .opacityDecay  = rng.getF(0.00025f, 0.0015f),
+                               .rotation      = rng.getF(0.f, sf::base::tau),
+                               .torque        = rng.getF(-0.002f, 0.002f)},
+                              /* hue */ 0.f,
+                              ParticleType::Star);
             }
+
+            if (cat.boostCountdown.value > 0.f && rng.getF(0.f, 1.f) > 0.75f)
+            {
+                spawnParticle({.position = drawPosition + sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius - 25.f},
+                               .velocity      = rng.getVec2f({-0.025f, -0.015f}, {0.025f, 0.015f}),
+                               .scale         = rng.getF(0.08f, 0.27f) * 0.15f,
+                               .accelerationY = -0.0015f,
+                               .opacity       = 255.f,
+                               .opacityDecay  = rng.getF(0.00055f, 0.0045f),
+                               .rotation      = rng.getF(0.f, sf::base::tau),
+                               .torque        = rng.getF(-0.002f, 0.002f)},
+                              /* hue */ 0.f,
+                              ParticleType::Cog);
+            }
+
+            if (cat.type == CatType::Uni)
+                cat.hue += deltaTimeMs * 0.1f;
 
             if (cat.type == CatType::Astro && cat.astroState.hasValue())
             {
@@ -2959,17 +3319,16 @@ Provides a global x1.5 multiplier to all clicked bubbles.
             {
                 if (isWizardBusy() && rng.getF(0.f, 1.f) > 0.5f)
                 {
-                    particles.push_back(
-                        {.data = {.position = drawPosition + sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius},
-                                  .velocity = rng.getVec2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
-                                  .scale    = rng.getF(0.08f, 0.27f) * 0.2f,
-                                  .accelerationY = -0.002f,
-                                  .opacity       = 255.f,
-                                  .opacityDecay  = rng.getF(0.00025f, 0.0015f),
-                                  .rotation      = rng.getF(0.f, sf::base::tau),
-                                  .torque        = rng.getF(-0.002f, 0.002f)},
-                         .hue  = 225.f,
-                         .type = ParticleType::Star});
+                    spawnParticle({.position = drawPosition + sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius},
+                                   .velocity = rng.getVec2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
+                                   .scale    = rng.getF(0.08f, 0.27f) * 0.2f,
+                                   .accelerationY = -0.002f,
+                                   .opacity       = 255.f,
+                                   .opacityDecay  = rng.getF(0.00025f, 0.0015f),
+                                   .rotation      = rng.getF(0.f, sf::base::tau),
+                                   .torque        = rng.getF(-0.002f, 0.002f)},
+                                  /* hue */ 225.f,
+                                  ParticleType::Star);
                 }
             }
 
@@ -2984,18 +3343,41 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                         continue;
 
                     if (rng.getF(0.f, 1.f) > 0.85f)
-                        particles.push_back(
-                            {.data = {.position = otherCat.getDrawPosition() +
-                                                  sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius - 25.f},
-                                      .velocity      = rng.getVec2f({-0.01f, -0.05f}, {0.01f, 0.05f}),
-                                      .scale         = rng.getF(0.08f, 0.27f) * 0.2f,
-                                      .accelerationY = -0.00015f,
-                                      .opacity       = 255.f,
-                                      .opacityDecay  = rng.getF(0.0003f, 0.002f),
-                                      .rotation      = -0.6f,
-                                      .torque        = 0.f},
-                             .type = ParticleType::Cursor});
+                        spawnParticle({.position = otherCat.getDrawPosition() +
+                                                   sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius - 25.f},
+                                       .velocity      = rng.getVec2f({-0.01f, -0.05f}, {0.01f, 0.05f}),
+                                       .scale         = rng.getF(0.08f, 0.27f) * 0.2f,
+                                       .accelerationY = -0.00015f,
+                                       .opacity       = 255.f,
+                                       .opacityDecay  = rng.getF(0.0003f, 0.002f),
+                                       .rotation      = -0.6f,
+                                       .torque        = 0.f},
+                                      /* hue */ 0.f,
+                                      ParticleType::Cursor);
                 }
+            }
+
+            if (cat.type == CatType::Repulso)
+            {
+                forEachBubbleInRadius(cat.position,
+                                      pt.getComputedRangeByCatType(cat.type),
+                                      [&](Bubble& bubble)
+                {
+                    if (pt.repulsoCatIgnoreNormalBubbles && bubble.type == BubbleType::Normal)
+                        return ControlFlow::Continue;
+
+                    if (pt.repulsoCatIgnoreStarBubbles && bubble.type == BubbleType::Star)
+                        return ControlFlow::Continue;
+
+                    if (pt.repulsoCatIgnoreBombBubbles && bubble.type == BubbleType::Bomb)
+                        return ControlFlow::Continue;
+
+                    const auto diff = (cat.position - bubble.position);
+                    const auto strength = (pt.getComputedRangeByCatType(cat.type) - diff.length()) * 0.000002f * deltaTimeMs;
+                    bubble.velocity -= diff.normalized() * strength * (pt.windEnabled ? 5.f : 1.f);
+
+                    return ControlFlow::Continue;
+                });
             }
 
             if (!cat.updateCooldown(deltaTimeMs))
@@ -3003,7 +3385,7 @@ Provides a global x1.5 multiplier to all clicked bubbles.
 
             using FnPtr = void (Main::*)(const float, Cat&);
 
-            const FnPtr fnPtrs[nCatTypes]{
+            const FnPtr fnPtrs[]{
                 &Main::gameLoopUpdateCatActionNormal,
                 &Main::gameLoopUpdateCatActionUni,
                 &Main::gameLoopUpdateCatActionDevil,
@@ -3011,7 +3393,11 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                 &Main::gameLoopUpdateCatActionAstro,
                 &Main::gameLoopUpdateCatActionWizard,
                 &Main::gameLoopUpdateCatActionMouse,
+                &Main::gameLoopUpdateCatActionEngi,
+                &Main::gameLoopUpdateCatActionRepulso,
             };
+
+            static_assert(sf::base::getArraySize(fnPtrs) == nCatTypes);
 
             (this->*fnPtrs[asIdx(cat.type)])(deltaTimeMs, cat);
         }
@@ -3139,6 +3525,30 @@ Provides a global x1.5 multiplier to all clicked bubbles.
             {
                 const auto diff = (shrine.position - bubble.position);
 
+                if (shrine.type == ShrineType::Magic)
+                {
+                    if (bubble.type == BubbleType::Star)
+                    {
+                        if (rng.getF(0.f, 1.f) > 0.85f)
+                            spawnParticlesWithHue(230.f, 1, bubble.position, ParticleType::Star, 0.5f, 0.35f);
+
+                        bubble.rotation += deltaTimeMs * 0.0025f;
+
+                        if (bubble.rotation >= sf::base::tau)
+                            turnBubbleNormal(bubble);
+                    }
+                }
+                else if (shrine.type == ShrineType::Repulsion)
+                {
+                    const auto strength = (shrine.getRange() - diff.length()) * 0.0000015f * deltaTimeMs;
+                    bubble.velocity -= diff.normalized() * strength * (pt.windEnabled ? 5.f : 1.f);
+                }
+                else if (shrine.type == ShrineType::Attraction)
+                {
+                    const auto strength = (shrine.getRange() - diff.length()) * 0.0000025f * deltaTimeMs;
+                    bubble.velocity += diff.normalized() * strength * (pt.windEnabled ? 5.f : 1.f);
+                }
+
                 // magnetism
                 // bubble.velocity += diff * 0.0000005f * deltaTimeMs;
 
@@ -3179,25 +3589,33 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                         playSound(sounds.woosh);
                         ++pt.nShrinesCompleted;
 
+                        const auto spawnSpecialCat = [&](const CatType catType)
+                        {
+                            auto& c    = spawnCat(gameView, catType, {0.f, 0.f}, /* hue */ 0.f);
+                            c.position = shrine.position;
+                            ++pt.psvPerCatType[static_cast<SizeT>(catType)].nPurchases;
+                        };
+
                         // TODO P0: handle all shrine death rewards
                         if (shrine.type == ShrineType::Magic)
                         {
-                            auto& c    = spawnCat(gameView, CatType::Wizard, {0.f, 0.f}, /* hue */ 0.f);
-                            c.position = shrine.position;
-
-                            pt.magicUnlocked = true;
-                            // ++pt.psvPerCatType[static_cast<SizeT>(CatType::Wizard)].nPurchases;
-
-                            doTip("TODO: wizard tip");
+                            spawnSpecialCat(CatType::Wizard);
+                            doTip("TODO: wizard tip", /* maxPrestigeLevel */ UINT_MAX);
                         }
                         else if (shrine.type == ShrineType::Clicking)
                         {
-                            auto& c    = spawnCat(gameView, CatType::Mouse, {0.f, 0.f}, /* hue */ 0.f);
-                            c.position = shrine.position;
-
-                            // ++pt.psvPerCatType[static_cast<SizeT>(CatType::Mouse)].nPurchases;
-
-                            doTip("TODO: mouse tip");
+                            spawnSpecialCat(CatType::Mouse);
+                            doTip("TODO: mouse tip", /* maxPrestigeLevel */ UINT_MAX);
+                        }
+                        else if (shrine.type == ShrineType::Automation)
+                        {
+                            spawnSpecialCat(CatType::Engi);
+                            doTip("TODO: engi tip", /* maxPrestigeLevel */ UINT_MAX);
+                        }
+                        else if (shrine.type == ShrineType::Repulsion)
+                        {
+                            spawnSpecialCat(CatType::Repulso);
+                            doTip("TODO: repulso tip", /* maxPrestigeLevel */ UINT_MAX);
                         }
                     }
                     else if (cdStatus == CountdownStatusStop::Running)
@@ -3226,9 +3644,6 @@ Provides a global x1.5 multiplier to all clicked bubbles.
     ////////////////////////////////////////////////////////////
     void gameLoopUpdateMana(const float deltaTimeMs)
     {
-        if (!pt.magicUnlocked)
-            return;
-
         Cat* wizardCat = findCatWizard();
 
         if (wizardCat == nullptr)
@@ -3388,7 +3803,10 @@ Provides a global x1.5 multiplier to all clicked bubbles.
 
         for (SizeT i = 0u; i < pt.bubbles.size(); ++i)
         {
-            const Bubble& bubble = pt.bubbles[i];
+            Bubble& bubble = pt.bubbles[i];
+
+            if (!bubbleCullingBoundaries.isInside(bubble.position))
+                continue;
 
             bubble.applyToSprite(tempSprite);
 
@@ -3396,16 +3814,23 @@ Provides a global x1.5 multiplier to all clicked bubbles.
             tempSprite.origin      = tempSprite.textureRect.size / 2.f;
             tempSprite.scale *= bubble.type == BubbleType::Bomb ? 1.65f : 1.f;
 
-            constexpr float hueRange = 60.f;
+            if (bubble.type == BubbleType::Star)
+            {
+                tempSprite.color = hueColor(wrapHue(bubble.hueMod), 255);
+            }
+            else
+            {
+                constexpr float hueRange = 60.f;
+                tempSprite.color = hueColor(wrapHue(sf::base::fmod(static_cast<float>(i) * 2.f - hueRange / 2.f, hueRange)),
+                                            255);
+            }
 
-            tempSprite.color = hueColor(wrapHue(sf::base::fmod(static_cast<float>(i) * 2.f - hueRange / 2.f, hueRange)), 255);
-
-            cpuDrawableBatch.add(tempSprite);
+            bubbleDrawableBatch.add(tempSprite);
         }
     }
 
     ////////////////////////////////////////////////////////////
-    void gameLoopDrawCats(const float deltaTimeMs, const sf::Vector2f mousePos)
+    void gameLoopDrawCats(const sf::Vector2f mousePos)
     {
         const sf::FloatRect* const normalCatTxr = pt.geniusCatsPurchased  ? &txrGeniusCat
                                                   : pt.smartCatsPurchased ? &txrSmartCat
@@ -3413,27 +3838,35 @@ Provides a global x1.5 multiplier to all clicked bubbles.
 
         const sf::FloatRect* const astroCatTxr = pt.astroCatInspirePurchased ? &txrAstroCatWithFlag : &txrAstroCat;
 
-        const sf::FloatRect* const catTxrsByType[nCatTypes]{
+        const sf::FloatRect* const catTxrsByType[] = {
             normalCatTxr, // Normal
             &txrUniCat,   // Uni
             &txrDevilCat, // Devil
             &txrWitchCat, // Witch
             astroCatTxr,  // Astro
 
-            &txrWizardCat, // Wizard
-            &txrMouseCat,  // Mouse
+            &txrWizardCat,  // Wizard
+            &txrMouseCat,   // Mouse
+            &txrEngiCat,    // Engi
+            &txrRepulsoCat, // Repulso
         };
 
-        const sf::FloatRect* const catPawTxrsByType[nCatTypes]{
+        static_assert(sf::base::getArraySize(catTxrsByType) == nCatTypes);
+
+        const sf::FloatRect* const catPawTxrsByType[] = {
             &txrCatPaw,      // Normal
             &txrUniCatPaw,   // Uni
             &txrDevilCatPaw, // Devil
             &txrWitchCatPaw, // Witch
             &txrWhiteDot,    // Astro
 
-            &txrWizardCatPaw, // Wizard
-            &txrMouseCatPaw,  // Mouse
+            &txrWizardCatPaw,  // Wizard
+            &txrMouseCatPaw,   // Mouse
+            &txrEngiCatPaw,    // Engi
+            &txrRepulsoCatPaw, // Repulso
         };
+
+        static_assert(sf::base::getArraySize(catPawTxrsByType) == nCatTypes);
 
         bool anyCatHovered = false;
 
@@ -3487,9 +3920,6 @@ Provides a global x1.5 multiplier to all clicked bubbles.
             circleShapeBuffer.setFillColor(circleShapeBuffer.getOutlineColor().withAlpha(rangeInnerAlpha));
             cpuDrawableBatch.add(circleShapeBuffer);
 
-            if (cat.type == CatType::Uni)
-                cat.hue += deltaTimeMs * 0.1f;
-
             cpuDrawableBatch.add(
                 sf::Sprite{.position    = cat.getDrawPosition(),
                            .scale       = {0.2f, 0.2f},
@@ -3506,24 +3936,27 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                            .textureRect = catPawTxr,
                            .color       = catColor.withAlpha(static_cast<U8>(cat.pawOpacity))});
 
-            textNameBuffer.setString(shuffledCatNames[cat.nameIdx]);
-            textNameBuffer.position = cat.position + sf::Vector2f{0.f, 48.f};
-            textNameBuffer.origin   = textNameBuffer.getLocalBounds().size / 2.f;
-            textNameBuffer.scale    = sf::Vector2f{0.5f, 0.5f};
-            textNameBuffer.setOutlineColor(outlineColor);
-            cpuDrawableBatch.add(textNameBuffer);
+            if (profile.showCatText)
+            {
+                textNameBuffer.setString(shuffledCatNames[cat.nameIdx]);
+                textNameBuffer.position = cat.position + sf::Vector2f{0.f, 48.f};
+                textNameBuffer.origin   = textNameBuffer.getLocalBounds().size / 2.f;
+                textNameBuffer.scale    = sf::Vector2f{0.5f, 0.5f};
+                textNameBuffer.setOutlineColor(outlineColor);
+                cpuDrawableBatch.add(textNameBuffer);
 
-            std::string actionString = std::to_string(cat.hits) + " " + CatConstants::actionNames[asIdx(cat.type)];
-            if (cat.type == CatType::Mouse)
-                actionString += " (x" + std::to_string(pt.mouseCatCombo + 1) + ")";
+                std::string actionString = std::to_string(cat.hits) + " " + CatConstants::actionNames[asIdx(cat.type)];
+                if (cat.type == CatType::Mouse)
+                    actionString += " (x" + std::to_string(pt.mouseCatCombo + 1) + ")";
 
-            textStatusBuffer.setString(actionString);
-            textStatusBuffer.position = cat.position + sf::Vector2f{0.f, 68.f};
-            textStatusBuffer.origin   = textStatusBuffer.getLocalBounds().size / 2.f;
-            textStatusBuffer.setOutlineColor(outlineColor);
-            cat.textStatusShakeEffect.applyToText(textStatusBuffer);
-            textStatusBuffer.scale *= 0.5f;
-            cpuDrawableBatch.add(textStatusBuffer);
+                textStatusBuffer.setString(actionString);
+                textStatusBuffer.position = cat.position + sf::Vector2f{0.f, 68.f};
+                textStatusBuffer.origin   = textStatusBuffer.getLocalBounds().size / 2.f;
+                textStatusBuffer.setOutlineColor(outlineColor);
+                cat.textStatusShakeEffect.applyToText(textStatusBuffer);
+                textStatusBuffer.scale *= 0.5f;
+                cpuDrawableBatch.add(textStatusBuffer);
+            }
         };
     }
 
@@ -3606,19 +4039,43 @@ Provides a global x1.5 multiplier to all clicked bubbles.
     }
 
     ////////////////////////////////////////////////////////////
+    [[nodiscard]] sf::Vector2f getViewCenter() const
+    {
+        return {sf::base::clamp(gameScreenSize.x / 2.f + actualScroll * 2.f,
+                                gameScreenSize.x / 2.f,
+                                boundaries.x - gameScreenSize.x / 2.f),
+                gameScreenSize.y / 2.f};
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] CullingBoundaries getViewCullingBoundaries(const float offset) const
+    {
+        const sf::Vector2f viewCenter{getViewCenter()};
+
+        return {viewCenter.x - gameScreenSize.x / 2.f + offset,
+                viewCenter.x + gameScreenSize.x / 2.f - offset,
+                viewCenter.y - gameScreenSize.y / 2.f + offset,
+                viewCenter.y + gameScreenSize.y / 2.f - offset};
+    }
+
+    ////////////////////////////////////////////////////////////
     void gameLoopDrawParticles()
     {
+        if (!profile.showParticles)
+            return;
+
         sf::Sprite tempSprite;
 
-        const sf::FloatRect particleRects[nParticleTypes]{txrParticle,
-                                                          txrStarParticle,
-                                                          txrFireParticle,
-                                                          txrHexParticle,
-                                                          txrShrineParticle,
-                                                          txrMouseCatPaw};
+        const sf::FloatRect particleRects[] =
+            {txrParticle, txrStarParticle, txrFireParticle, txrHexParticle, txrShrineParticle, txrMouseCatPaw, txrCogParticle};
+
+        static_assert(sf::base::getArraySize(particleRects) == nParticleTypes);
 
         for (const auto& particle : particles)
         {
+            if (!particleCullingBoundaries.isInside(particle.data.position))
+                continue;
+
             particle.applyToSprite(tempSprite);
             tempSprite.textureRect = particleRects[asIdx(particle.type)];
             tempSprite.origin      = tempSprite.textureRect.size / 2.f;
@@ -3630,6 +4087,9 @@ Provides a global x1.5 multiplier to all clicked bubbles.
     ////////////////////////////////////////////////////////////
     void gameLoopDrawTextParticles()
     {
+        if (!profile.showTextParticles)
+            return;
+
         sf::Text tempText{fontSuperBakery,
                           {.characterSize    = 16u,
                            .fillColor        = sf::Color::White,
@@ -3638,6 +4098,9 @@ Provides a global x1.5 multiplier to all clicked bubbles.
 
         for (const auto& textParticle : textParticles)
         {
+            if (!particleCullingBoundaries.isInside(textParticle.data.position))
+                continue;
+
             textParticle.applyToText(tempText);
             cpuDrawableBatch.add(tempText);
         }
@@ -3862,14 +4325,12 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                                  scaledSize.componentWiseDiv(windowSize)}};
         };
 
-        const sf::Vector2f viewCenter{sf::base::clamp(gameScreenSize.x / 2.f + actualScroll * 2.f,
-                                                      gameScreenSize.x / 2.f,
-                                                      boundaries.x - gameScreenSize.x / 2.f),
-                                      gameScreenSize.y / 2.f};
-
         sf::View gameView            = createScaledView(gameScreenSize, resolution);
         gameView.viewport.position.x = 0.f;
-        gameView.center              = viewCenter + screenShake;
+        gameView.center              = getViewCenter() + screenShake;
+
+        particleCullingBoundaries = getViewCullingBoundaries(/* offset */ 0.f);
+        bubbleCullingBoundaries   = getViewCullingBoundaries(/* offset */ -64.f);
 
         const auto windowSpaceMouseOrFingerPos = countFingersDown == 1u ? downFingers[0].toVector2i()
                                                                         : sf::Mouse::getPosition(window);
@@ -3997,6 +4458,30 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                 if ((clickPos - bubble.position).lengthSquared() > bubble.getRadiusSquared())
                     return ControlFlow::Continue;
 
+                // Prevent clicks around shrine of automation
+                // Boosts clicks around shrine of clicking
+                bool clickingBoost = false;
+                {
+                    for (Shrine& shrine : pt.shrines)
+                    {
+                        if (shrine.type == ShrineType::Automation && shrine.isActive() &&
+                            (clickPos - shrine.position).length() < shrine.getRange())
+                        {
+                            sounds.failpop.setPosition({clickPos.x, clickPos.y});
+                            playSound(sounds.failpop);
+
+                            return ControlFlow::Break;
+                        }
+
+                        if (shrine.type == ShrineType::Clicking && shrine.isActive() &&
+                            (clickPos - shrine.position).length() < shrine.getRange())
+                        {
+                            clickingBoost = true;
+                            break;
+                        }
+                    }
+                }
+
                 anyBubblePoppedByClicking = true;
 
                 if (pt.comboPurchased)
@@ -4010,9 +4495,8 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                 }
 
                 MoneyType reward = computeFinalReward(bubble.position, pt.getComputedRewardByBubbleType(bubble.type), combo);
-
-                if (findCatMouse() != nullptr)
-                    reward = reward * 3u / 2u;
+                if (clickingBoost)
+                    reward *= 5;
 
                 popWithRewardAndReplaceBubble(reward, /* byHand */ true, bubble, combo, /* popSoundOverlap */ true);
 
@@ -4056,7 +4540,7 @@ Provides a global x1.5 multiplier to all clicked bubbles.
 
         //
         // Bubble vs bubble collisions
-        spatialGrid.forEachUniqueIndexPair([&](const SizeT bubbleIdxI, const SizeT bubbleIdxJ)
+        spatialGrid.forEachUniqueIndexPair([&](const SizeT bubbleIdxI, const SizeT bubbleIdxJ) __attribute__((always_inline))
         { handleBubbleCollision(deltaTimeMs, pt.bubbles[bubbleIdxI], pt.bubbles[bubbleIdxJ]); });
 
         //
@@ -4175,14 +4659,15 @@ Provides a global x1.5 multiplier to all clicked bubbles.
                     {.color = sf::Color::White.withAlpha(static_cast<U8>(profile.backgroundOpacity / 100.f * 255.f))},
                     {.shader = &shader});
 
-        cpuDrawableBatch.clear();
-
+        bubbleDrawableBatch.clear();
         gameLoopDrawBubbles();
-        gameLoopDrawCats(deltaTimeMs, mousePos);
+        window.draw(bubbleDrawableBatch, {.texture = &textureAtlas.getTexture(), .shader = &shader});
+
+        cpuDrawableBatch.clear();
+        gameLoopDrawCats(mousePos);
         gameLoopDrawShrines(mousePos);
         gameLoopDrawParticles();
         gameLoopDrawTextParticles();
-
         window.draw(cpuDrawableBatch, {.texture = &textureAtlas.getTexture(), .shader = &shader});
 
         //
@@ -4420,34 +4905,35 @@ int main()
 
 // TODO IDEAS:
 // - disable exiting with escape key, or add popup to confirm
-// - make window non resizable or make game scale with window size proportionally
 // - leveling cat (2000-2500 pops is a good milestone for 1st lvl up, 5000 for 2nd, 10000 for 3rd), level up should increase reward by 2...1.75...1.5, etc
 // - maybe unlock leveling via prestige
-// - some normal cat buff around 17000 money as a milestone towards devilcats, maybe two paws?
 // - change bg when unlocking new cat type or prestiging?
 // - steam achievements
 // - find better word for "prestige"
 // - change cat names
 // - smart/genius cat name prefix
-// - pp point ideas: start with stuff unlocked, start with a bit of money, etc
+// - pp point ideas: start with stuff unlocked, start with a bit of money, start with special cats, etc
 // - prestige should scale indefinitely...? or make PP costs scale linearly, max is 20 -- or maybe when we reach max bubble value just purchase prestige points
 // - other prestige ideas: cat multipop, unicat multitransform, unicat trasnform twice in a row, unlock random special bubbles
 // - make bombs less affected by wind
 // - balance until 3rd prestige + 2 astrocats seems pretty good
-// - consider allowing menu to be outside game view when resizing or in separate widnow
 // - astrocats collide with each other when one flies but the other doesn't
-// - milestone system with time per milestone, also achievements for speedrunning milestones
-// - map expansion special bubble find
-// - another source of prestige points at prestige max level?
-// - mouse cat could keep up his own combo, and his paw should be a cursor
+// - achievements for speedrunning milestones
 // - track generated revenue per cat, enable via PPs (maybe)
 // - track pops/actions per cat should enabled via PPs (maybe)
 // - ignore clicks done on top of imgui
-// - "resting powerup" via PPs that increases cat multiplier when not clicking for a while
-// - setting to show/hide cat text
-// - mousecat global click multiplier should be upgradable with PPs, start around 24 PPs
-// - engicat global cat multiplier should be upgradable with PPs, start around 32 PPs
+// - "resting powerup" via PPs that increases cat multiplier when not clicking for a while, maybe around 16PPs
+// - maybe make "autocast spell selector" a PP upgrade for around 128PPs
+// - "tweaks menu" unlockable with PP that allows any purchased cooldown/range upgrade to be tweaked, or just allow selling via right click...?
 
+// x - setting to disable draw particles
+// x - consider allowing menu to be outside game view when resizing or in separate widnow
+// x - milestone system with time per milestone,
+// x - mousecat global click multiplier should be upgradable with PPs, start around 24PPs
+// x - engicat global cat multiplier should be upgradable with PPs, start around 32PPs
+// x - maybe make "starpaw conversion ignore bombs" a PP upgrade for around 64PPs
+// x - mouse cat could keep up his own combo, and his paw should be a cursor
+// x - setting to show/hide cat text
 // x - decouple resolution and "map chunk size"
 // x - genius cats should also be able to only hit bombs
 // x - tooltips in menus

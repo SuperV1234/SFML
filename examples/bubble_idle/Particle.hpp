@@ -18,6 +18,7 @@ enum class [[nodiscard]] ParticleType : sf::base::U8
     Hex    = 3u,
     Shrine = 4u,
     Cursor = 5u,
+    Cog    = 6u,
 
     Count
 };

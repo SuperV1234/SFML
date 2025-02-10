@@ -61,7 +61,18 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Bubble, position, velocity, scale, rotation, 
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Cat, type, position, rangeOffset, wobbleRadians, cooldown, hue, inspiredCountdown, nameIdx, hits);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
+    Cat,
+    type,
+    position,
+    rangeOffset,
+    wobbleRadians,
+    cooldown,
+    hue,
+    inspiredCountdown,
+    boostCountdown,
+    nameIdx,
+    hits);
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
@@ -209,6 +220,9 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     hudScale,
     tipsEnabled,
     backgroundOpacity,
+    showCatText,
+    showParticles,
+    showTextParticles,
 
     statsLifetime);
 
@@ -227,6 +241,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     psvSpellCount,
     psvBubbleValue,
     psvExplosionRadiusMult,
+    psvStarpawPercentage,
+    psvMewltiplierMult,
 
     psvPerCatType,
 
@@ -238,6 +254,9 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     psvPPInspireDurationMult,
     psvPPManaCooldownMult,
     psvPPManaMaxMult,
+    psvPPMouseCatGlobalBonusMult,
+    psvPPEngiCatGlobalBonusMult,
+    psvPPRepulsoCatConverterChance,
 
     money,
 
@@ -246,7 +265,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     comboPurchased,
     mapPurchased,
 
-    magicUnlocked,
     manaTimer,
     mana,
     absorbingWisdom,
@@ -261,12 +279,19 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     geniusCatsPurchased,
     windPurchased,
     astroCatInspirePurchased,
+    starpawConversionIgnoreBombs,
+    repulsoCatFilterPurchased,
+    repulsoCatConverterPurchased,
 
     multiPopEnabled,
     windEnabled,
     geniusCatIgnoreNormalBubbles,
     geniusCatIgnoreStarBubbles,
     geniusCatIgnoreBombBubbles,
+    repulsoCatIgnoreNormalBubbles,
+    repulsoCatIgnoreStarBubbles,
+    repulsoCatIgnoreBombBubbles,
+    repulsoCatConverterEnabled,
 
     bubbles,
     cats,
@@ -285,26 +310,22 @@ namespace
 {
 ////////////////////////////////////////////////////////////
 void forceCopyFile(const std::filesystem::path& from, const std::filesystem::path& to)
+try
 {
     std::filesystem::remove(to);
     std::filesystem::copy_file(from, to);
+} catch (...)
+{
 }
 
 ////////////////////////////////////////////////////////////
 void doRotatingBackup(const std::string& filename)
 try
 {
-    if (sf::Path{filename + ".bak2"}.exists())
-        forceCopyFile(filename + ".bak2", filename + ".bak3");
-
-    if (sf::Path{filename + ".bak1"}.exists())
-        forceCopyFile(filename + ".bak1", filename + ".bak2");
-
-    if (sf::Path{filename + ".bak0"}.exists())
-        forceCopyFile(filename + ".bak0", filename + ".bak1");
-
-    if (sf::Path{filename}.exists())
-        forceCopyFile(filename, filename + ".bak0");
+    forceCopyFile(filename + ".bak2", filename + ".bak3");
+    forceCopyFile(filename + ".bak1", filename + ".bak2");
+    forceCopyFile(filename + ".bak0", filename + ".bak1");
+    forceCopyFile(filename, filename + ".bak0");
 
 } catch (const std::exception& ex)
 {
@@ -318,7 +339,7 @@ void saveProfileToFile(const Profile& profile, const char* filename)
 try
 {
     doRotatingBackup(filename);
-    std::ofstream(filename) << nlohmann::json(profile).dump(4);
+    std::ofstream(filename) << nlohmann::json(profile).dump();
 } catch (const std::exception& ex)
 {
     std::cout << "Failed to save profile to file '" << filename << "' (" << ex.what() << ")\n";
@@ -339,7 +360,7 @@ void savePlaythroughToFile(const Playthrough& playthrough, const char* filename)
 try
 {
     doRotatingBackup(filename);
-    std::ofstream(filename) << nlohmann::json(playthrough).dump(4);
+    std::ofstream(filename) << nlohmann::json(playthrough).dump();
 } catch (const std::exception& ex)
 {
     std::cout << "Failed to save playthrough to file '" << filename << "' (" << ex.what() << ")\n";

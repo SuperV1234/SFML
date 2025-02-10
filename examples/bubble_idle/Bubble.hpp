@@ -34,6 +34,7 @@ struct [[nodiscard]] Bubble
 
     float scale;
     float rotation;
+    float hueMod;
 
     BubbleType type;
 

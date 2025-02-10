@@ -2,6 +2,7 @@
 
 #include "Aliases.hpp"
 #include "Countdown.hpp"
+#include "ExactArray.hpp"
 #include "MathUtils.hpp"
 #include "TextShakeEffect.hpp"
 
@@ -36,17 +37,38 @@ enum class ShrineType : U8
 inline constexpr auto nShrineTypes = asIdx(ShrineType::Count);
 
 ////////////////////////////////////////////////////////////
-inline constexpr const char* shrineNames[nShrineTypes]{
-    "Shrine Of Magic",
-    "Shrine Of Clicking",
-    "Shrine Of Automation",
-    "Shrine Of Repulsion",
-    "Shrine Of Attraction",
-    "Shrine Of Decay",
-    "Shrine Of Chaos",
-    "Shrine Of Transmutation",
-    "Shrine Of Victory",
-};
+inline constexpr EXACT_ARRAY(
+    const char*,
+    shrineNames,
+    nShrineTypes,
+    {
+        "Shrine Of Magic",
+        "Shrine Of Clicking",
+        "Shrine Of Automation",
+        "Shrine Of Repulsion",
+        "Shrine Of Attraction",
+        "Shrine Of Decay",
+        "Shrine Of Chaos",
+        "Shrine Of Transmutation",
+        "Shrine Of Victory",
+    });
+
+////////////////////////////////////////////////////////////
+inline constexpr EXACT_ARRAY(
+    float,
+    shrineHues,
+    nShrineTypes,
+    {
+        -139.f, // Magic,
+        130.f, // Clicking,
+        -15.f, // Automation,
+        180.f, // Repulsion,
+        -80.f, // Attraction,
+        0.f, // Decay,
+        0.f, // Chaos,
+        0.f, // Transmutation,
+        0.f, // Victory,
+    });
 
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] Shrine
@@ -112,7 +134,7 @@ struct [[nodiscard]] Shrine
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline float getHue() const
     {
-        return wrapHue(static_cast<float>(type) * 85.f);
+        return wrapHue(shrineHues[static_cast<U8>(type)]);
     }
 
     ////////////////////////////////////////////////////////////

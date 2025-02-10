@@ -2,11 +2,9 @@
 
 #include "Constants.hpp"
 #include "ControlFlow.hpp"
-#include "RNG.hpp"
 
 #include "SFML/Base/SizeT.hpp"
-
-#include <vector>
+#include "SFML/Base/TrivialVector.hpp"
 
 
 ////////////////////////////////////////////////////////////
@@ -52,9 +50,9 @@ private:
     }
 
 
-    std::vector<SizeT> m_objectIndices;          // Flat list of all bubble indices in all cells
-    std::vector<SizeT> m_cellStartIndices;       // Tracks where each cell's data starts in `bubbleIndices`
-    std::vector<SizeT> m_cellInsertionPositions; // Temporary copy of `cellStartIndices` to track insertion points
+    sf::base::TrivialVector<SizeT> m_objectIndices;          // Flat list of all bubble indices in all cells
+    sf::base::TrivialVector<SizeT> m_cellStartIndices;       // Tracks where each cell's data starts in `bubbleIndices`
+    sf::base::TrivialVector<SizeT> m_cellInsertionPositions; // Temporary copy of `cellStartIndices` to track insertion points
 
 public:
     ////////////////////////////////////////////////////////////
@@ -130,7 +128,7 @@ public:
         m_objectIndices.resize(m_cellStartIndices.back()); // Total bubbles across all cells
 
         // Used to track where to insert the next bubble index into the `m_objectIndices` buffer for each cell
-        m_cellInsertionPositions.assign(m_cellStartIndices.begin(), m_cellStartIndices.end());
+        m_cellInsertionPositions.assignRange(m_cellStartIndices.begin(), m_cellStartIndices.end());
 
         //
         // Third Pass (Populating):

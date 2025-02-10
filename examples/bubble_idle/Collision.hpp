@@ -47,9 +47,8 @@ struct [[nodiscard]] CollisionResolution
     if (squaredDistance >= sumRadii * sumRadii)
         return sf::base::nullOpt;
 
-    // Calculate the overlap between the bubbles
-    const float distance = sf::base::sqrt(squaredDistance); // Distance between centers
-    const float overlap  = sumRadii - distance;             // Amount of overlap
+    // Calculate the distance between the bubbles' centers
+    const float distance = sf::base::sqrt(squaredDistance);
 
     // Calculate the normal between the bubbles
     const sf::Vector2f normal = (distance > 0.f) ? (diff / distance) : sf::Vector2f{1.f, 0.f};
@@ -83,6 +82,7 @@ struct [[nodiscard]] CollisionResolution
     const float softnessFactor = 0.00075f * deltaTimeMs;
 
     // Calculate the displacement needed to resolve the overlap
+    const float        overlap      = sumRadii - distance; // Amount of overlap
     const sf::Vector2f displacement = normal * overlap * softnessFactor;
 
     return sf::base::makeOptional( //

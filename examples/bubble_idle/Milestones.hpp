@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ExactArray.hpp"
 #include "Shrine.hpp"
 
 #include "SFML/Base/IntTypes.hpp"
@@ -45,17 +46,20 @@ struct [[nodiscard]] Milestones
     MilestoneTimestamp revenue100000000  = maxMilestone;
     MilestoneTimestamp revenue1000000000 = maxMilestone;
 
-    MilestoneTimestamp shrineCompletions[nShrineTypes]{
-        maxMilestone, // Magic
-        maxMilestone, // Clicking
-        maxMilestone, // Automation
-        maxMilestone, // Repulsion
-        maxMilestone, // Attraction
-        maxMilestone, // Decay
-        maxMilestone, // Chaos
-        maxMilestone, // Transmutation
-        maxMilestone, // Victory
-    };
+    EXACT_ARRAY(MilestoneTimestamp,
+                shrineCompletions,
+                nShrineTypes,
+                {
+                    maxMilestone, // Magic
+                    maxMilestone, // Clicking
+                    maxMilestone, // Automation
+                    maxMilestone, // Repulsion
+                    maxMilestone, // Attraction
+                    maxMilestone, // Decay
+                    maxMilestone, // Chaos
+                    maxMilestone, // Transmutation
+                    maxMilestone, // Victory
+                });
 
     // TODO P1: other milestones, achievements for fast milestones
 };

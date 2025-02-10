@@ -166,6 +166,19 @@ public:
 
 
     ////////////////////////////////////////////////////////////
+    [[gnu::always_inline]] void resize(const SizeT n, const TItem& item)
+    {
+        const auto oldSize = size();
+
+        reserve(n);
+        m_endSize = data() + n;
+
+        for (auto* p = data() + oldSize; p < m_endSize; ++p)
+            SFML_BASE_PLACEMENT_NEW(p) TItem(item);
+    }
+
+
+    ////////////////////////////////////////////////////////////
     void shrinkToFit()
     {
         reserveImpl(size());
@@ -191,6 +204,22 @@ public:
             reserveImpl(targetCapacity);
 
         return m_endSize;
+    }
+
+
+    ////////////////////////////////////////////////////////////
+    [[gnu::always_inline, gnu::flatten]] void assignRange(const TItem* b, const TItem* e) noexcept
+    {
+        SFML_BASE_ASSERT(b != nullptr);
+        SFML_BASE_ASSERT(e != nullptr);
+        SFML_BASE_ASSERT(b <= e);
+
+        const auto count = static_cast<SizeT>(e - b);
+
+        reserve(count);
+
+        SFML_BASE_MEMCPY(m_data, b, sizeof(TItem) * count);
+        unsafeSetSize(count);
     }
 
 
@@ -374,6 +403,34 @@ public:
     [[nodiscard, gnu::always_inline, gnu::flatten, gnu::pure]] const TItem* cend() const noexcept
     {
         return m_endSize;
+    }
+
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline, gnu::flatten, gnu::pure]] TItem& front() noexcept
+    {
+        return this->operator[](0u);
+    }
+
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline, gnu::flatten, gnu::pure]] const TItem& front() const noexcept
+    {
+        return this->operator[](0u);
+    }
+
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline, gnu::flatten, gnu::pure]] TItem& back() noexcept
+    {
+        return this->operator[](size() - 1u);
+    }
+
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard, gnu::always_inline, gnu::flatten, gnu::pure]] const TItem& back() const noexcept
+    {
+        return this->operator[](size() - 1u);
     }
 
 
