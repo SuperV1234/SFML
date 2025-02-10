@@ -1,14 +1,13 @@
 #pragma once
 
-#include "Aliases.hpp"
-
 #include "SFML/Graphics/Sprite.hpp"
 
+#include "SFML/System/Angle.hpp"
 #include "SFML/System/Vector2.hpp"
 
 
 ////////////////////////////////////////////////////////////
-enum class [[nodiscard]] BubbleType : U8
+enum class [[nodiscard]] BubbleType : sf::base::U8
 {
     Normal = 0u,
     Star   = 1u,
@@ -24,7 +23,10 @@ enum class [[nodiscard]] BubbleType : U8
 }
 
 ////////////////////////////////////////////////////////////
-inline constexpr auto nBubbleTypes = asIdx(BubbleType::Count);
+enum : sf::base::SizeT
+{
+    nBubbleTypes = asIdx(BubbleType::Count)
+};
 
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] Bubble
@@ -32,7 +34,7 @@ struct [[nodiscard]] Bubble
     sf::Vector2f position;
     sf::Vector2f velocity;
 
-    float scale;
+    float scale; // TODO P2: if these three members are turned into U8 struct size goes from 32 to 20
     float rotation;
     float hueMod;
 

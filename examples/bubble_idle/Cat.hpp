@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Aliases.hpp"
 #include "Countdown.hpp"
 #include "TextShakeEffect.hpp"
 
@@ -20,10 +19,10 @@ enum class [[nodiscard]] CatType : sf::base::U8
     Witch  = 3u,
     Astro  = 4u,
 
-    Wizard = 5u,
-    Mouse  = 6u,
-    Engi   = 7u,
-    Repulso   = 8u,
+    Wizard  = 5u,
+    Mouse   = 6u,
+    Engi    = 7u,
+    Repulso = 8u,
 
     Count
 };
@@ -35,11 +34,15 @@ enum class [[nodiscard]] CatType : sf::base::U8
 }
 
 ////////////////////////////////////////////////////////////
-inline constexpr auto nCatTypes = asIdx(CatType::Count);
+enum : sf::base::SizeT
+{
+    nCatTypes = asIdx(CatType::Count)
+};
 
 ////////////////////////////////////////////////////////////
-[[nodiscard, gnu::const]] inline constexpr bool isUniqueCatType(const CatType catType) noexcept
+[[nodiscard, gnu::always_inline, gnu::const]] inline constexpr bool isUniqueCatType(const CatType catType) noexcept
 {
+    SFML_BASE_ASSERT(catType < CatType::Count);
     return catType >= CatType::Wizard;
 }
 
@@ -63,7 +66,7 @@ struct [[nodiscard]] Cat
     Countdown inspiredCountdown;
     Countdown boostCountdown;
 
-    SizeT nameIdx;
+    sf::base::SizeT nameIdx;
 
     TextShakeEffect textStatusShakeEffect;
 

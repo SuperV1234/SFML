@@ -30,7 +30,10 @@ enum class [[nodiscard]] ParticleType : sf::base::U8
 }
 
 ////////////////////////////////////////////////////////////
-inline constexpr auto nParticleTypes = asIdx(ParticleType::Count);
+enum : sf::base::SizeT
+{
+    nParticleTypes = asIdx(ParticleType::Count)
+};
 
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] Particle

@@ -34,7 +34,10 @@ enum class ShrineType : U8
 }
 
 ////////////////////////////////////////////////////////////
-inline constexpr auto nShrineTypes = asIdx(ShrineType::Count);
+enum : sf::base::SizeT
+{
+    nShrineTypes = asIdx(ShrineType::Count)
+};
 
 ////////////////////////////////////////////////////////////
 inline constexpr EXACT_ARRAY(
@@ -60,14 +63,14 @@ inline constexpr EXACT_ARRAY(
     nShrineTypes,
     {
         -139.f, // Magic,
-        130.f, // Clicking,
-        -15.f, // Automation,
-        180.f, // Repulsion,
-        -80.f, // Attraction,
-        0.f, // Decay,
-        0.f, // Chaos,
-        0.f, // Transmutation,
-        0.f, // Victory,
+        130.f,  // Clicking,
+        -15.f,  // Automation,
+        180.f,  // Repulsion,
+        -80.f,  // Attraction,
+        0.f,    // Decay,
+        0.f,    // Chaos,
+        0.f,    // Transmutation,
+        0.f,    // Victory,
     });
 
 ////////////////////////////////////////////////////////////
