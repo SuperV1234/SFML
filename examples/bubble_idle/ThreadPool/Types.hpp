@@ -5,15 +5,30 @@
 #pragma once
 
 #include "blockingconcurrentqueue.h"
+#include "concurrentqueue.h"
 
 #include "SFML/Base/FixedFunction.hpp"
+
+/*
+namespace moodycamel
+{
+struct ConcurrentQueueDefaultTraits;
+
+template <typename T, typename Traits = ConcurrentQueueDefaultTraits>
+class BlockingConcurrentQueue;
+
+struct ConsumerToken;
+struct ProducerToken;
+
+} // namespace moodycamel
+*/
 
 namespace hg::ThreadPool
 {
 
-using task                      = sf::base::FixedFunction<void(), 128>;
-using task_queue                = moodycamel::BlockingConcurrentQueue<task>;
-using task_queue_consumer_token = moodycamel::ConsumerToken;
+using Task                      = sf::base::FixedFunction<void(), 128>;
+using TaskQueue                 = moodycamel::BlockingConcurrentQueue<Task>;
+using TaskQueueConsumerToken    = moodycamel::ConsumerToken;
 using task_queue_producer_token = moodycamel::ProducerToken;
 
 } // namespace hg::ThreadPool

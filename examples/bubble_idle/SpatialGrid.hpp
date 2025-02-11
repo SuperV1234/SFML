@@ -23,7 +23,6 @@ private:
 
 public:
     ////////////////////////////////////////////////////////////
-    // Task-based parallel implementation using std::async
     void forEachUniqueIndexPair(const unsigned int nWorkers, std::latch& latch, auto& pool, auto&& func)
     {
         const sf::base::SizeT numObjects = m_aabbs.size();

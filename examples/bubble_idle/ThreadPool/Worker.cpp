@@ -11,98 +11,80 @@
 #include <atomic>
 #include <thread>
 
+
 namespace hg::ThreadPool
 {
-
-void worker::run()
+////////////////////////////////////////////////////////////
+Worker::Worker(TaskQueue& queue) noexcept :
+m_queue{queue},
+m_state{State::Uninitialized},
+m_doneBlockingProcessing{false}
 {
-    SFML_BASE_ASSERT(_state.load() == state::running);
+}
 
-    // Next task buffer.
-    task t;
 
-    // While the worker is running...
-    while (_state.load() == state::running)
+////////////////////////////////////////////////////////////
+Worker::Worker(Worker&&) noexcept            = default;
+Worker& Worker::operator=(Worker&&) noexcept = default;
+
+
+////////////////////////////////////////////////////////////
+void Worker::start(std::atomic<unsigned int>& remainingInits)
+{
+    SFML_BASE_ASSERT(m_state.load() == State::Uninitialized);
+
+    m_thread = std::thread([this, &remainingInits]
     {
-        // ...dequeue a task (blocking).
-        _queue->wait_dequeue(_queue.ctok(), t);
+        // Set the running flag and signal to the pool that we are initialized.
+        m_state.store(State::Running);
+        remainingInits.fetch_sub(1u);
 
-        // Execute the task.
-        t();
-    }
+        Task taskBuffer;
 
-    // Signal the thread pool to send dummy final tasks.
-    SFML_BASE_ASSERT(_state.load() == state::stopped);
-    _done_blocking_processing.store(true);
-
-    // While the worker is being stopped...
-    while (_state.load() == state::stopped)
-    {
-        // ...try dequeueing a task (non-blocking).
-        if (!_queue->try_dequeue(_queue.ctok(), t))
+        while (m_state.load() == State::Running)
         {
-            // Break if there are no more tasks.
-            break;
+            m_queue->wait_dequeue(m_queue.ctok(), taskBuffer); // Blocking
+            taskBuffer();
         }
 
-        // Execute the task if available.
-        t();
-    }
+        // Signal the thread pool to send dummy final tasks.
+        SFML_BASE_ASSERT(m_state.load() == State::Stopped);
+        m_doneBlockingProcessing.store(true);
 
-    // Signal the thread pool to join.
-    SFML_BASE_ASSERT(_state.load() == state::stopped);
-    _state.store(state::finished);
-}
+        while (m_state.load() == State::Stopped)
+        {
+            if (!m_queue->try_dequeue(m_queue.ctok(), taskBuffer)) // Non-blocking
+                break;                                             // No more tasks available
 
-worker::worker(task_queue& queue) noexcept :
-_queue{queue},
-_state{state::uninitialized},
-_done_blocking_processing{false}
-{
-}
-
-worker::worker(worker&&)            = default;
-worker& worker::operator=(worker&&) = default;
-
-void worker::start(std::atomic<unsigned int>& remaining_inits)
-{
-    SFML_BASE_ASSERT(_state.load() == state::uninitialized);
-
-    // Start the worker thread.
-    _thread = std::thread([this, &remaining_inits]
-    {
-        // Set the running flag and signal the pool the thread has been
-        // initialized.
-        _state.store(state::running);
-        remaining_inits.fetch_sub(1);
-
-        run();
+            taskBuffer();
+        }
     });
 }
 
-void worker::stop() noexcept
-{
-    SFML_BASE_ASSERT(_state.load() == state::running);
 
-    _state.store(state::stopped);
+////////////////////////////////////////////////////////////
+void Worker::stop() noexcept
+{
+    SFML_BASE_ASSERT(m_state.load() == State::Running);
+
+    m_state.store(State::Stopped);
 }
 
-void worker::join() noexcept
-{
-    SFML_BASE_ASSERT(_thread.joinable());
-    SFML_BASE_ASSERT(_state.load() == state::finished);
 
-    _thread.join();
+////////////////////////////////////////////////////////////
+void Worker::join() noexcept
+{
+    SFML_BASE_ASSERT(m_thread.joinable());
+    SFML_BASE_ASSERT(m_state.load() == State::Stopped);
+
+    m_thread.join();
 }
 
-[[nodiscard]] bool worker::finished() const noexcept
-{
-    return _state.load() == state::finished;
-}
 
-[[nodiscard]] bool worker::done_blocking_processing() const noexcept
+////////////////////////////////////////////////////////////
+[[nodiscard]] bool Worker::isDoneBlockingProcessing() const noexcept
 {
-    return _done_blocking_processing.load();
+    return m_doneBlockingProcessing.load();
 }
 
 } // namespace hg::ThreadPool

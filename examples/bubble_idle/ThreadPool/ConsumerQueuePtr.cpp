@@ -8,40 +8,51 @@
 
 #include "SFML/Base/Assert.hpp"
 
+
 namespace hg::ThreadPool
 {
-
-consumer_queue_ptr::consumer_queue_ptr(task_queue& queue) noexcept : _queue{&queue}, _ctok{queue}
+////////////////////////////////////////////////////////////
+ConsumerQueuePtr::ConsumerQueuePtr(TaskQueue& queue) noexcept : m_queue{&queue}, m_ctok{queue}
 {
 }
 
-consumer_queue_ptr::consumer_queue_ptr(consumer_queue_ptr&& rhs) noexcept : _queue{rhs._queue}, _ctok{*_queue}
+
+////////////////////////////////////////////////////////////
+ConsumerQueuePtr::ConsumerQueuePtr(ConsumerQueuePtr&& rhs) noexcept : m_queue{rhs.m_queue}, m_ctok{*m_queue}
 {
 }
 
-consumer_queue_ptr& consumer_queue_ptr::operator=(consumer_queue_ptr&& rhs) noexcept
+
+////////////////////////////////////////////////////////////
+ConsumerQueuePtr& ConsumerQueuePtr::operator=(ConsumerQueuePtr&& rhs) noexcept
 {
-    _queue = rhs._queue;
-    _ctok  = task_queue_consumer_token(*_queue);
+    m_queue = rhs.m_queue;
+    m_ctok  = TaskQueueConsumerToken(*m_queue);
 
     return *this;
 }
 
-[[nodiscard]] task_queue_consumer_token& consumer_queue_ptr::ctok() noexcept
+
+////////////////////////////////////////////////////////////
+[[nodiscard]] TaskQueueConsumerToken& ConsumerQueuePtr::ctok() noexcept
 {
-    return _ctok;
+    return m_ctok;
 }
 
-[[nodiscard]] task_queue* consumer_queue_ptr::operator->() noexcept
+
+////////////////////////////////////////////////////////////
+[[nodiscard]] TaskQueue* ConsumerQueuePtr::operator->() noexcept
 {
-    SFML_BASE_ASSERT(_queue != nullptr);
-    return _queue;
+    SFML_BASE_ASSERT(m_queue != nullptr);
+    return m_queue;
 }
 
-[[nodiscard]] task_queue* consumer_queue_ptr::operator->() const noexcept
+
+////////////////////////////////////////////////////////////
+[[nodiscard]] TaskQueue* ConsumerQueuePtr::operator->() const noexcept
 {
-    SFML_BASE_ASSERT(_queue != nullptr);
-    return _queue;
+    SFML_BASE_ASSERT(m_queue != nullptr);
+    return m_queue;
 }
 
 } // namespace hg::ThreadPool

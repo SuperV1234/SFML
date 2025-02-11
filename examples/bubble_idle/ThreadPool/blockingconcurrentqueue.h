@@ -6,7 +6,6 @@
 // separate zlib license, see lightweightsemaphore.h).
 
 #pragma once
-
 #pragma GCC system_header
 
 #include "concurrentqueue.h"
@@ -546,7 +545,7 @@ public:
 	// Returns true if the underlying atomic variables used by
 	// the queue are lock-free (they should be on most platforms).
 	// Thread-safe.
-	static bool is_lock_free()
+	static constexpr bool is_lock_free()
 	{
 		return ConcurrentQueue::is_lock_free();
 	}

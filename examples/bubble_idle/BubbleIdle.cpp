@@ -65,7 +65,6 @@
 
 #include "SFML/Base/Algorithm.hpp"
 #include "SFML/Base/IntTypes.hpp"
-#include "SFML/Base/Macros.hpp"
 #include "SFML/Base/Math/Ceil.hpp"
 #include "SFML/Base/Optional.hpp"
 
@@ -510,7 +509,7 @@ struct Main
 
     ////////////////////////////////////////////////////////////
     // Thread pool
-    hg::ThreadPool::pool threadPool{getTPWorkerCount()};
+    hg::ThreadPool::Pool threadPool{getTPWorkerCount()};
 
     ////////////////////////////////////////////////////////////
     [[nodiscard]] static unsigned int getTPWorkerCount()
@@ -2527,6 +2526,9 @@ Can be upgraded to filter repelled bubble types via prestige points.
 
             ImGui::SetNextItemWidth(240.f);
             ImGui::InputScalar("PPs", ImGuiDataType_U64, &pt.prestigePoints, &step, nullptr, nullptr, ImGuiInputTextFlags_CharsDecimal);
+
+            ImGui::SetNextItemWidth(240.f);
+            ImGui::InputScalar("WPs", ImGuiDataType_U64, &pt.wisdom, &step, nullptr, nullptr, ImGuiInputTextFlags_CharsDecimal);
 
             ImGui::Separator();
 
@@ -4568,7 +4570,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
 
         //
         // Bubble vs bubble collisions
-        const unsigned int nWorkers = threadPool.worker_count();
+        const unsigned int nWorkers = threadPool.getWorkerCount();
         std::latch         latch{nWorkers};
 
         spatialGrid.forEachUniqueIndexPair(nWorkers,
@@ -4962,6 +4964,7 @@ int main()
 // - "resting powerup" via PPs that increases cat multiplier when not clicking for a while, maybe around 16PPs
 // - maybe make "autocast spell selector" a PP upgrade for around 128PPs
 // - "tweaks menu" unlockable with PP that allows any purchased cooldown/range upgrade to be tweaked, or just allow selling via right click...?
+// - resolution should be calculated from user desktop size
 
 // x - setting to disable draw particles
 // x - consider allowing menu to be outside game view when resizing or in separate widnow

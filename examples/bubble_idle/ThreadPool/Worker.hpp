@@ -8,75 +8,67 @@
 #include "ConsumerQueuePtr.hpp"
 #include "MovableAtomic.hpp"
 
+#include "SFML/Base/IntTypes.hpp"
+
 #include <atomic>
 #include <thread>
 
-#include <cstdint>
 
 namespace hg::ThreadPool
 {
-
-/// @brief Wraps an `std::thread`, `consumer_queue_ptr` and atomic control
+////////////////////////////////////////////////////////////
+/// \brief Wraps an `std::thread`, `ConsumerQueuePtr` and atomic control
 /// variables.
-class worker
+class [[nodiscard]] Worker
 {
 private:
-    enum class state : std::uint8_t
+    enum class [[nodiscard]] State : sf::base::U8
     {
-        // Initial state of the `worker`.
-        uninitialized = 0,
+        // Initial state of the worker.
+        Uninitialized = 0u,
 
-        // The `worker` is dequeuing and accepting tasks in blocking mode.
-        running = 1,
+        // The worker is dequeuing and accepting tasks in blocking mode.
+        Running = 1u,
 
-        // The `worker` is dequeuing and accepting tasks in non-blocking mode.
-        // Will transition to `state::finished` automatically when there are no
+        // The worker is dequeuing and accepting tasks in non-blocking mode.
+        // Will transition to `State::Finished` automatically when there are no
         // more tasks.
-        stopped = 2,
-
-        // The `worker` is done. The thread can be joined.
-        finished = 3
+        Stopped = 2u,
     };
 
-    /// @brief Worker thread.
-    std::thread _thread;
+    /// \brief Worker thread.
+    std::thread m_thread;
 
-    /// @brief Pointer to queue + consumer token.
-    consumer_queue_ptr _queue;
+    /// \brief Pointer to queue + consumer token.
+    ConsumerQueuePtr m_queue;
 
-    /// @brief State of the worker, controlled both by the pool and internally.
-    Utils::movable_atomic<state> _state;
+    /// \brief State of the worker, controlled both by the pool and internally.
+    Utils::MovableAtomic<State> m_state;
 
-    /// @brief Signals when the worker is done processing tasks in blocking
+    /// \brief Signals when the worker is done processing tasks in blocking
     /// mode. Controlled internally, checked by the pool to start posting dummy
     /// tasks.
-    Utils::movable_atomic<bool> _done_blocking_processing;
-
-    /// @brief Execution loop of the worker.
-    void run();
+    Utils::MovableAtomic<bool> m_doneBlockingProcessing;
 
 public:
-    worker(task_queue& queue) noexcept;
+    Worker(TaskQueue& queue) noexcept;
 
-    worker(worker&&);
-    worker& operator=(worker&&);
+    Worker(Worker&&) noexcept;
+    Worker& operator=(Worker&&) noexcept;
 
-    void start(std::atomic<unsigned int>& remaining_inits);
+    void start(std::atomic<unsigned int>& remainingInits);
 
-    /// @brief Sets the running flag to false, preventing the worker to
+    /// \brief Sets the running flag to false, preventing the worker to
     /// accept tasks.
     void stop() noexcept;
 
-    /// @brief Assuming the worker is not running, tries to join the
+    /// \brief Assuming the worker is not running, tries to join the
     /// underlying thread.
     void join() noexcept;
 
-    /// @brief Returns `true` if the worker has exited the processing loop.
-    [[nodiscard]] bool finished() const noexcept;
-
-    /// @brief Return `true` if the worker has finished processing tasks in a
+    /// \brief Return `true` if the worker has finished processing tasks in a
     /// blocking manner.
-    [[nodiscard]] bool done_blocking_processing() const noexcept;
+    [[nodiscard]] bool isDoneBlockingProcessing() const noexcept;
 };
 
 } // namespace hg::ThreadPool

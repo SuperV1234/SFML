@@ -13,101 +13,69 @@
 
 namespace hg::ThreadPool
 {
-
-[[nodiscard]] bool pool::all_workers_done_blocking_processing() const noexcept
+////////////////////////////////////////////////////////////
+[[nodiscard]] bool Pool::areAllWorkersDoneBlockingProcessing() const noexcept
 {
-    for (const worker& w : _workers)
-    {
-        if (!w.done_blocking_processing())
-        {
+    for (const Worker& w : m_workers)
+        if (!w.isDoneBlockingProcessing())
             return false;
-        }
-    }
 
     return true;
 }
 
-[[nodiscard]] bool pool::all_workers_finished() const noexcept
-{
-    for (const worker& w : _workers)
-    {
-        if (!w.finished())
-        {
-            return false;
-        }
-    }
 
-    return true;
-}
-
-void pool::post_dummy_task()
+////////////////////////////////////////////////////////////
+void Pool::postDummyTask()
 {
     post([] {});
 }
 
-void pool::initialize_workers(const unsigned int n)
-{
-    // Create workers.
-    for (unsigned int i(0u); i < n; ++i)
-    {
-        _workers.emplace_back(_queue);
-    }
 
-    // Start workers.
-    _remaining_inits.store(n);
-    for (worker& w : _workers)
-    {
-        w.start(_remaining_inits);
-    }
+////////////////////////////////////////////////////////////
+Pool::Pool(unsigned int workerCount)
+{
+    for (unsigned int i = 0u; i < workerCount; ++i)
+        m_workers.emplace_back(m_queue);
+
+    m_remainingInits.store(workerCount);
+    for (Worker& w : m_workers)
+        w.start(m_remainingInits);
 }
 
-pool::pool(unsigned int worker_count)
-{
-    initialize_workers(worker_count);
-}
 
-pool::~pool()
+////////////////////////////////////////////////////////////
+Pool::~Pool()
 {
-    // Busy wait for all workers to be initialized.
-    while (_remaining_inits.load() > 0)
-    {
+    // Busy wait until all workers are initialized.
+    while (m_remainingInits.load() > 0u)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
 
     // Signal all workers to exit their processing loops.
-    for (worker& w : _workers)
-    {
+    for (Worker& w : m_workers)
         w.stop();
-    }
 
     // Post dummy tasks until all workers have exited their loops.
-    while (!all_workers_done_blocking_processing())
-    {
-        post_dummy_task();
-    }
-
-    // TODO
-    while (!all_workers_finished())
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    while (!areAllWorkersDoneBlockingProcessing())
+        postDummyTask();
 
     // Join the workers' threads.
-    for (worker& w : _workers)
-    {
+    for (Worker& w : m_workers)
         w.join();
-    }
 }
 
-void pool::post(task&& f)
+
+////////////////////////////////////////////////////////////
+void Pool::post(Task&& f)
 {
-    [[maybe_unused]] const bool enqueued = _queue.enqueue(std::move(f));
+    [[maybe_unused]] const bool enqueued = m_queue.enqueue(std::move(f));
     SFML_BASE_ASSERT(enqueued);
 }
 
-unsigned int pool::worker_count() const noexcept
+
+////////////////////////////////////////////////////////////
+unsigned int Pool::getWorkerCount() const noexcept
 {
-    return static_cast<unsigned int>(_workers.size());
+    return static_cast<unsigned int>(m_workers.size());
 }
 
 } // namespace hg::ThreadPool

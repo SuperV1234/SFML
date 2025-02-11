@@ -6,31 +6,35 @@
 
 #include "Types.hpp"
 
-#include "SFML/Base/Assert.hpp"
 
 namespace hg::ThreadPool
 {
-
-/// @brief Wraps a `task_queue` pointer and a consumer token.
-class consumer_queue_ptr
+////////////////////////////////////////////////////////////
+/// \brief Wraps a `TaskQueue` pointer and a consumer token.
+class [[nodiscard]] ConsumerQueuePtr
 {
 private:
-    task_queue*               _queue;
-    task_queue_consumer_token _ctok;
+    TaskQueue*             m_queue;
+    TaskQueueConsumerToken m_ctok;
 
 public:
-    explicit consumer_queue_ptr(task_queue& queue) noexcept;
+    ////////////////////////////////////////////////////////////
+    explicit ConsumerQueuePtr(TaskQueue& queue) noexcept;
 
-    consumer_queue_ptr(const consumer_queue_ptr&)            = delete;
-    consumer_queue_ptr& operator=(const consumer_queue_ptr&) = delete;
+    ////////////////////////////////////////////////////////////
+    ConsumerQueuePtr(const ConsumerQueuePtr&)            = delete;
+    ConsumerQueuePtr& operator=(const ConsumerQueuePtr&) = delete;
 
-    consumer_queue_ptr(consumer_queue_ptr&& rhs) noexcept;
-    consumer_queue_ptr& operator=(consumer_queue_ptr&& rhs) noexcept;
+    ////////////////////////////////////////////////////////////
+    ConsumerQueuePtr(ConsumerQueuePtr&& rhs) noexcept;
+    ConsumerQueuePtr& operator=(ConsumerQueuePtr&& rhs) noexcept;
 
-    [[nodiscard]] task_queue_consumer_token& ctok() noexcept;
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] TaskQueueConsumerToken& ctok() noexcept;
 
-    [[nodiscard]] task_queue* operator->() noexcept;
-    [[nodiscard]] task_queue* operator->() const noexcept;
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] TaskQueue* operator->() noexcept;
+    [[nodiscard]] TaskQueue* operator->() const noexcept;
 };
 
 } // namespace hg::ThreadPool

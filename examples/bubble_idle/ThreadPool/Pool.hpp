@@ -10,41 +10,34 @@
 #include <atomic>
 #include <vector>
 
+
 namespace hg::ThreadPool
 {
 
-class worker;
+class Worker;
 
-class pool
+class Pool
 {
 private:
-    task_queue                _queue;
-    std::vector<worker>       _workers;
-    std::atomic<unsigned int> _remaining_inits;
+    TaskQueue                 m_queue;
+    std::vector<Worker>       m_workers;
+    std::atomic<unsigned int> m_remainingInits;
 
-    /// @brief  Returns `true` if all workers have finished processing packets
+    /// \brief  Returns `true` if all workers have finished processing packets
     /// in a blocking manner.
-    [[nodiscard]] bool all_workers_done_blocking_processing() const noexcept;
+    [[nodiscard]] bool areAllWorkersDoneBlockingProcessing() const noexcept;
 
-    /// @brief Returns `true` if all workers have finished (exited from
-    /// loop).
-    [[nodiscard]] bool all_workers_finished() const noexcept;
-
-    /// @brief Posts a dummy empty task, used to unblock workers waiting to
+    /// \brief Posts a dummy empty task, used to unblock workers waiting to
     /// be destroyed.
-    void post_dummy_task();
-
-    /// @brief Creates and starts `n` workers, also initializing the
-    /// atomic remaining inits counter.
-    void initialize_workers(const unsigned int n);
+    void postDummyTask();
 
 public:
-    explicit pool(unsigned int worker_count);
-    ~pool();
+    explicit Pool(unsigned int workerCount);
+    ~Pool();
 
-    void post(task&& f);
+    void post(Task&& f);
 
-    [[nodiscard]] unsigned int worker_count() const noexcept;
+    [[nodiscard]] unsigned int getWorkerCount() const noexcept;
 };
 
 } // namespace hg::ThreadPool
