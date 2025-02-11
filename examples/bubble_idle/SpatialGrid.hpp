@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <latch>
-#include <vector>
 
 #include <cassert>
 
@@ -27,7 +26,10 @@ public:
     {
         const sf::base::SizeT numObjects = m_aabbs.size();
         if (numObjects < 2)
+        {
+            latch.count_down(nWorkers);
             return;
+        }
 
         // Compute a chunk size for dividing the outer loop among tasks.
         // (Note: Some chunks will have more work than others, since early exits in the inner loop
@@ -43,7 +45,7 @@ public:
 
             if (start >= numObjects)
             {
-                latch.count_down();
+                latch.count_down(nWorkers - iWorker);
                 break;
             }
 

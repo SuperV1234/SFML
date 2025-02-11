@@ -26,7 +26,7 @@ struct Playthrough
     //
     // RNG stuff
     RNG::SeedType seed;
-    SizeT         nextCatName = 0u;
+    SizeT         nextCatNamePerType[nCatTypes] = {};
 
     //
     // PSV instances

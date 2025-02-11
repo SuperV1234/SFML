@@ -2,6 +2,8 @@
 
 #include "Stats.hpp"
 
+#include "SFML/System/Vector2.hpp"
+
 
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] Profile
@@ -19,4 +21,14 @@ struct [[nodiscard]] Profile
     bool  showTextParticles     = true;
 
     Stats statsLifetime;
+
+    sf::Vector2u resWidth       = {};
+    bool         windowed       = true;
+    bool         vsync          = true;
+    unsigned int frametimeLimit = 144u;
+
+    bool  highVisibilityCursor = true;
+    bool  multicolorCursor     = false;
+    float cursorHue            = 0.f;
+    float cursorScale          = 0.4f;
 };

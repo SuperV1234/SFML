@@ -24,6 +24,10 @@ namespace sf
 // NOLINTNEXTLINE(modernize-use-constraints)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Vector2f, x, y);
 
+////////////////////////////////////////////////////////////
+// NOLINTNEXTLINE(modernize-use-constraints)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Vector2u, x, y);
+
 } // namespace sf
 
 
@@ -60,18 +64,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Bubble, position, velocity, radius, rotation,
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
-    Cat,
-    type,
-    position,
-    rangeOffset,
-    wobbleRadians,
-    cooldown,
-    hue,
-    inspiredCountdown,
-    boostCountdown,
-    nameIdx,
-    hits);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Cat, type, position, wobbleRadians, cooldown, hue, inspiredCountdown, boostCountdown, nameIdx, hits);
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
@@ -223,7 +216,17 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     showParticles,
     showTextParticles,
 
-    statsLifetime);
+    statsLifetime,
+
+    resWidth,
+    windowed,
+    vsync,
+    frametimeLimit,
+
+    highVisibilityCursor,
+    multicolorCursor,
+    cursorHue,
+    cursorScale);
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
@@ -231,7 +234,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     Playthrough,
 
     seed,
-    nextCatName,
+    nextCatNamePerType,
 
     psvComboStartTime,
     psvMapExtension,

@@ -71,8 +71,10 @@
 #include "SFML/Base/IntTypes.hpp"
 #include "SFML/Base/Math/Ceil.hpp"
 #include "SFML/Base/Optional.hpp"
+#include "SFML/Base/ScopeGuard.hpp"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <array>
@@ -146,11 +148,12 @@ bool handleCatShrineCollision(const float deltaTimeMs, Cat& cat, Shrine& shrine)
 }
 
 ////////////////////////////////////////////////////////////
-[[nodiscard, gnu::always_inline]] inline Bubble makeRandomBubble(RNG& rng, const float mapLimit, const float maxY)
+[[nodiscard, gnu::always_inline]] inline Bubble makeRandomBubble(Playthrough& pt, RNG& rng, const float mapLimit, const float maxY)
 {
     return {.position = rng.getVec2f({mapLimit, maxY}),
             .velocity = rng.getVec2f({-0.1f, -0.1f}, {0.1f, 0.1f}),
-            .radius   = rng.getF(0.07f, 0.16f) * 256.f,
+            .radius   = rng.getF(0.07f, 0.16f) * 256.f *
+                      remap(static_cast<float>(pt.psvBubbleCount.nPurchases), 0.f, 30.f, 1.1f, 0.8f),
             .rotation = 0.f,
             .hueMod   = 0.f,
             .type     = BubbleType::Normal};
@@ -290,17 +293,8 @@ struct Main
 
     ////////////////////////////////////////////////////////////
     // Render window
-    sf::base::Optional<sf::RenderWindow> maybeWindow;
-
-    ////////////////////////////////////////////////////////////
-    // Next window settings (used when recreating window)
-    sf::base::Optional<sf::WindowSettings> nextWindowSettings{
-        sf::WindowSettings{.size            = {1920u, 1080u},
-                           .title           = "BubbleByte " BUBBLEBYTE_VERSION_STR,
-                           .resizable       = true,
-                           .vsync           = true,
-                           .frametimeLimit  = 144u,
-                           .contextSettings = contextSettings}};
+    sf::base::Optional<sf::RenderWindow> optWindow;
+    bool                                 mustRecreateWindow = true;
 
     ////////////////////////////////////////////////////////////
     // ImGui context
@@ -335,6 +329,7 @@ struct Main
     sf::Texture txByteTip{sf::Texture::loadFromFile("resources/bytetip.png", {.smooth = true}).value()};
     sf::Texture txTipBg{sf::Texture::loadFromFile("resources/tipbg.png", {.smooth = true}).value()};
     sf::Texture txTipByte{sf::Texture::loadFromFile("resources/tipbyte.png", {.smooth = true}).value()};
+    sf::Texture txCursor{sf::Texture::loadFromFile("resources/cursor.png", {.smooth = true}).value()};
 
     ////////////////////////////////////////////////////////////
     // Texture atlas rects
@@ -421,7 +416,17 @@ struct Main
 
     ////////////////////////////////////////////////////////////
     // Cat names
-    std::vector<std::string> shuffledCatNames{getShuffledCatNames(rng.getEngine())};
+    [[nodiscard]] static std::vector<std::vector<std::string>> makeShuffledCatNames(RNG& rng)
+    {
+        std::vector<std::vector<std::string>> result(nCatTypes);
+
+        for (SizeT i = 0u; i < nCatTypes; ++i)
+            result[i] = getShuffledCatNames(static_cast<CatType>(i), rng.getEngine());
+
+        return result;
+    }
+
+    std::vector<std::vector<std::string>> shuffledCatNamesPerType = makeShuffledCatNames(rng);
 
     ////////////////////////////////////////////////////////////
     // Prestige transition
@@ -488,6 +493,7 @@ struct Main
     float catDragPressDuration{0.f};
 
     ////////////////////////////////////////////////////////////
+    // Touch state
     std::vector<sf::base::Optional<sf::Vector2f>> fingerPositions;
 
     ////////////////////////////////////////////////////////////
@@ -528,9 +534,9 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] SizeT getNextCatNameIdx()
+    [[nodiscard]] SizeT getNextCatNameIdx(const CatType catType)
     {
-        return pt.nextCatName++ % shuffledCatNames.size();
+        return pt.nextCatNamePerType[asIdx(catType)]++ % shuffledCatNamesPerType[asIdx(catType)].size();
     }
 
     ////////////////////////////////////////////////////////////
@@ -654,15 +660,15 @@ struct Main
     ////////////////////////////////////////////////////////////
     sf::RenderWindow& getWindow()
     {
-        SFML_BASE_ASSERT(maybeWindow.hasValue());
-        return *maybeWindow;
+        SFML_BASE_ASSERT(optWindow.hasValue());
+        return *optWindow;
     }
 
     ////////////////////////////////////////////////////////////
     const sf::RenderWindow& getWindow() const
     {
-        SFML_BASE_ASSERT(maybeWindow.hasValue());
-        return *maybeWindow;
+        SFML_BASE_ASSERT(optWindow.hasValue());
+        return *optWindow;
     }
 
     ////////////////////////////////////////////////////////////
@@ -737,14 +743,13 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    Cat& spawnCat(const sf::View& gameView, const CatType catType, const sf::Vector2f rangeOffset, const float hue)
+    Cat& spawnCat(const sf::View& gameView, const CatType catType, const float hue)
     {
         const auto pos = getWindow().mapPixelToCoords((getResolution() / 2.f).toVector2i(), gameView);
         spawnParticles(32, pos, ParticleType::Star, 0.5f, 0.75f);
 
         return pt.cats.emplace_back(
             Cat{.position              = pos,
-                .rangeOffset           = rangeOffset,
                 .wobbleRadians         = {},
                 .cooldown              = {.value = pt.getComputedCooldownByCatType(catType)},
                 .pawPosition           = pos,
@@ -752,7 +757,7 @@ struct Main
                 .hue                   = hue,
                 .inspiredCountdown     = {},
                 .boostCountdown        = {},
-                .nameIdx               = getNextCatNameIdx(),
+                .nameIdx               = getNextCatNameIdx(catType),
                 .textStatusShakeEffect = {},
                 .type                  = catType,
                 .astroState            = {}});
@@ -868,7 +873,6 @@ struct Main
                 break;
             }
 
-
         Cat* hoveredCat = nullptr;
 
         if (hoveredShrine == nullptr)
@@ -891,33 +895,33 @@ struct Main
                 R"(
 ~~ Shrine Of Magic ~~
 
-Effects: none.
+The legend says that a powerful Wizardcat is sealed inside, capable of absorbing wisdom from star bubbles and casting spells on demand. Guess it wasn't powerful enough to avoid being sealed...
 
-Rewards: wizardcat and magic spells!)",
+The magic of star bubbles seem to be absorbed by the shrine, nullifying their benefits.)",
                 R"(
 ~~ Shrine Of Clicking ~~
 
-Effects: TODO P1: complete
+Rumor has it that a sneaky Mousecat is sealed inside, capable of clicking bubbles, keeping up its own combos, empowering nearby cats, and providing a global click reward value multiplier by merely existing. That's a lot.
 
-Rewards: mousecat and global click reward value multiplier (starting at 1.25x, upgradable with prestige points).)",
+The shrine repels cats, wanting you to prove your worth by clicking bubbles.)",
                 R"(
 ~~ Shrine Of Automation ~~
 
-Effects: TODO P1: complete
+Stories of a crafty Engicat being sealed inside this shrine are told, capable of performing engine maintenance on nearby cats, temporarily increasing their speed, and providing a global cat reward value multiplier by merely existing.
 
-Rewards: engicat and global cat reward value multiplier (starting at 1.25x, upgradable with prestige points).)",
+Bubbles in the shrine's range are immune to clicks, as the shrine wants you to prove your automation skils.)",
                 R"(
 ~~ Shrine Of Repulsion ~~
 
-Effects: TODO P1: complete
+Experiments reveal that a Repulsocat is sealed inside, who continuously pushes bubbles away from itself with his portable USB fan. Thankfully, other cats are too fat to be affected by the wind.
 
-Rewards: TODO P1: complete)",
+Seems like the wind is powerful enough to repel bubbles even from within the shrine.)",
                 R"(
 ~~ Shrine Of Attraction ~~
 
-Effects: TODO P1: complete
+Electromagnetism readings suggest that an Attractocat is sealed inside, who continuously attracts bubbles with his huge magnet. Despite cats having an engine, they are not affected by the magnet -- can't explain that one.
 
-Rewards: TODO P1: complete)",
+The magnet is so powerful that its effects are felt even near the shrine.)",
                 R"(
 ~~ Shrine Of Decay ~~
 
@@ -953,7 +957,9 @@ Rewards: TODO P1: complete)",
             const char* catNormalTooltip = R"(
 ~~ Cat ~~
 
-Pops bubbles or bombs.)";
+Pops bubbles or bombs, whatever comes first. Not the brightest, despite not being orange.
+
+Prestige points can be spent for its college tuition, making it more cleverer.)";
 
             if (pt.geniusCatsPurchased)
             {
@@ -961,7 +967,9 @@ Pops bubbles or bombs.)";
                     R"(
 ~~ Genius Cat ~~
 
-Pops bubbles or bombs. Prioritizes bombs, then star bubbles, then normal bubbles. Can be instructed to ignore specific bubble types.)";
+A truly intelligent being: prioritizes popping bombs first, then star bubbles, then normal bubbles. Can be instructed to ignore specific bubble types.
+
+We do not speak of the origin of the large brain attached to its body.)";
             }
             else if (pt.smartCatsPurchased)
             {
@@ -969,13 +977,17 @@ Pops bubbles or bombs. Prioritizes bombs, then star bubbles, then normal bubbles
                     R"(
 ~~ Smart Cat ~~
 
-Pops bubbles or bombs. Prioritizes bombs and star bubbles over normal bubbles.)";
+Pops bubbles or bombs. Smart enough to prioritizes bombs and star bubbles over normal bubbles, but can't really tell those two apart.
+
+We do not speak of the tuition fees.)";
             }
 
             const char* catAstroTooltip = R"(
 ~~ Astrocat ~~
 
-Flies across the map, popping bubbles with a x20 multiplier.)";
+Pride of the NCSA, a highly trained feline astronaut that continuously flies across the map, popping bubbles with a x20 multiplier.
+
+Desperately trying to get funding from the government for a mission on the cheese moon. Perhaps some prestige points could help?)";
 
             if (pt.astroCatInspirePurchased)
             {
@@ -983,9 +995,9 @@ Flies across the map, popping bubbles with a x20 multiplier.)";
                     R"(
 ~~ Propagandist Astrocat ~~
 
-Flies across the map, popping bubbles with a x20 multiplier.
+Pride of the NCSA, a highly trained feline astronaut that continuously flies across the map, popping bubbles with a x20 multiplier.
 
-Inspires other cats to work faster when flying by.)";
+Finally financed by the NB (NOBUBBLES) political party to inspire other cats to work faster when flying by.)";
             }
 
             const char* catTooltipsByType[]{
@@ -993,11 +1005,14 @@ Inspires other cats to work faster when flying by.)";
                 R"(
 ~~ Unicat ~~
 
-Transforms bubbles or bombs into star bubbles, worth x25 more.)",
+Imbued with the power of stars and rainbows, transforms bubbles (or bombs) into star bubbles, worth x25 more.
+
+Must have eaten something it wasn't supposed to, because it keeps changing color.
+)",
                 R"(
 ~~ Devilcat ~~
 
-Transforms bubbles into bombs. Bubbles caught in explosions are worth x10 more.)",
+Hired diplomat of the NB (NOBUBBLES) political party. Convinces bubbles to turn into bombs and explode for the rightful cause. Bubbles caught in explosions are worth x10 more.)",
                 R"(
 ~~ Witchcat ~~
 (unique cat)
@@ -1008,34 +1023,35 @@ TODO P1: complete)",
 ~~ Wizardcat ~~
 (unique cat)
 
-Can cast spells from the 'magic' menu.
+Ancient arcane feline capable of unleashing powerful spells, if only it could remember them.
+Can absorb the magic of star bubbles to recall its past lives and remember spells.
 
-Learns new spells by absorbing wisdom from star bubbles.)",
+The scriptures say that it "unlocks a Magic menu", but nobody knows what that means.)",
                 R"(
 ~~ Mousecat ~~
 (unique cat)
 
-Pops bubbles or bombs, keeping up a combo like for manual popping.
+It stole a Logicat gaming mouse and it's now on the run. Surprisingly, the mouse still works even though it's not plugged in to anything.
 
-Nearby cats pop bubbles with the same combo value as the mousecat.
+Able to keep up a combo like for manual popping, and empowers nearby cats to pop bubbles with its current combo multiplier.
 
-Provides a global click reward value multiplier by merely existing.
+Provides a global click reward value multiplier (upgradable via PPs) by merely existing... Logicat does know how to make a good mouse.
 )",
                 R"(
 ~~ Engicat ~~
 (unique cat)
 
-Periodically performs maintenance on all nearby cats, temporarily increasing their speed. This buff stacks with Propagandists Astrocats.
+Periodically performs maintenance on all nearby cats, temporarily increasing their engine efficiency and making them faster. (Note: this buff stacks with inspirational NB propaganda.)
 
-Provides a global cat reward value multiplier by merely existing.
+Provides a global cat reward value multiplier (upgradable via PPs) by merely existing... guess it's a "10x engineer"?
 )",
                 R"(
 ~~ Repulsocat ~~
 (unique cat)
 
-Continuously pushes bubbles away from itself with his huge magnet. This effect is applied even while Repulsocat is being dragged.
+Continuously pushes bubbles away from itself with his powerful USB fan, powered by God knows what kind of batteries. (Note: this effect is applied even while Repulsocat is being dragged.)
 
-Can be upgraded to filter repelled bubble types via prestige points.
+Using prestige points, the fan can be upgraded to filter specific bubble types and/or convert a percentage of bubbles to star bubbles.
 )",
             };
 
@@ -1365,7 +1381,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
 
         if (pt.comboPurchased)
         {
-            std::sprintf(tooltipBuffer, "Increase combo duration.");
+            std::sprintf(tooltipBuffer, "Increase combo duration. We are in it for the long run.");
             std::sprintf(labelBuffer, "%.2fs", static_cast<double>(pt.psvComboStartTime.currentValue()));
             makePSVButton("- Longer combo", pt.psvComboStartTime);
         }
@@ -1377,7 +1393,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
             std::sprintf(tooltipBuffer,
                          "Extend the map and enable scrolling (right click or drag with two fingers).\n\nExtending the "
                          "map will increase the total number of bubbles you can work with, and will also reveal "
-                         "shrines that grant unique cats upon completion.");
+                         "magical shrines that grant unique cats upon completion.");
             std::sprintf(labelBuffer, "");
             if (makePurchasableButtonOneTime("Map scrolling", 250, pt.mapPurchased))
             {
@@ -1394,7 +1410,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
                 ImGui::BeginDisabled(pt.psvShrineActivation.nPurchases > pt.psvMapExtension.nPurchases);
                 std::sprintf(tooltipBuffer,
                              "Activates the next shrine, enabling it to absorb nearby popped bubbles. Once enough "
-                             "bubbles are absorbed, shrines will grant a unique cat.");
+                             "bubbles are absorbed by a shrine, it will grant a unique cat.");
                 std::sprintf(labelBuffer, "%zu/9", pt.psvShrineActivation.nPurchases);
                 makePSVButton("- Activate next shrine", pt.psvShrineActivation);
                 ImGui::EndDisabled();
@@ -1404,7 +1420,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
 
             std::sprintf(tooltipBuffer,
                          "Increase the total number of bubbles. Scales with map size.\n\nMore bubbles, "
-                         "more money!");
+                         "more money, fewer FPS!");
             std::sprintf(labelBuffer, "%zu bubbles", static_cast<SizeT>(pt.psvBubbleCount.currentValue()));
             makePSVButton("More bubbles", pt.psvBubbleCount);
 
@@ -1416,18 +1432,14 @@ Can be upgraded to filter repelled bubble types via prestige points.
             std::sprintf(tooltipBuffer,
                          "Cats pop nearby bubbles or bombs. Their cooldown and range can be upgraded. Their behavior "
                          "can be permanently upgraded with prestige points.\n\nCats can be dragged around to position "
-                         "them strategically.\n\nNo, cats cannot be removed once purchased, you monster.");
+                         "them strategically.\n\nNo, you can't get rid of a cat once purchased, you monster.");
             std::sprintf(labelBuffer, "%zu cats", nCatNormal);
             if (makePSVButton("Cat", pt.psvPerCatType[asIdx(CatType::Normal)]))
             {
-                spawnCat(gameView, CatType::Normal, {0.f, 0.f}, /* hue */ rng.getF(-20.f, 20.f));
+                spawnCat(gameView, CatType::Normal, /* hue */ rng.getF(-20.f, 20.f));
 
                 if (nCatNormal == 0)
-                {
-                    doTip(
-                        "Cats periodically pop bubbles for you!\nYou can drag them around to position "
-                        "them.");
-                }
+                    doTip("Cats periodically pop bubbles for you!\nYou can drag them around to position them.");
             }
         }
 
@@ -1435,18 +1447,33 @@ Can be upgraded to filter repelled bubble types via prestige points.
         {
             auto& psv = pt.psvCooldownMultsPerCatType[asIdx(catType)];
 
-            std::sprintf(tooltipBuffer, "Decrease cooldown.");
+            std::sprintf(tooltipBuffer,
+                         "Decrease cooldown.\n\nNote: can be reverted by right-clicking, but no refunds!");
             std::sprintf(labelBuffer, "%.2fs", static_cast<double>(pt.getComputedCooldownByCatType(catType) / 1000.f));
             makePSVButton(label, psv);
+
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) &&
+                ImGui::IsMouseClicked(ImGuiMouseButton_Right) && psv.nPurchases > 0u)
+            {
+                --psv.nPurchases;
+                playSound(sounds.buy);
+            }
         };
 
         const auto makeRangeButton = [this](const char* label, const CatType catType)
         {
             auto& psv = pt.psvRangeDivsPerCatType[asIdx(catType)];
 
-            std::sprintf(tooltipBuffer, "Increase range.");
+            std::sprintf(tooltipBuffer, "Increase range.\n\nNote: can be reverted by right-clicking, but no refunds!");
             std::sprintf(labelBuffer, "%.2fpx", static_cast<double>(pt.getComputedRangeByCatType(catType)));
             makePSVButton(label, psv);
+
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) &&
+                ImGui::IsMouseClicked(ImGuiMouseButton_Right) && psv.nPurchases > 0u)
+            {
+                --psv.nPurchases;
+                playSound(sounds.buy);
+            }
         };
 
         const bool catUpgradesUnlocked = pt.psvBubbleCount.nPurchases > 0 && nCatNormal >= 2 && nCatUni >= 1;
@@ -1465,11 +1492,11 @@ Can be upgraded to filter repelled bubble types via prestige points.
         {
             std::sprintf(tooltipBuffer,
                          "Unicats transform bubbles into star bubbles, which are worth x25 more!\n\nHave "
-                         "your cats pop them for you, or pop them near the end of a combo for huge rewards!");
+                         "your cats pop them for you, or pop them towards the end of a combo for huge rewards!");
             std::sprintf(labelBuffer, "%zu unicats", nCatUni);
             if (makePSVButton("Unicat", pt.psvPerCatType[asIdx(CatType::Uni)]))
             {
-                spawnCat(gameView, CatType::Uni, {0.f, -100.f}, /* hue */ rng.getF(0.f, 360.f));
+                spawnCat(gameView, CatType::Uni, /* hue */ rng.getF(0.f, 360.f));
 
                 if (nCatUni == 0)
                     doTip("Unicats transform bubbles in star bubbles,\nworth x25! Pop them at the end of a combo!");
@@ -1495,7 +1522,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
             std::sprintf(labelBuffer, "%zu devilcats", nCatDevil);
             if (makePSVButton("Devilcat", pt.psvPerCatType[asIdx(CatType::Devil)]))
             {
-                spawnCat(gameView, CatType::Devil, {0.f, 100.f}, /* hue */ rng.getF(-20.f, 20.f));
+                spawnCat(gameView, CatType::Devil, /* hue */ rng.getF(-20.f, 20.f));
 
                 if (nCatDevil == 0)
                     doTip(
@@ -1529,7 +1556,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
             std::sprintf(labelBuffer, "%zu astrocats", nCatAstro);
             if (makePSVButton("Astrocat", pt.psvPerCatType[asIdx(CatType::Astro)]))
             {
-                spawnCat(gameView, CatType::Astro, {-64.f, 0.f}, /* hue */ rng.getF(-20.f, 20.f));
+                spawnCat(gameView, CatType::Astro, /* hue */ rng.getF(-20.f, 20.f));
 
                 if (nCatAstro == 0)
                     doTip(
@@ -1841,13 +1868,13 @@ Can be upgraded to filter repelled bubble types via prestige points.
             ImGui::Text("- ignore: ");
             ImGui::SameLine();
 
-            ImGui::Checkbox("normal", &pt.geniusCatIgnoreNormalBubbles);
+            ImGui::Checkbox("normal##genius", &pt.geniusCatIgnoreNormalBubbles);
             ImGui::SameLine();
 
-            ImGui::Checkbox("star", &pt.geniusCatIgnoreStarBubbles);
+            ImGui::Checkbox("star##genius", &pt.geniusCatIgnoreStarBubbles);
             ImGui::SameLine();
 
-            ImGui::Checkbox("bombs", &pt.geniusCatIgnoreBombBubbles);
+            ImGui::Checkbox("bombs##genius", &pt.geniusCatIgnoreBombBubbles);
 
             ImGui::SetWindowFontScale(normalFontScale);
             uiBeginColumns();
@@ -1969,13 +1996,13 @@ Can be upgraded to filter repelled bubble types via prestige points.
                 ImGui::Text("- ignore: ");
                 ImGui::SameLine();
 
-                ImGui::Checkbox("normal", &pt.repulsoCatIgnoreNormalBubbles);
+                ImGui::Checkbox("normal##repulso", &pt.repulsoCatIgnoreNormalBubbles);
                 ImGui::SameLine();
 
-                ImGui::Checkbox("star", &pt.repulsoCatIgnoreStarBubbles);
+                ImGui::Checkbox("star##repulso", &pt.repulsoCatIgnoreStarBubbles);
                 ImGui::SameLine();
 
-                ImGui::Checkbox("bombs", &pt.repulsoCatIgnoreBombBubbles);
+                ImGui::Checkbox("bombs##repulso", &pt.repulsoCatIgnoreBombBubbles);
 
                 ImGui::SetWindowFontScale(normalFontScale);
                 uiBeginColumns();
@@ -2086,7 +2113,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
         const auto range       = pt.getComputedRangeByCatType(CatType::Wizard);
         const auto maxCooldown = pt.getComputedCooldownByCatType(CatType::Wizard);
 
-        ImGui::Text("Your wizard is %s!", shuffledCatNames[wizardCat->nameIdx].c_str());
+        ImGui::Text("Your wizard is %s!", shuffledCatNamesPerType[asIdx(CatType::Wizard)][wizardCat->nameIdx].c_str());
 
         ImGui::Separator();
 
@@ -2094,14 +2121,14 @@ Can be upgraded to filter repelled bubble types via prestige points.
 
         ImGui::Checkbox("Absorb wisdom", &pt.absorbingWisdom);
         std::sprintf(tooltipBuffer,
-                     "The wizardcat concentrates, absorbing wisdom points from nearby star bubbles. While the "
-                     "wizardcat is concentrating, it cannot cast spells nor be moved around.");
+                     "The Wizardcat concentrates, absorbing wisdom points from nearby star bubbles. While the "
+                     "Wizardcat is concentrating, it cannot cast spells nor be moved around.");
         uiMakeTooltip();
 
         uiBeginColumns();
         buttonHueMod = 45.f;
 
-        std::sprintf(tooltipBuffer, "The wizardcat taps into memories of past lives, remembering a powerful spell.");
+        std::sprintf(tooltipBuffer, "The Wizardcat taps into memories of past lives, remembering a powerful spell.");
         std::sprintf(labelBuffer, "%zu/%zu", pt.psvSpellCount.nPurchases, pt.psvSpellCount.data->nMaxPurchases);
         (void)makePSVButtonExByCurrency("Remember spell",
                                         pt.psvSpellCount,
@@ -2143,7 +2170,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
             if (pt.psvSpellCount.nPurchases >= 1)
             {
                 std::sprintf(tooltipBuffer,
-                             "Transforms a percentage of bubbles around the wizard into star bubbles "
+                             "Transforms a percentage of bubbles around the Wizardcat into star bubbles "
                              "immediately.\n\nCan be upgraded to ignore bombs with prestige points.");
                 std::sprintf(labelBuffer, "");
                 bool done = false;
@@ -2203,7 +2230,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
                 ImGui::Separator();
 
                 std::sprintf(tooltipBuffer,
-                             "Creates a value multiplier aura around the wizard that affects all cats and bubbles. "
+                             "Creates a value multiplier aura around the Wizardcat that affects all cats and bubbles. "
                              "Lasts 5 seconds.\n\nCasting this spell multiple times will accumulate the aura "
                              "duration.");
                 std::sprintf(labelBuffer, "%.2fs", static_cast<double>(pt.arcaneAuraTimer / 1000.f));
@@ -2429,6 +2456,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
         ImGui::SetWindowFontScale(normalFontScale);
     }
 
+    ////////////////////////////////////////////////////////////
     [[nodiscard]] MoneyType computeFinalReward(const sf::Vector2f bubblePosition, const MoneyType computedReward, const int xCombo)
     {
         Cat* wizardCat = findCatWizard();
@@ -2443,101 +2471,218 @@ Can be upgraded to filter repelled bubble types via prestige points.
     }
 
     ////////////////////////////////////////////////////////////
+    [[nodiscard]] static sf::Vector2u getReasonableWindowSize(const float scalingFactorMult = 1.f)
+    {
+        constexpr float gameRatio = gameScreenSize.x / gameScreenSize.y;
+
+        const auto  fullscreenSize = sf::VideoModeUtils::getDesktopMode().size.toVector2f();
+        const float aspectRatio    = fullscreenSize.x / fullscreenSize.y;
+
+        const bool isUltrawide = aspectRatio >= 2.0f;
+        const bool isWide      = aspectRatio >= 1.6f && aspectRatio < 2.0f;
+
+        const float scalingFactor = isUltrawide ? 0.9f : isWide ? 0.8f : 0.7f;
+
+        const auto windowSize = fullscreenSize * scalingFactor * scalingFactorMult;
+
+        const auto windowedWidth = windowSize.y * gameRatio + (windowWidth + 35.f);
+
+        return (sf::Vector2f{windowedWidth, windowSize.y}).toVector2u();
+    }
+
+    ////////////////////////////////////////////////////////////
     void uiTabBarSettings()
     {
-        ImGui::SetNextItemWidth(210.f);
-        ImGui::SliderFloat("Master volume", &profile.masterVolume, 0.f, 100.f, "%.0f%%");
+        bool sgActive = false;
+        SFML_BASE_SCOPE_GUARD({
+            if (sgActive)
+                ImGui::EndTabBar();
+        });
+        sgActive = ImGui::BeginTabBar("TabBarSettings", ImGuiTabBarFlags_DrawSelectedOverline);
 
-        ImGui::SetNextItemWidth(210.f);
-        ImGui::SliderFloat("Music volume", &profile.musicVolume, 0.f, 100.f, "%.0f%%");
-
-        ImGui::Checkbox("Play audio in background", &profile.playAudioInBackground);
-        ImGui::Checkbox("Enable combo scratch sound", &profile.playComboEndSound);
-
-        ImGui::SetNextItemWidth(210.f);
-        ImGui::SliderFloat("Minimap Scale", &profile.minimapScale, 5.f, 40.f, "%.2f");
-
-        ImGui::SetNextItemWidth(210.f);
-        ImGui::SliderFloat("HUD Scale", &profile.hudScale, 0.5f, 2.f, "%.2f");
-
-        ImGui::Checkbox("Enable tips", &profile.tipsEnabled);
-
-        ImGui::SetNextItemWidth(210.f);
-        ImGui::SliderFloat("Background Opacity", &profile.backgroundOpacity, 0.f, 100.f, "%.0f%%");
-
-        ImGui::Checkbox("Show cat text", &profile.showCatText);
-        ImGui::Checkbox("Show particles", &profile.showParticles);
-        ImGui::Checkbox("Show text particles", &profile.showTextParticles);
-
-        const float fps = 1.f / fpsClock.getElapsedTime().asSeconds();
-        ImGui::Text("FPS: %.2f", static_cast<double>(fps));
-
-        ImGui::Separator();
-
-        // TODO P1: cleanup
-
-        if (ImGui::Button("Go windowed"))
+        ImGui::SetWindowFontScale(0.75f);
+        if (ImGui::BeginTabItem("Audio"))
         {
-            nextWindowSettings.emplace(
-                sf::WindowSettings{.size            = sf::VideoModeUtils::getDesktopMode().size / 2u,
-                                   .title           = "BubbleByte " BUBBLEBYTE_VERSION_STR,
-                                   .resizable       = true,
-                                   .closable        = true,
-                                   .hasTitlebar     = true,
-                                   .vsync           = true,
-                                   .frametimeLimit  = 144u,
-                                   .contextSettings = contextSettings});
+            ImGui::SetWindowFontScale(normalFontScale);
+
+            ImGui::SetNextItemWidth(210.f);
+            ImGui::SliderFloat("Master volume", &profile.masterVolume, 0.f, 100.f, "%.0f%%");
+
+            ImGui::SetNextItemWidth(210.f);
+            ImGui::SliderFloat("Music volume", &profile.musicVolume, 0.f, 100.f, "%.0f%%");
+
+            ImGui::Checkbox("Play audio in background", &profile.playAudioInBackground);
+            ImGui::Checkbox("Enable combo scratch sound", &profile.playComboEndSound);
+
+            ImGui::EndTabItem();
         }
 
-        ImGui::SameLine();
-
-        if (ImGui::Button("Go borderless"))
+        ImGui::SetWindowFontScale(0.75f);
+        if (ImGui::BeginTabItem("Interface"))
         {
-            nextWindowSettings.emplace(
-                sf::WindowSettings{.size            = sf::VideoModeUtils::getDesktopMode().size,
-                                   .title           = "BubbleByte " BUBBLEBYTE_VERSION_STR,
-                                   .resizable       = false,
-                                   .closable        = false,
-                                   .hasTitlebar     = false,
-                                   .vsync           = true,
-                                   .frametimeLimit  = 144u,
-                                   .contextSettings = contextSettings});
-        }
+            ImGui::SetWindowFontScale(normalFontScale);
 
-        ImGui::Separator();
+            ImGui::SetNextItemWidth(210.f);
+            ImGui::SliderFloat("Minimap Scale", &profile.minimapScale, 5.f, 40.f, "%.2f");
 
-        if (ImGui::Button("Save game"))
-            savePlaythroughToFile(pt);
+            ImGui::SetNextItemWidth(210.f);
+            ImGui::SliderFloat("HUD Scale", &profile.hudScale, 0.5f, 2.f, "%.2f");
 
-        ImGui::SameLine();
+            ImGui::Checkbox("Enable tips", &profile.tipsEnabled);
 
-        if (ImGui::Button("Load game"))
-            loadPlaythroughFromFileAndReseed();
-
-        ImGui::SameLine();
-
-        buttonHueMod = 120.f;
-        uiPushButtonColors();
-
-        if (ImGui::Button("Reset game"))
-        {
-            rng.reseed(std::random_device{}());
-            shuffledCatNames = getShuffledCatNames(rng.getEngine());
-
-            pt      = Playthrough{};
-            pt.seed = rng.getSeed();
-
-            particles.clear();
-            textParticles.clear();
-        }
-
-        uiPopButtonColors();
-        buttonHueMod = 0.f;
-
-        if (true /* TODO P0: cheats */)
-        {
             ImGui::Separator();
+
+            ImGui::Checkbox("High-visibility cursor", &profile.highVisibilityCursor);
+
+            ImGui::BeginDisabled(!profile.highVisibilityCursor);
+            {
+                ImGui::SetWindowFontScale(0.75f);
+
+                ImGui::Checkbox("Multicolor", &profile.multicolorCursor);
+
+                ImGui::BeginDisabled(profile.multicolorCursor);
+                ImGui::SetNextItemWidth(210.f);
+                ImGui::SliderFloat("Hue", &profile.cursorHue, 0.f, 360.f, "%.2f");
+                ImGui::EndDisabled();
+
+                ImGui::SetNextItemWidth(210.f);
+                ImGui::SliderFloat("Scale", &profile.cursorScale, 0.3f, 1.5f, "%.2f");
+
+                ImGui::SetWindowFontScale(normalFontScale);
+            }
+            ImGui::EndDisabled();
+
+            ImGui::EndTabItem();
+        }
+
+        ImGui::SetWindowFontScale(0.75f);
+        if (ImGui::BeginTabItem("Graphics"))
+        {
+            ImGui::SetWindowFontScale(normalFontScale);
+
+            ImGui::SetNextItemWidth(210.f);
+            ImGui::SliderFloat("Background Opacity", &profile.backgroundOpacity, 0.f, 100.f, "%.0f%%");
+
+            ImGui::Checkbox("Show cat text", &profile.showCatText);
+            ImGui::Checkbox("Show particles", &profile.showParticles);
+            ImGui::Checkbox("Show text particles", &profile.showTextParticles);
+
+            ImGui::EndTabItem();
+        }
+
+        ImGui::SetWindowFontScale(0.75f);
+        if (ImGui::BeginTabItem("Display"))
+        {
+            ImGui::SetWindowFontScale(normalFontScale);
+
+            ImGui::Text("Auto resolution");
+
+            ImGui::SetWindowFontScale(0.85f);
+            ImGui::Text("Windowed");
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Large"))
+            {
+                profile.resWidth = getReasonableWindowSize(1.f);
+                profile.windowed = true;
+
+                mustRecreateWindow = true;
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Medium"))
+            {
+                profile.resWidth = getReasonableWindowSize(0.9f);
+                profile.windowed = true;
+
+                mustRecreateWindow = true;
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Small"))
+            {
+                profile.resWidth = getReasonableWindowSize(0.8f);
+                profile.windowed = true;
+
+                mustRecreateWindow = true;
+            }
+
+            ImGui::Text("Fullscreen");
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Borderless"))
+            {
+                profile.resWidth = sf::VideoModeUtils::getDesktopMode().size;
+                profile.windowed = true;
+
+                mustRecreateWindow = true;
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Exclusive"))
+            {
+                profile.resWidth = sf::VideoModeUtils::getDesktopMode().size;
+                profile.windowed = false;
+
+                mustRecreateWindow = true;
+            }
+
             ImGui::Separator();
+
+            if (ImGui::Checkbox("VSync", &profile.vsync))
+            {
+                optWindow->setVerticalSyncEnabled(profile.vsync);
+            }
+
+            static auto fpsLimit = static_cast<float>(profile.frametimeLimit);
+            ImGui::SetNextItemWidth(210.f);
+            if (ImGui::DragFloat("FPS Limit", &fpsLimit, 1.f, 60.f, 144.f, "%.0f", ImGuiSliderFlags_AlwaysClamp))
+            {
+                profile.frametimeLimit = static_cast<unsigned int>(fpsLimit);
+                optWindow->setFramerateLimit(profile.frametimeLimit);
+            }
+
+            ImGui::SetWindowFontScale(normalFontScale);
+
+            ImGui::EndTabItem();
+        }
+
+        ImGui::SetWindowFontScale(0.75f);
+        if (true && ImGui::BeginTabItem("Developer") /* TODO P0: cheats */)
+        {
+            if (ImGui::Button("Save game"))
+                savePlaythroughToFile(pt);
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Load game"))
+                loadPlaythroughFromFileAndReseed();
+
+            ImGui::SameLine();
+
+            buttonHueMod = 120.f;
+            uiPushButtonColors();
+
+            if (ImGui::Button("Reset game"))
+            {
+                rng.reseed(std::random_device{}());
+                shuffledCatNamesPerType = makeShuffledCatNames(rng);
+
+                pt      = Playthrough{};
+                pt.seed = rng.getSeed();
+
+                particles.clear();
+                textParticles.clear();
+            }
+
+            uiPopButtonColors();
+            buttonHueMod = 0.f;
+
             ImGui::Separator();
 
             ImGui::PushFont(fontImGuiMouldyCheese);
@@ -2645,7 +2790,15 @@ Can be upgraded to filter repelled bubble types via prestige points.
 
             ImGui::SetWindowFontScale(normalFontScale);
             ImGui::PopFont();
+
+            ImGui::EndTabItem();
         }
+
+        ImGui::Separator();
+        ImGui::SetWindowFontScale(normalFontScale);
+
+        const float fps = 1.f / fpsClock.getElapsedTime().asSeconds();
+        ImGui::Text("FPS: %.2f", static_cast<double>(fps));
     }
 
     ////////////////////////////////////////////////////////////
@@ -2776,7 +2929,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
             moneyTextShakeEffect.bump(rng, 1.f + static_cast<float>(combo) * 0.1f);
         }
 
-        bubble = makeRandomBubble(rng, pt.getMapLimit(), 0.f);
+        bubble = makeRandomBubble(pt, rng, pt.getMapLimit(), 0.f);
         bubble.position.y -= bubble.radius;
     };
 
@@ -2855,7 +3008,6 @@ Can be upgraded to filter repelled bubble types via prestige points.
             else if (pos.y + radius < 0.f)
             {
                 turnBubbleNormal(bubble);
-                pos.y = radius; // TODO P0: test
             }
 
             bubble.velocity.y += 0.00005f * deltaTimeMs;
@@ -2863,11 +3015,17 @@ Can be upgraded to filter repelled bubble types via prestige points.
     }
 
     ////////////////////////////////////////////////////////////
+    [[nodiscard]] static sf::Vector2f getCatRangeCenter(const Cat& cat)
+    {
+        return cat.position + CatConstants::rangeOffsets[asIdx(cat.type)];
+    }
+
+    ////////////////////////////////////////////////////////////
     void gameLoopUpdateCatActionNormal(const float /* deltaTimeMs */, Cat& cat)
     {
         const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
         const auto range       = pt.getComputedRangeByCatType(cat.type);
-        const auto [cx, cy]    = cat.position + cat.rangeOffset;
+        const auto [cx, cy]    = getCatRangeCenter(cat);
 
         const auto normalCatPopBubble = [&](Bubble& bubble)
         {
@@ -2935,7 +3093,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
         const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
         const auto range       = pt.getComputedRangeByCatType(cat.type);
 
-        Bubble* b = pickRandomBubbleInRadiusMatching(cat.position,
+        Bubble* b = pickRandomBubbleInRadiusMatching(getCatRangeCenter(cat),
                                                      range,
                                                      [&](Bubble& bubble) { return bubble.type == BubbleType::Normal; });
 
@@ -2968,7 +3126,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
         const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
         const auto range       = pt.getComputedRangeByCatType(cat.type);
 
-        Bubble* b = pickRandomBubbleInRadius(cat.position, range);
+        Bubble* b = pickRandomBubbleInRadius(getCatRangeCenter(cat), range);
         if (b == nullptr)
             return;
 
@@ -2996,7 +3154,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
     {
         const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
         const auto range       = pt.getComputedRangeByCatType(cat.type);
-        const auto [cx, cy]    = cat.position + cat.rangeOffset;
+        const auto [cx, cy]    = getCatRangeCenter(cat);
 
         sf::base::U32 witchHits = 0u;
         bool          pawSet    = false;
@@ -3039,7 +3197,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
     ////////////////////////////////////////////////////////////
     void gameLoopUpdateCatActionAstro(const float /* deltaTimeMs */, Cat& cat)
     {
-        const auto [cx, cy] = cat.position + cat.rangeOffset;
+        const auto [cx, cy] = getCatRangeCenter(cat);
 
         if (cat.astroState.hasValue())
             return;
@@ -3060,7 +3218,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
 
         const auto maxCooldown  = pt.getComputedCooldownByCatType(cat.type);
         const auto range        = pt.getComputedRangeByCatType(cat.type);
-        const auto [cx, cy]     = cat.position + cat.rangeOffset;
+        const auto [cx, cy]     = getCatRangeCenter(cat);
         const auto drawPosition = cat.getDrawPosition();
 
         Bubble* starBubble = nullptr;
@@ -3301,7 +3459,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
 
             cat.update(deltaTimeMs);
 
-            const auto [cx, cy] = cat.position + cat.rangeOffset;
+            const auto [cx, cy] = getCatRangeCenter(cat);
 
             if (cat.inspiredCountdown.value > 0.f && rng.getF(0.f, 1.f) > 0.5f)
             {
@@ -3452,8 +3610,8 @@ Can be upgraded to filter repelled bubble types via prestige points.
                         return ControlFlow::Continue;
 
                     const auto diff = (cat.position - bubble.position);
-                    const auto strength = (pt.getComputedRangeByCatType(cat.type) - diff.length()) * 0.000002f * deltaTimeMs;
-                    bubble.velocity -= diff.normalized() * strength * (pt.windEnabled ? 5.f : 1.f);
+                    const auto strength = (pt.getComputedRangeByCatType(cat.type) - diff.length()) * 0.00001f * deltaTimeMs;
+                    bubble.velocity -= diff.normalized() * strength * (pt.windEnabled ? 10.f : 1.f);
 
                     return ControlFlow::Continue;
                 });
@@ -3620,12 +3778,12 @@ Can be upgraded to filter repelled bubble types via prestige points.
                 else if (shrine.type == ShrineType::Repulsion)
                 {
                     const auto strength = (shrine.getRange() - diff.length()) * 0.0000015f * deltaTimeMs;
-                    bubble.velocity -= diff.normalized() * strength * (pt.windEnabled ? 5.f : 1.f);
+                    bubble.velocity -= diff.normalized() * strength * (pt.windEnabled ? 10.f : 1.f);
                 }
                 else if (shrine.type == ShrineType::Attraction)
                 {
                     const auto strength = (shrine.getRange() - diff.length()) * 0.0000025f * deltaTimeMs;
-                    bubble.velocity += diff.normalized() * strength * (pt.windEnabled ? 5.f : 1.f);
+                    bubble.velocity += diff.normalized() * strength * (pt.windEnabled ? 10.f : 1.f);
                 }
 
                 // magnetism
@@ -3670,7 +3828,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
 
                         const auto spawnSpecialCat = [&](const CatType catType)
                         {
-                            auto& c    = spawnCat(gameView, catType, {0.f, 0.f}, /* hue */ 0.f);
+                            auto& c    = spawnCat(gameView, catType, /* hue */ 0.f);
                             c.position = shrine.position;
                             ++pt.psvPerCatType[static_cast<SizeT>(catType)].nPurchases;
                         };
@@ -3995,7 +4153,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
 
             // TODO P2: (lib) make it possible to draw a circle directly via batching without any of this stuff,
             // no need to preallocate a circle shape before, have a reusable vertex buffer in the batch itself
-            circleShapeBuffer.position = cat.position + cat.rangeOffset;
+            circleShapeBuffer.position = getCatRangeCenter(cat);
             circleShapeBuffer.origin   = {range, range};
             circleShapeBuffer.setPointCount(static_cast<unsigned int>(range / 3.f));
             circleShapeBuffer.setRadius(range);
@@ -4021,7 +4179,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
 
             if (profile.showCatText)
             {
-                textNameBuffer.setString(shuffledCatNames[cat.nameIdx]);
+                textNameBuffer.setString(shuffledCatNamesPerType[asIdx(cat.type)][cat.nameIdx]);
                 textNameBuffer.position = cat.position + sf::Vector2f{0.f, 48.f};
                 textNameBuffer.origin   = textNameBuffer.getLocalBounds().size / 2.f;
                 textNameBuffer.scale    = sf::Vector2f{0.5f, 0.5f};
@@ -4254,17 +4412,32 @@ Can be upgraded to filter repelled bubble types via prestige points.
     ////////////////////////////////////////////////////////////
     [[nodiscard]] bool gameLoop()
     {
-        if (nextWindowSettings.hasValue())
+        if (mustRecreateWindow)
         {
-            maybeWindow.emplace(*nextWindowSettings);
-            nextWindowSettings.reset();
+            mustRecreateWindow = false;
+
+            const sf::Vector2u newResolution = profile.resWidth == sf::Vector2u{} ? getReasonableWindowSize(0.9f)
+                                                                                  : profile.resWidth;
+
+            const bool takesAllScreen = newResolution == sf::VideoModeUtils::getDesktopMode().size;
+
+            optWindow.emplace(
+                sf::WindowSettings{.size            = newResolution,
+                                   .title           = "BubbleByte " BUBBLEBYTE_VERSION_STR,
+                                   .fullscreen      = !profile.windowed,
+                                   .resizable       = !takesAllScreen,
+                                   .closable        = !takesAllScreen,
+                                   .hasTitlebar     = !takesAllScreen,
+                                   .vsync           = profile.vsync,
+                                   .frametimeLimit  = sf::base::clamp(profile.frametimeLimit, 60u, 144u),
+                                   .contextSettings = contextSettings});
 
             static bool imguiInit = false;
             if (!imguiInit)
             {
                 imguiInit = true;
 
-                if (!imGuiContext.init(*maybeWindow))
+                if (!imGuiContext.init(*optWindow))
                 {
                     std::cout << "Error: ImGui context initialization failed\n";
                     return false;
@@ -4275,7 +4448,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
             }
         }
 
-        auto& window = *maybeWindow;
+        auto& window = *optWindow;
 
         fpsClock.restart();
 
@@ -4518,7 +4691,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
                         for (SizeT i = 0; i < times; ++i)
                         {
                             const auto bPos = pt.bubbles
-                                                  .emplace_back(makeRandomBubble(rng, pt.getMapLimit(), boundaries.y))
+                                                  .emplace_back(makeRandomBubble(pt, rng, pt.getMapLimit(), boundaries.y))
                                                   .position;
 
                             spawnParticles(8, bPos, ParticleType::Bubble, 0.5f, 0.5f);
@@ -4878,6 +5051,27 @@ Can be upgraded to filter repelled bubble types via prestige points.
         imGuiContext.render(window);
 
         //
+        // High visibility cursor
+        window.setMouseCursorVisible(!profile.highVisibilityCursor);
+
+        if (profile.highVisibilityCursor)
+        {
+            if (profile.multicolorCursor)
+            {
+                profile.cursorHue += deltaTimeMs * 0.5f;
+                profile.cursorHue = wrapHue(profile.cursorHue);
+            }
+
+            window.setView({.center = resolution / 2.f, .size = resolution});
+            window.draw(txCursor,
+                        {.position = sf::Mouse::getPosition(window).toVector2f(),
+                         .scale    = {profile.cursorScale, profile.cursorScale},
+                         .origin   = {5.f, 5.f},
+                         .color    = hueColor(wrapHue(profile.cursorHue), 255u)},
+                        {.shader = &shader});
+        }
+
+        //
         // Splash screen
         if (splashCountdown.value > 0.f)
             drawSplashScreen(window, txLogo, splashCountdown, resolution, profile.hudScale);
@@ -4947,7 +5141,7 @@ void main()
     {
         loadPlaythroughFromFile(pt);
         rng.reseed(pt.seed);
-        shuffledCatNames = getShuffledCatNames(rng.getEngine());
+        shuffledCatNamesPerType = makeShuffledCatNames(rng);
     }
 
     ////////////////////////////////////////////////////////////
@@ -5041,9 +5235,9 @@ int main()
 // - ignore clicks done on top of imgui
 // - "resting powerup" via PPs that increases cat multiplier when not clicking for a while, maybe around 16PPs
 // - maybe make "autocast spell selector" a PP upgrade for around 128PPs
-// - "tweaks menu" unlockable with PP that allows any purchased cooldown/range upgrade to be tweaked, or just allow selling via right click...?
-// - resolution should be calculated from user desktop size
 
+// x - "tweaks menu" unlockable with PP that allows any purchased cooldown/range upgrade to be tweaked, or just allow selling via right click...?
+// x - resolution should be calculated from user desktop size
 // x - setting to disable draw particles
 // x - consider allowing menu to be outside game view when resizing or in separate widnow
 // x - milestone system with time per milestone,

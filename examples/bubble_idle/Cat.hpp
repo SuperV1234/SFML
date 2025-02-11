@@ -50,7 +50,6 @@ enum : sf::base::SizeT
 struct [[nodiscard]] Cat
 {
     sf::Vector2f position;
-    sf::Vector2f rangeOffset; // TODO P1: hardcode per cat type
 
     float     wobbleRadians;
     Countdown cooldown;

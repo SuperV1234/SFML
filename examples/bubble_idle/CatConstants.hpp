@@ -80,4 +80,22 @@ inline constexpr EXACT_ARRAY(
         192.f, // Repulso
     });
 
+////////////////////////////////////////////////////////////
+inline constexpr EXACT_ARRAY(
+    sf::Vector2f,
+    rangeOffsets,
+    nCatTypes,
+    {
+        {0.f, 0.f}, // Normal
+        {0.f, -100.f}, // Uni
+        {0.f, 100.f}, // Devil
+        {0.f, 0.f}, // Witch
+        {-64.f, 0.f}, // Astro
+
+        {0.f, 0.f}, // Wizard
+        {0.f, 0.f}, // Mouse
+        {0.f, 0.f}, // Engi
+        {0.f, 0.f}, // Repulso
+    });
+
 } // namespace CatConstants
