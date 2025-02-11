@@ -228,19 +228,14 @@ m_cursorGrabbed(m_fullscreen)
 
     // Choose the window style according to the Style parameter
     DWORD win32Style = WS_VISIBLE;
-    if (!windowSettings.hasTitlebar)
-    {
-        win32Style |= WS_POPUP;
-    }
-    else
-    {
-        if (windowSettings.hasTitlebar)
-            win32Style |= WS_CAPTION | WS_MINIMIZEBOX;
-        if (windowSettings.resizable)
-            win32Style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
-        if (windowSettings.closable)
-            win32Style |= WS_SYSMENU;
-    }
+
+    if (windowSettings.hasTitlebar)
+        win32Style |= WS_CAPTION | WS_MINIMIZEBOX;
+    if (windowSettings.resizable)
+        win32Style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
+    if (windowSettings.closable)
+        win32Style |= WS_SYSMENU;
+
 
     // In windowed mode, adjust width and height so that window will have the requested client area
     if (!m_fullscreen)
@@ -277,6 +272,14 @@ m_cursorGrabbed(m_fullscreen)
             JoystickImpl::setLazyUpdates(true);
 
             initRawMouse(m_handle);
+        }
+
+        if (!windowSettings.hasTitlebar) // TODO P0: review
+        {
+            SetWindowLongPtr(m_handle, GWL_STYLE, WS_OVERLAPPED | WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
+            SetWindowLongPtr(m_handle, GWL_EXSTYLE, WS_EX_APPWINDOW);
+
+            SetWindowPos(m_handle, HWND_TOP, left, top, width, height, SWP_FRAMECHANGED | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
         }
 
         ++handleCount;

@@ -155,6 +155,9 @@ public:
     ////////////////////////////////////////////////////////////
     void display();
 
+protected:
+    [[nodiscard]] bool isMovedFrom() const;
+
 private:
     ////////////////////////////////////////////////////////////
     /// \brief Construct a window and a GL context, and a window base

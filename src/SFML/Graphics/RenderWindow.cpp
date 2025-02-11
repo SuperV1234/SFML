@@ -54,6 +54,9 @@ RenderWindow& RenderWindow::operator=(RenderWindow&&) noexcept = default;
 ////////////////////////////////////////////////////////////
 RenderWindow::~RenderWindow()
 {
+    if (isMovedFrom())
+        return;
+
     // Need to activate window context during destruction to avoid GL errors
     [[maybe_unused]] const bool rc = setActive(true);
     SFML_BASE_ASSERT(rc);

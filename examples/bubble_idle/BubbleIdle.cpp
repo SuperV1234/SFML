@@ -52,9 +52,13 @@
 #include "SFML/Audio/Sound.hpp"
 #include "SFML/Audio/SoundBuffer.hpp"
 
+#include "SFML/Window/ContextSettings.hpp"
 #include "SFML/Window/EventUtils.hpp"
 #include "SFML/Window/Keyboard.hpp"
 #include "SFML/Window/Mouse.hpp"
+#include "SFML/Window/VideoMode.hpp"
+#include "SFML/Window/VideoModeUtils.hpp"
+#include "SFML/Window/WindowSettings.hpp"
 
 #include "SFML/System/Angle.hpp"
 #include "SFML/System/Clock.hpp"
@@ -228,7 +232,7 @@ void drawMinimap(sf::Shader&             shader,
     //
     // Draw minimap contents
     window.setView(minimapView); // Use minimap projection
-    window.draw(sf::RectangleShape{{.fillColor = sf::Color::Black, .size = boundaries}}, /* texture */ nullptr);
+    window.draw(sf::RectangleShape{{.fillColor = sf::Color::Black, .size = boundaries * hudScale}}, /* texture */ nullptr);
     window.draw(txBackground,
                 {.scale = {hudScale, hudScale}, .color = sf::Color::White.withAlpha(128)},
                 {.shader = &shader}); // Draw world background
@@ -280,22 +284,27 @@ struct Main
     sf::Shader shader{sf::Shader::loadFromMemory(sf::GraphicsContext::getBuiltInShaderVertexSrc(), fragmentSrc).value()};
 
     ////////////////////////////////////////////////////////////
-    // Render window
-    sf::RenderWindow window{
-        {.size           = {1920u, 1080u},
-         .title          = "BubbleByte " BUBBLEBYTE_VERSION_STR,
-         .resizable      = true,
-         .vsync          = true,
-         .frametimeLimit = 144u,
-         .contextSettings = {.antiAliasingLevel = sf::base::min(16u, sf::RenderTexture::getMaximumAntiAliasingLevel())}}};
+    // Context settings
+    const sf::ContextSettings contextSettings{
+        .antiAliasingLevel = sf::base::min(16u, sf::RenderTexture::getMaximumAntiAliasingLevel())};
 
     ////////////////////////////////////////////////////////////
-    // ImGui context and initialization
+    // Render window
+    sf::base::Optional<sf::RenderWindow> maybeWindow;
+
+    ////////////////////////////////////////////////////////////
+    // Next window settings (used when recreating window)
+    sf::base::Optional<sf::WindowSettings> nextWindowSettings{
+        sf::WindowSettings{.size            = {1920u, 1080u},
+                           .title           = "BubbleByte " BUBBLEBYTE_VERSION_STR,
+                           .resizable       = true,
+                           .vsync           = true,
+                           .frametimeLimit  = 144u,
+                           .contextSettings = contextSettings}};
+
+    ////////////////////////////////////////////////////////////
+    // ImGui context
     sf::ImGui::ImGuiContext imGuiContext;
-    MEMBER_INIT_GUARD(Main, {
-        if (!self.imGuiContext.init(self.window))
-            throw -1;
-    });
 
     ////////////////////////////////////////////////////////////
     // Texture atlas
@@ -307,8 +316,8 @@ struct Main
 
     ////////////////////////////////////////////////////////////
     // ImGui fonts
-    ImFont* fontImGuiSuperBakery{ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/superbakery.ttf", 26.f)};
-    ImFont* fontImGuiMouldyCheese{ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/mouldycheese.ttf", 26.f)};
+    ImFont* fontImGuiSuperBakery{nullptr};
+    ImFont* fontImGuiMouldyCheese{nullptr};
 
     ////////////////////////////////////////////////////////////
     // Music
@@ -643,15 +652,29 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] bool keyDown(const sf::Keyboard::Key key)
+    sf::RenderWindow& getWindow()
     {
-        return window.hasFocus() && sf::Keyboard::isKeyPressed(key);
+        SFML_BASE_ASSERT(maybeWindow.hasValue());
+        return *maybeWindow;
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] bool mBtnDown(const sf::Mouse::Button button)
+    const sf::RenderWindow& getWindow() const
     {
-        return window.hasFocus() && sf::Mouse::isButtonPressed(button);
+        SFML_BASE_ASSERT(maybeWindow.hasValue());
+        return *maybeWindow;
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] bool keyDown(const sf::Keyboard::Key key) const
+    {
+        return getWindow().hasFocus() && sf::Keyboard::isKeyPressed(key);
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] bool mBtnDown(const sf::Mouse::Button button) const
+    {
+        return getWindow().hasFocus() && sf::Mouse::isButtonPressed(button);
     }
 
     ////////////////////////////////////////////////////////////
@@ -710,13 +733,13 @@ struct Main
     ////////////////////////////////////////////////////////////
     [[nodiscard]] sf::Vector2f getResolution() const
     {
-        return window.getSize().toVector2f();
+        return getWindow().getSize().toVector2f();
     }
 
     ////////////////////////////////////////////////////////////
     Cat& spawnCat(const sf::View& gameView, const CatType catType, const sf::Vector2f rangeOffset, const float hue)
     {
-        const auto pos = window.mapPixelToCoords((getResolution() / 2.f).toVector2i(), gameView);
+        const auto pos = getWindow().mapPixelToCoords((getResolution() / 2.f).toVector2i(), gameView);
         spawnParticles(32, pos, ParticleType::Star, 0.5f, 0.75f);
 
         return pt.cats.emplace_back(
@@ -2451,6 +2474,38 @@ Can be upgraded to filter repelled bubble types via prestige points.
 
         ImGui::Separator();
 
+        // TODO P1: cleanup
+
+        if (ImGui::Button("Go windowed"))
+        {
+            nextWindowSettings.emplace(
+                sf::WindowSettings{.size            = sf::VideoModeUtils::getDesktopMode().size / 2u,
+                                   .title           = "BubbleByte " BUBBLEBYTE_VERSION_STR,
+                                   .resizable       = true,
+                                   .closable        = true,
+                                   .hasTitlebar     = true,
+                                   .vsync           = true,
+                                   .frametimeLimit  = 144u,
+                                   .contextSettings = contextSettings});
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Go borderless"))
+        {
+            nextWindowSettings.emplace(
+                sf::WindowSettings{.size            = sf::VideoModeUtils::getDesktopMode().size,
+                                   .title           = "BubbleByte " BUBBLEBYTE_VERSION_STR,
+                                   .resizable       = false,
+                                   .closable        = false,
+                                   .hasTitlebar     = false,
+                                   .vsync           = true,
+                                   .frametimeLimit  = 144u,
+                                   .contextSettings = contextSettings});
+        }
+
+        ImGui::Separator();
+
         if (ImGui::Button("Save game"))
             savePlaythroughToFile(pt);
 
@@ -4181,7 +4236,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
                              .color       = sf::Color::White.withAlpha(static_cast<U8>(alpha * 0.85f))};
 
         tipSprite.setBottomCenter({getResolution().x / 2.f / profile.hudScale, getResolution().y / profile.hudScale - 50.f});
-        window.draw(tipSprite, txTipBg);
+        getWindow().draw(tipSprite, txTipBg);
 
         sf::Sprite tipByteSprite{.position    = {},
                                  .scale       = {0.7f, 0.7f},
@@ -4190,15 +4245,38 @@ Can be upgraded to filter repelled bubble types via prestige points.
                                  .color       = sf::Color::White.withAlpha(alpha)};
 
         tipByteSprite.setCenter(tipSprite.getCenterRight() + sf::Vector2f{-40.f, 0.f});
-        window.draw(tipByteSprite, txTipByte);
+        getWindow().draw(tipByteSprite, txTipByte);
 
         tipText.setTopLeft(tipSprite.getTopLeft() + sf::Vector2f{45.f, 65.f});
-        window.draw(tipText);
+        getWindow().draw(tipText);
     }
 
     ////////////////////////////////////////////////////////////
     [[nodiscard]] bool gameLoop()
     {
+        if (nextWindowSettings.hasValue())
+        {
+            maybeWindow.emplace(*nextWindowSettings);
+            nextWindowSettings.reset();
+
+            static bool imguiInit = false;
+            if (!imguiInit)
+            {
+                imguiInit = true;
+
+                if (!imGuiContext.init(*maybeWindow))
+                {
+                    std::cout << "Error: ImGui context initialization failed\n";
+                    return false;
+                }
+
+                fontImGuiSuperBakery  = ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/superbakery.ttf", 26.f);
+                fontImGuiMouldyCheese = ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/mouldycheese.ttf", 26.f);
+            }
+        }
+
+        auto& window = *maybeWindow;
+
         fpsClock.restart();
 
         sf::base::Optional<sf::Vector2f> clickPosition;

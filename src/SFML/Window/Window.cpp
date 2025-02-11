@@ -73,8 +73,18 @@ Window(WindowSettings{.size{}, .contextSettings = contextSettings}, VideoModeUti
 
 
 ////////////////////////////////////////////////////////////
+bool Window::isMovedFrom() const
+{
+    return m_impl->glContext == nullptr;
+}
+
+
+////////////////////////////////////////////////////////////
 Window::~Window()
 {
+    if (isMovedFrom())
+        return;
+
     // Need to activate window context during destruction to avoid GL errors
     [[maybe_unused]] const bool rc = setActive(true);
     SFML_BASE_ASSERT(rc);
