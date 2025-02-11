@@ -24,6 +24,7 @@
 #include "Stats.hpp"
 #include "TextParticle.hpp"
 #include "TextShakeEffect.hpp"
+#include "ThreadPool/Pool.hpp"
 
 #include "SFML/ImGui/ImGui.hpp"
 
@@ -73,6 +74,7 @@
 #include <algorithm>
 #include <array>
 #include <iostream>
+#include <latch>
 #include <random>
 #include <string>
 #include <utility>
@@ -97,8 +99,8 @@ bool handleBubbleCollision(const float deltaTimeMs, Bubble& iBubble, Bubble& jBu
                                         jBubble.position,
                                         iBubble.velocity,
                                         jBubble.velocity,
-                                        iBubble.getRadius(),
-                                        jBubble.getRadius(),
+                                        iBubble.radius,
+                                        jBubble.radius,
                                         iBubble.type == BubbleType::Bomb ? 5.f : 1.f,
                                         jBubble.type == BubbleType::Bomb ? 5.f : 1.f);
 
@@ -145,7 +147,7 @@ bool handleCatShrineCollision(const float deltaTimeMs, Cat& cat, Shrine& shrine)
 {
     return {.position = rng.getVec2f({mapLimit, maxY}),
             .velocity = rng.getVec2f({-0.1f, -0.1f}, {0.1f, 0.1f}),
-            .scale    = rng.getF(0.07f, 0.16f),
+            .radius   = rng.getF(0.07f, 0.16f) * 256.f,
             .rotation = 0.f,
             .hueMod   = 0.f,
             .type     = BubbleType::Normal};
@@ -507,13 +509,40 @@ struct Main
                                .outlineThickness = 2.f}};
 
     ////////////////////////////////////////////////////////////
-    // Bubble index buffer
-    std::vector<SizeT> bubbleIndexBuffer;
+    // Thread pool
+    hg::ThreadPool::pool threadPool{getTPWorkerCount()};
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] static unsigned int getTPWorkerCount()
+    {
+        const unsigned int numThreads = std::thread::hardware_concurrency();
+        return (numThreads == 0u) ? 4u : numThreads;
+    }
 
     ////////////////////////////////////////////////////////////
     [[nodiscard]] SizeT getNextCatNameIdx()
     {
         return pt.nextCatName++ % shuffledCatNames.size();
+    }
+
+    ////////////////////////////////////////////////////////////
+    Particle& implEmplaceParticle(const sf::Vector2f position,
+                                  const ParticleType particleType,
+                                  const float        scaleMult,
+                                  const float        speedMult,
+                                  const float        opacity = 1.f,
+                                  const float        hue     = 0.f)
+    {
+        return particles.emplace_back(ParticleData{.position = position,
+                                                   .velocity = rng.getVec2f({-0.75f, -0.75f}, {0.75f, 0.75f}) * speedMult,
+                                                   .scale         = rng.getF(0.08f, 0.27f) * scaleMult,
+                                                   .accelerationY = 0.002f,
+                                                   .opacity       = opacity,
+                                                   .opacityDecay  = rng.getF(0.00025f, 0.0015f),
+                                                   .rotation      = rng.getF(0.f, sf::base::tau),
+                                                   .torque        = rng.getF(-0.002f, 0.002f)},
+                                      hue,
+                                      particleType);
     }
 
     ////////////////////////////////////////////////////////////
@@ -526,41 +555,44 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    void spawnParticles(const SizeT n, const sf::Vector2f position, auto&&... args)
+    void spawnParticles(const SizeT n, const sf::Vector2f position, const auto... args)
     {
         if (!profile.showParticles || !particleCullingBoundaries.isInside(position))
             return;
 
         for (SizeT i = 0; i < n; ++i)
-            particles.emplace_back(makeParticle(rng, position, SFML_BASE_FORWARD(args)...));
+            implEmplaceParticle(position, args...);
     }
 
     ////////////////////////////////////////////////////////////
-    void spawnParticlesWithHue(const float hue, const SizeT n, const sf::Vector2f position, auto&&... args)
+    void spawnParticlesWithHue(const float hue, const SizeT n, const sf::Vector2f position, const auto... args)
     {
         if (!profile.showParticles || !particleCullingBoundaries.isInside(position))
             return;
 
         for (SizeT i = 0; i < n; ++i)
-            particles.emplace_back(makeParticle(rng, position, SFML_BASE_FORWARD(args)...)).hue = hue;
+            implEmplaceParticle(position, args...).hue = hue;
     }
 
     ////////////////////////////////////////////////////////////
-    void spawnParticlesNoGravity(const SizeT n, const sf::Vector2f position, auto&&... args)
+    void spawnParticlesNoGravity(const SizeT n, const sf::Vector2f position, const auto... args)
     {
         if (!profile.showParticles || !particleCullingBoundaries.isInside(position))
             return;
 
         for (SizeT i = 0; i < n; ++i)
-            particles.emplace_back(makeParticle(rng, position, SFML_BASE_FORWARD(args)...)).data.accelerationY = 0.f;
+            implEmplaceParticle(position, args...).data.accelerationY = 0.f;
     }
 
     ////////////////////////////////////////////////////////////
-    void spawnParticlesWithHueNoGravity(const float hue, const SizeT n, const sf::Vector2f position, auto&&... args)
+    void spawnParticlesWithHueNoGravity(const float hue, const SizeT n, const sf::Vector2f position, const auto... args)
     {
+        if (!profile.showParticles || !particleCullingBoundaries.isInside(position))
+            return;
+
         for (SizeT i = 0; i < n; ++i)
         {
-            auto& p              = particles.emplace_back(makeParticle(rng, position, SFML_BASE_FORWARD(args)...));
+            auto& p              = implEmplaceParticle(position, args...);
             p.data.accelerationY = 0.f;
             p.hue                = hue;
         }
@@ -640,41 +672,31 @@ struct Main
     {
         const float radiusSq = radius * radius;
 
-        spatialGrid.forEachIndexInRadius(center,
-                                         radius,
-                                         [&](const SizeT index)
-        {
-            auto& bubble = pt.bubbles[index];
-
-            if ((bubble.position - center).lengthSquared() > radiusSq)
-                return ControlFlow::Continue;
-
-            return func(bubble);
-        });
+        for (Bubble& bubble : pt.bubbles)
+            if ((bubble.position - center).lengthSquared() <= radiusSq)
+                if (func(bubble) == ControlFlow::Break)
+                    break;
     }
 
     ////////////////////////////////////////////////////////////
     [[nodiscard]] Bubble* pickRandomBubbleInRadiusMatching(const sf::Vector2f center, const float radius, auto&& predicate)
     {
-        bubbleIndexBuffer.clear();
-        bubbleIndexBuffer.reserve(pt.bubbles.size());
-
         const float radiusSq = radius * radius;
 
-        spatialGrid.forEachIndexInRadius(center,
-                                         radius,
-                                         [&](const SizeT index) __attribute__((always_inline, flatten))
-        {
-            if (predicate(pt.bubbles[index]) && (pt.bubbles[index].position - center).lengthSquared() <= radiusSq)
-                bubbleIndexBuffer.push_back(index);
+        SizeT   count    = 0u;
+        Bubble* selected = nullptr;
 
-            return ControlFlow::Continue;
-        });
+        for (Bubble& bubble : pt.bubbles)
+            if (predicate(bubble) && (bubble.position - center).lengthSquared() <= radiusSq)
+            {
+                ++count;
 
-        if (bubbleIndexBuffer.empty())
-            return nullptr;
+                // Select the current bubble with probability `1/count` (reservoir sampling)
+                if (rng.getI<SizeT>(0, count - 1) == 0)
+                    selected = &bubble;
+            }
 
-        return &pt.bubbles[bubbleIndexBuffer[rng.getI<SizeT>(0, bubbleIndexBuffer.size() - 1)]];
+        return (count == 0u) ? nullptr : selected;
     }
 
     ////////////////////////////////////////////////////////////
@@ -2698,7 +2720,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
         }
 
         bubble = makeRandomBubble(rng, pt.getMapLimit(), 0.f);
-        bubble.position.y -= bubble.getRadius();
+        bubble.position.y -= bubble.radius;
     };
 
     ////////////////////////////////////////////////////////////
@@ -2754,7 +2776,7 @@ Can be upgraded to filter repelled bubble types via prestige points.
 
             pos += bubble.velocity * deltaTimeMs;
 
-            const float radius = bubble.getRadius();
+            const float radius = bubble.radius;
 
             if (pos.x - radius > pt.getMapLimit())
                 pos.x = -radius;
@@ -3808,7 +3830,11 @@ Can be upgraded to filter repelled bubble types via prestige points.
             if (!bubbleCullingBoundaries.isInside(bubble.position))
                 continue;
 
-            bubble.applyToSprite(tempSprite);
+            constexpr float radiusToScale = 1.f / 256.f;
+
+            tempSprite.position = bubble.position;
+            tempSprite.scale    = {bubble.radius * radiusToScale, bubble.radius * radiusToScale};
+            tempSprite.rotation = sf::radians(bubble.rotation);
 
             tempSprite.textureRect = bubbleRects[asIdx(bubble.type)];
             tempSprite.origin      = tempSprite.textureRect.size / 2.f;
@@ -4076,7 +4102,9 @@ Can be upgraded to filter repelled bubble types via prestige points.
             if (!particleCullingBoundaries.isInside(particle.data.position))
                 continue;
 
-            particle.applyToSprite(tempSprite);
+            particle.data.applyToTransformable(tempSprite);
+
+            tempSprite.color       = hueColor(particle.hue, particle.data.opacityAsAlpha());
             tempSprite.textureRect = particleRects[asIdx(particle.type)];
             tempSprite.origin      = tempSprite.textureRect.size / 2.f;
 
@@ -4540,8 +4568,16 @@ Can be upgraded to filter repelled bubble types via prestige points.
 
         //
         // Bubble vs bubble collisions
-        spatialGrid.forEachUniqueIndexPair([&](const SizeT bubbleIdxI, const SizeT bubbleIdxJ) __attribute__((always_inline))
+        const unsigned int nWorkers = threadPool.worker_count();
+        std::latch         latch{nWorkers};
+
+        spatialGrid.forEachUniqueIndexPair(nWorkers,
+                                           latch,
+                                           threadPool,
+                                           [&](const SizeT bubbleIdxI, const SizeT bubbleIdxJ) __attribute__((always_inline))
         { handleBubbleCollision(deltaTimeMs, pt.bubbles[bubbleIdxI], pt.bubbles[bubbleIdxJ]); });
+
+        latch.wait();
 
         //
         // Cat vs cat collisions
@@ -4608,8 +4644,9 @@ Can be upgraded to filter repelled bubble types via prestige points.
         const auto updateParticleLike = [&](auto& particleLikeVec)
         {
             for (auto& particleLike : particleLikeVec)
-                particleLike.update(deltaTimeMs);
+                particleLike.data.update(deltaTimeMs);
 
+            // TODO P2: (lib) to lib
             std::erase_if(particleLikeVec, [](const auto& particleLike) { return particleLike.data.opacity <= 0.f; });
         };
 

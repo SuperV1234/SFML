@@ -43,6 +43,8 @@ public:
     ~pool();
 
     void post(task&& f);
+
+    [[nodiscard]] unsigned int worker_count() const noexcept;
 };
 
 } // namespace hg::ThreadPool

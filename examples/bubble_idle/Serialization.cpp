@@ -11,7 +11,6 @@
 #include "Shrine.hpp"
 #include "json.hpp"
 
-#include "SFML/System/Path.hpp"
 #include "SFML/System/Vector2.hpp"
 
 #include <filesystem>
@@ -57,7 +56,7 @@ void from_json(const nlohmann::json& j, Optional<T>& p)
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Bubble, position, velocity, scale, rotation, type);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Bubble, position, velocity, radius, rotation, type);
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)

@@ -1,151 +1,108 @@
 #pragma once
 
-#include "Constants.hpp"
-#include "ControlFlow.hpp"
-
+#include "SFML/Base/Algorithm.hpp"
 #include "SFML/Base/SizeT.hpp"
 #include "SFML/Base/TrivialVector.hpp"
 
+#include <algorithm>
+#include <latch>
+#include <vector>
 
-////////////////////////////////////////////////////////////
+#include <cassert>
+
 class SpatialGrid
 {
 private:
-    using SizeT = sf::base::SizeT;
-
-    static inline constexpr float gridSize    = 64.f;
-    static inline constexpr float invGridSize = 1.f / gridSize;
-
-    static inline constexpr auto nCellsX     = static_cast<SizeT>(boundaries.x * invGridSize) + 1;
-    static inline constexpr auto nCellsY     = static_cast<SizeT>(boundaries.y * invGridSize) + 1;
-    static inline constexpr auto nCellsTotal = nCellsX * nCellsY;
-
-    ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline, gnu::const]] inline static constexpr SizeT convert2DTo1D(
-        const SizeT x,
-        const SizeT y,
-        const SizeT width)
+    struct AABB
     {
-        return y * width + x;
-    }
+        float           minX, maxX, minY, maxY;
+        sf::base::SizeT objIdx;
+    };
 
-    ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline, gnu::const]] inline static constexpr auto computeGridRange(const sf::Vector2f center,
-                                                                                                const float radius)
-    {
-        const float minX = center.x - radius;
-        const float minY = center.y - radius;
-        const float maxX = center.x + radius;
-        const float maxY = center.y + radius;
-
-        struct Result
-        {
-            SizeT xStartIdx, yStartIdx, xEndIdx, yEndIdx;
-        };
-
-        return Result{static_cast<SizeT>(sf::base::max(0.f, minX * invGridSize)),
-                      static_cast<SizeT>(sf::base::max(0.f, minY * invGridSize)),
-                      static_cast<SizeT>(sf::base::clamp(maxX * invGridSize, 0.f, static_cast<float>(nCellsX) - 1.f)),
-                      static_cast<SizeT>(sf::base::clamp(maxY * invGridSize, 0.f, static_cast<float>(nCellsY) - 1.f))};
-    }
-
-
-    sf::base::TrivialVector<SizeT> m_objectIndices;          // Flat list of all bubble indices in all cells
-    sf::base::TrivialVector<SizeT> m_cellStartIndices;       // Tracks where each cell's data starts in `bubbleIndices`
-    sf::base::TrivialVector<SizeT> m_cellInsertionPositions; // Temporary copy of `cellStartIndices` to track insertion points
+    sf::base::TrivialVector<AABB> m_aabbs;
 
 public:
     ////////////////////////////////////////////////////////////
-    void forEachIndexInRadius(const sf::Vector2f center, const float radius, auto&& func) const
+    // Task-based parallel implementation using std::async
+    void forEachUniqueIndexPair(const unsigned int nWorkers, std::latch& latch, auto& pool, auto&& func)
     {
-        const auto [xStartIdx, yStartIdx, xEndIdx, yEndIdx] = computeGridRange(center, radius);
+        const sf::base::SizeT numObjects = m_aabbs.size();
+        if (numObjects < 2)
+            return;
 
-        // Check all candidate cells
-        for (SizeT cellY = yStartIdx; cellY <= yEndIdx; ++cellY)
-            for (SizeT cellX = xStartIdx; cellX <= xEndIdx; ++cellX)
-            {
-                const SizeT cellIdx = convert2DTo1D(cellX, cellY, nCellsX);
+        // Compute a chunk size for dividing the outer loop among tasks.
+        // (Note: Some chunks will have more work than others, since early exits in the inner loop
+        // mean that iterations with low 'i' do more work. For more even load balancing,
+        // consider dynamic task scheduling or a work-stealing scheduler.)
+        const sf::base::SizeT chunkSize = (numObjects + nWorkers - 1) / nWorkers;
 
-                // Get range of bubbles in this cell
-                const SizeT start = m_cellStartIndices[cellIdx];
-                const SizeT end   = m_cellStartIndices[cellIdx + 1];
-
-                // Check each bubble in cell
-                for (SizeT i = start; i < end; ++i)
-                    if (func(m_objectIndices[i]) == ControlFlow::Break)
-                        return;
-            }
-    }
-
-    ////////////////////////////////////////////////////////////
-    void forEachUniqueIndexPair(auto&& func)
-    {
-        for (SizeT cellIdx = 0; cellIdx < nCellsTotal; ++cellIdx)
+        for (unsigned int iWorker = 0u; iWorker < nWorkers; ++iWorker)
         {
-            const SizeT start = m_cellStartIndices[cellIdx];
-            const SizeT end   = m_cellStartIndices[cellIdx + 1];
+            // Calculate the start and end indices for this chunk.
+            const sf::base::SizeT start = iWorker * chunkSize;
+            const sf::base::SizeT end   = sf::base::min((iWorker + 1) * chunkSize, numObjects);
 
-            for (SizeT i = start; i < end; ++i)
-                for (SizeT j = i + 1; j < end; ++j)
-                    func(m_objectIndices[i], m_objectIndices[j]);
+            if (start >= numObjects)
+            {
+                latch.count_down();
+                break;
+            }
+
+            // Launch an asynchronous task to process the chunk.
+            pool.post([start, end, numObjects, &func, &latch, this]
+            {
+                // Process each object in the chunk.
+                for (sf::base::SizeT i = start; i < end; ++i)
+                {
+                    const AABB& aabb1 = m_aabbs[i];
+
+                    // Check against all objects with a greater index.
+                    for (sf::base::SizeT j = i + 1; j < numObjects; ++j)
+                    {
+                        const AABB& aabb2 = m_aabbs[j];
+
+                        // Early exit: since m_aabbs is sorted by minX,
+                        // if aabb2.minX is greater than aabb1.maxX, no further objects
+                        // will overlap on the x-axis.
+                        if (aabb2.minX > aabb1.maxX)
+                            break;
+
+                        // Since the x intervals overlap, check the y intervals.
+                        if (aabb1.minY <= aabb2.maxY && aabb1.maxY >= aabb2.minY)
+                        {
+                            // Call the user-supplied function with the indices in sorted order.
+                            func(sf::base::min(aabb1.objIdx, aabb2.objIdx), sf::base::max(aabb1.objIdx, aabb2.objIdx));
+                        }
+                    }
+                }
+
+                latch.count_down();
+            });
         }
     }
 
     ////////////////////////////////////////////////////////////
     void clear()
     {
-        m_cellStartIndices.clear();
-        m_cellStartIndices.resize(nCellsX * nCellsY + 1, 0); // +1 for prefix sum
+        m_aabbs.clear();
     }
 
     ////////////////////////////////////////////////////////////
     void populate(const auto& bubbles)
     {
-        //
-        // First Pass (Counting):
-        // - Calculate how many bubbles will be placed in each grid cell.
-        for (auto& bubble : bubbles)
-        {
-            const auto [xStartIdx, yStartIdx, xEndIdx, yEndIdx] = computeGridRange(bubble.position, bubble.getRadius());
+        m_aabbs.reserve(bubbles.size());
+        m_aabbs.clear();
 
-            // For each cell the bubble covers, increment the count
-            for (SizeT y = yStartIdx; y <= yEndIdx; ++y)
-                for (SizeT x = xStartIdx; x <= xEndIdx; ++x)
-                {
-                    const SizeT cellIdx = convert2DTo1D(x, y, nCellsX) + 1; // +1 offsets for prefix sum
-                    ++m_cellStartIndices[sf::base::min(cellIdx, m_cellStartIndices.size() - 1)];
-                }
+        for (sf::base::SizeT i = 0u; i < bubbles.size(); ++i)
+        {
+            const auto& b = bubbles[i];
+            m_aabbs.unsafeEmplaceBack(b.position.x - b.radius,
+                                      b.position.x + b.radius,
+                                      b.position.y - b.radius,
+                                      b.position.y + b.radius,
+                                      i);
         }
 
-        //
-        // Second Pass (Prefix Sum):
-        // - Calculate the starting index for each cell’s data in `m_objectIndices`.
-
-        // Prefix sum to compute start indices
-        for (SizeT i = 1; i < m_cellStartIndices.size(); ++i)
-            m_cellStartIndices[i] += m_cellStartIndices[i - 1];
-
-        m_objectIndices.resize(m_cellStartIndices.back()); // Total bubbles across all cells
-
-        // Used to track where to insert the next bubble index into the `m_objectIndices` buffer for each cell
-        m_cellInsertionPositions.assignRange(m_cellStartIndices.begin(), m_cellStartIndices.end());
-
-        //
-        // Third Pass (Populating):
-        // - Place the bubble indices into the correct positions in the `m_objectIndices` buffer.
-        for (SizeT i = 0; i < bubbles.size(); ++i)
-        {
-            const auto& bubble                                  = bubbles[i];
-            const auto [xStartIdx, yStartIdx, xEndIdx, yEndIdx] = computeGridRange(bubble.position, bubble.getRadius());
-
-            // Insert the bubble index into all overlapping cells
-            for (SizeT y = yStartIdx; y <= yEndIdx; ++y)
-                for (SizeT x = xStartIdx; x <= xEndIdx; ++x)
-                {
-                    const SizeT cellIdx        = convert2DTo1D(x, y, nCellsX);
-                    const SizeT insertPos      = m_cellInsertionPositions[cellIdx]++;
-                    m_objectIndices[insertPos] = i;
-                }
-        }
+        std::sort(m_aabbs.begin(), m_aabbs.end(), [](const AABB& a, const AABB& b) { return a.minX < b.minX; });
     }
 };

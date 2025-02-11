@@ -105,4 +105,9 @@ void pool::post(task&& f)
     SFML_BASE_ASSERT(enqueued);
 }
 
+unsigned int pool::worker_count() const noexcept
+{
+    return static_cast<unsigned int>(_workers.size());
+}
+
 } // namespace hg::ThreadPool

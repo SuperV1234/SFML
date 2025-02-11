@@ -79,7 +79,7 @@ struct [[nodiscard]] CollisionResolution
     }
 
     // Define a "softness" factor to control how quickly the overlap is resolved
-    const float softnessFactor = 0.00075f * deltaTimeMs;
+    const float softnessFactor = 0.0075f * deltaTimeMs;
 
     // Calculate the displacement needed to resolve the overlap
     const float        overlap      = sumRadii - distance; // Amount of overlap
