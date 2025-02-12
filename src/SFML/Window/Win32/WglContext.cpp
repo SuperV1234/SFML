@@ -93,6 +93,7 @@ void ensureWGLExtensionsInit(sf::priv::WglContext& wglContext, HDC deviceContext
 } // namespace WglContextImpl
 } // namespace
 
+// TODO P1: this is movable but destructor fails if moved-from
 
 namespace sf::priv
 {

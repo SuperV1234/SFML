@@ -1,3 +1,4 @@
+#include "Achievements.hpp"
 #include "Aliases.hpp"
 #include "Bubble.hpp"
 #include "Cat.hpp"
@@ -793,6 +794,7 @@ struct Main
     {
         // button label
         ImGui::SetWindowFontScale((label[0] == '-' ? subBulletFontScale : normalFontScale) * 1.15f);
+        ImGui::AlignTextToFramePadding();
         ImGui::Text("%s", label);
         ImGui::SameLine();
 
@@ -2444,7 +2446,23 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             ImGui::SetWindowFontScale(0.75f);
             if (ImGui::BeginTabItem(" Achievements "))
             {
-                // TODO P1: add achievements
+                ImGui::BeginChild("AchScroll");
+
+                sf::base::U64 id = 0u;
+                for (const auto& [name, description] : achievementData)
+                {
+                    ImGui::SetWindowFontScale(1.f);
+                    ImGui::Text("%llu - \"%s\"", id++, name);
+
+                    ImGui::PushFont(fontImGuiMouldyCheese);
+                    ImGui::SetWindowFontScale(0.75f);
+                    ImGui::Text("%s", description);
+                    ImGui::PopFont();
+
+                    ImGui::Separator();
+                }
+
+                ImGui::EndChild();
 
                 ImGui::EndTabItem();
             }
@@ -2501,7 +2519,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         sgActive = ImGui::BeginTabBar("TabBarSettings", ImGuiTabBarFlags_DrawSelectedOverline);
 
         ImGui::SetWindowFontScale(0.75f);
-        if (ImGui::BeginTabItem("Audio"))
+        if (ImGui::BeginTabItem(" Audio "))
         {
             ImGui::SetWindowFontScale(normalFontScale);
 
@@ -2518,7 +2536,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         }
 
         ImGui::SetWindowFontScale(0.75f);
-        if (ImGui::BeginTabItem("Interface"))
+        if (ImGui::BeginTabItem(" Interface "))
         {
             ImGui::SetWindowFontScale(normalFontScale);
 
@@ -2556,7 +2574,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         }
 
         ImGui::SetWindowFontScale(0.75f);
-        if (ImGui::BeginTabItem("Graphics"))
+        if (ImGui::BeginTabItem(" Graphics "))
         {
             ImGui::SetWindowFontScale(normalFontScale);
 
@@ -2571,13 +2589,14 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         }
 
         ImGui::SetWindowFontScale(0.75f);
-        if (ImGui::BeginTabItem("Display"))
+        if (ImGui::BeginTabItem(" Display "))
         {
             ImGui::SetWindowFontScale(normalFontScale);
 
             ImGui::Text("Auto resolution");
 
             ImGui::SetWindowFontScale(0.85f);
+            ImGui::AlignTextToFramePadding();
             ImGui::Text("Windowed");
 
             ImGui::SameLine();
@@ -2610,6 +2629,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                 mustRecreateWindow = true;
             }
 
+            ImGui::AlignTextToFramePadding();
             ImGui::Text("Fullscreen");
 
             ImGui::SameLine();
@@ -2653,7 +2673,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         }
 
         ImGui::SetWindowFontScale(0.75f);
-        if (true && ImGui::BeginTabItem("Developer") /* TODO P0: cheats */)
+        if (true && ImGui::BeginTabItem(" Debug ") /* TODO P0: cheats */)
         {
             if (ImGui::Button("Save game"))
                 savePlaythroughToFile(pt);
@@ -4032,6 +4052,180 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
     }
 
     ////////////////////////////////////////////////////////////
+    void gameLoopUpdateAchievements()
+    {
+        static std::vector<bool> achievementsUnlocked(512, false);
+
+        SizeT nextId = 0u;
+
+        const auto unlockIf = [&](const bool condition)
+        {
+            const auto achievementId = nextId++;
+
+            if (condition && !achievementsUnlocked[achievementId])
+            {
+                achievementsUnlocked[achievementId] = true;
+
+                ImGuiToast toast{ImGuiToastType::None, 3000};
+                toast.setTitle("Achievement unlocked!");
+                toast.setContent("\"%s\"\n- %s",
+                                 achievementData[achievementId].name,
+                                 achievementData[achievementId].description);
+
+                ImGui::InsertNotification(toast);
+                // TODO:
+                // playSound(sounds.notification);
+            }
+        };
+
+        const auto skip = [&] { ++nextId; };
+
+        unlockIf(profile.statsLifetime.bubblesHandPopped >= 1);
+        unlockIf(profile.statsLifetime.bubblesHandPopped >= 100);
+        unlockIf(profile.statsLifetime.bubblesHandPopped >= 1'000);
+        unlockIf(profile.statsLifetime.bubblesHandPopped >= 10'000);
+        unlockIf(profile.statsLifetime.bubblesHandPopped >= 100'000);
+        unlockIf(profile.statsLifetime.bubblesHandPopped >= 1'000'000);
+        unlockIf(profile.statsLifetime.bubblesHandPopped >= 10'000'000);
+
+        unlockIf(profile.statsLifetime.getBubblesCatPopped() >= 1);
+        unlockIf(profile.statsLifetime.getBubblesCatPopped() >= 100);
+        unlockIf(profile.statsLifetime.getBubblesCatPopped() >= 1'000);
+        unlockIf(profile.statsLifetime.getBubblesCatPopped() >= 10'000);
+        unlockIf(profile.statsLifetime.getBubblesCatPopped() >= 100'000);
+        unlockIf(profile.statsLifetime.getBubblesCatPopped() >= 1'000'000);
+        unlockIf(profile.statsLifetime.getBubblesCatPopped() >= 10'000'000);
+
+        unlockIf(pt.comboPurchased);
+
+        unlockIf(pt.psvComboStartTime.nPurchases >= 5);
+        unlockIf(pt.psvComboStartTime.nPurchases >= 10);
+        unlockIf(pt.psvComboStartTime.nPurchases >= 15);
+        unlockIf(pt.psvComboStartTime.nPurchases >= 20);
+
+        unlockIf(pt.mapPurchased);
+        unlockIf(pt.psvMapExtension.nPurchases >= 2);
+        unlockIf(pt.psvMapExtension.nPurchases >= 4);
+        unlockIf(pt.psvMapExtension.nPurchases >= 6);
+        unlockIf(pt.psvMapExtension.nPurchases >= 8);
+
+        unlockIf(pt.psvBubbleCount.nPurchases >= 1);
+        unlockIf(pt.psvBubbleCount.nPurchases >= 5);
+        unlockIf(pt.psvBubbleCount.nPurchases >= 10);
+        unlockIf(pt.psvBubbleCount.nPurchases >= 20);
+        unlockIf(pt.psvBubbleCount.nPurchases >= 30);
+
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Normal)].nPurchases >= 1);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Normal)].nPurchases >= 5);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Normal)].nPurchases >= 10);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Normal)].nPurchases >= 20);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Normal)].nPurchases >= 30);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Normal)].nPurchases >= 40);
+
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Normal)].nPurchases >= 1);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Normal)].nPurchases >= 3);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Normal)].nPurchases >= 6);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Normal)].nPurchases >= 9);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Normal)].nPurchases >= 12);
+
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Normal)].nPurchases >= 1);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Normal)].nPurchases >= 3);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Normal)].nPurchases >= 6);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Normal)].nPurchases >= 9); // 43
+
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Uni)].nPurchases >= 1);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Uni)].nPurchases >= 5);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Uni)].nPurchases >= 10);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Uni)].nPurchases >= 20);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Uni)].nPurchases >= 30);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Uni)].nPurchases >= 40);
+
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Uni)].nPurchases >= 1);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Uni)].nPurchases >= 3);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Uni)].nPurchases >= 6);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Uni)].nPurchases >= 9);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Uni)].nPurchases >= 12);
+
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Uni)].nPurchases >= 1);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Uni)].nPurchases >= 3);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Uni)].nPurchases >= 6);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Uni)].nPurchases >= 9);
+
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Devil)].nPurchases >= 1);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Devil)].nPurchases >= 5);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Devil)].nPurchases >= 10);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Devil)].nPurchases >= 20);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Devil)].nPurchases >= 30);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Devil)].nPurchases >= 40);
+
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Devil)].nPurchases >= 1);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Devil)].nPurchases >= 3);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Devil)].nPurchases >= 6);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Devil)].nPurchases >= 9);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Devil)].nPurchases >= 12);
+
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Devil)].nPurchases >= 1);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Devil)].nPurchases >= 3);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Devil)].nPurchases >= 6);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Devil)].nPurchases >= 9);
+
+        unlockIf(pt.psvExplosionRadiusMult.nPurchases >= 1);
+        unlockIf(pt.psvExplosionRadiusMult.nPurchases >= 5);
+        unlockIf(pt.psvExplosionRadiusMult.nPurchases >= 10);
+
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Astro)].nPurchases >= 1);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Astro)].nPurchases >= 5);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Astro)].nPurchases >= 10);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Astro)].nPurchases >= 20);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Astro)].nPurchases >= 30);
+        unlockIf(pt.psvPerCatType[asIdx(CatType::Astro)].nPurchases >= 40);
+
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Astro)].nPurchases >= 1);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Astro)].nPurchases >= 3);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Astro)].nPurchases >= 6);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Astro)].nPurchases >= 9);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Astro)].nPurchases >= 12);
+
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Astro)].nPurchases >= 1);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Astro)].nPurchases >= 3);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Astro)].nPurchases >= 6);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Astro)].nPurchases >= 9);
+
+        unlockIf(pt.psvBubbleValue.nPurchases >= 1);
+        unlockIf(pt.psvBubbleValue.nPurchases >= 2);
+        unlockIf(pt.psvBubbleValue.nPurchases >= 3);
+        unlockIf(pt.psvBubbleValue.nPurchases >= 5);
+        unlockIf(pt.psvBubbleValue.nPurchases >= 10);
+        unlockIf(pt.psvBubbleValue.nPurchases >= 15);
+        unlockIf(pt.psvBubbleValue.nPurchases >= 20);
+
+        unlockIf(pt.multiPopEnabled);
+        unlockIf(pt.psvPPMultiPopRange.nPurchases >= 1);
+        unlockIf(pt.psvPPMultiPopRange.nPurchases >= 2);
+        unlockIf(pt.psvPPMultiPopRange.nPurchases >= 5);
+        unlockIf(pt.psvPPMultiPopRange.nPurchases >= 10);
+
+        unlockIf(pt.smartCatsPurchased);
+        unlockIf(pt.geniusCatsPurchased);
+        unlockIf(pt.windPurchased);
+        unlockIf(pt.astroCatInspirePurchased);
+
+        unlockIf(combo >= 5);
+        unlockIf(combo >= 10);
+        unlockIf(combo >= 15);
+        unlockIf(combo >= 20);
+        unlockIf(combo >= 25);
+
+        skip(); // 112
+        skip(); // 113
+        skip(); // 114
+        skip(); // 115
+        skip(); // 116
+
+        // TODO: carry on
+    }
+
+    ////////////////////////////////////////////////////////////
     void gameLoopDrawBubbles()
     {
         sf::Sprite tempSprite;
@@ -4350,6 +4544,50 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
     }
 
     ////////////////////////////////////////////////////////////
+    void gameLoopDrawImGui()
+    {
+        ImGui::RenderNotifications(
+            [&]
+        {
+            ImGui::PushFont(fontImGuiMouldyCheese);
+            ImGui::SetWindowFontScale(toolTipFontScale);
+        },
+            [&]
+        {
+            ImGui::SetWindowFontScale(normalFontScale);
+            ImGui::PopFont();
+        });
+
+        imGuiContext.render(*optWindow);
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopDrawCursor(const float deltaTimeMs)
+    {
+        auto&              window     = *optWindow;
+        const sf::Vector2f resolution = getResolution();
+
+        window.setMouseCursorVisible(!profile.highVisibilityCursor);
+
+        if (profile.highVisibilityCursor)
+        {
+            if (profile.multicolorCursor)
+            {
+                profile.cursorHue += deltaTimeMs * 0.5f;
+                profile.cursorHue = wrapHue(profile.cursorHue);
+            }
+
+            window.setView({.center = resolution / 2.f, .size = resolution});
+            window.draw(txCursor,
+                        {.position = sf::Mouse::getPosition(window).toVector2f(),
+                         .scale    = {profile.cursorScale, profile.cursorScale},
+                         .origin   = {5.f, 5.f},
+                         .color    = hueColor(wrapHue(profile.cursorHue), 255u)},
+                        {.shader = &shader});
+        }
+    }
+
+    ////////////////////////////////////////////////////////////
     void gameLoopTips(const float deltaTimeMs)
     {
         if (tipTimer <= 0.f)
@@ -4410,43 +4648,51 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
     }
 
     ////////////////////////////////////////////////////////////
+    [[nodiscard]] bool gameLoopRecreateWindowIfNeeded()
+    {
+        if (!mustRecreateWindow)
+            return true;
+
+        mustRecreateWindow = false;
+
+        const sf::Vector2u newResolution = profile.resWidth == sf::Vector2u{} ? getReasonableWindowSize(0.9f) : profile.resWidth;
+
+        const bool takesAllScreen = newResolution == sf::VideoModeUtils::getDesktopMode().size;
+
+        optWindow.emplace(
+            sf::WindowSettings{.size            = newResolution,
+                               .title           = "BubbleByte " BUBBLEBYTE_VERSION_STR,
+                               .fullscreen      = !profile.windowed,
+                               .resizable       = !takesAllScreen,
+                               .closable        = !takesAllScreen,
+                               .hasTitlebar     = !takesAllScreen,
+                               .vsync           = profile.vsync,
+                               .frametimeLimit  = sf::base::clamp(profile.frametimeLimit, 60u, 144u),
+                               .contextSettings = contextSettings});
+
+        static bool imguiInit = false;
+        if (!imguiInit)
+        {
+            imguiInit = true;
+
+            if (!imGuiContext.init(*optWindow))
+            {
+                std::cout << "Error: ImGui context initialization failed\n";
+                return false;
+            }
+
+            fontImGuiSuperBakery  = ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/superbakery.ttf", 26.f);
+            fontImGuiMouldyCheese = ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/mouldycheese.ttf", 26.f);
+        }
+
+        return true;
+    }
+
+    ////////////////////////////////////////////////////////////
     [[nodiscard]] bool gameLoop()
     {
-        if (mustRecreateWindow)
-        {
-            mustRecreateWindow = false;
-
-            const sf::Vector2u newResolution = profile.resWidth == sf::Vector2u{} ? getReasonableWindowSize(0.9f)
-                                                                                  : profile.resWidth;
-
-            const bool takesAllScreen = newResolution == sf::VideoModeUtils::getDesktopMode().size;
-
-            optWindow.emplace(
-                sf::WindowSettings{.size            = newResolution,
-                                   .title           = "BubbleByte " BUBBLEBYTE_VERSION_STR,
-                                   .fullscreen      = !profile.windowed,
-                                   .resizable       = !takesAllScreen,
-                                   .closable        = !takesAllScreen,
-                                   .hasTitlebar     = !takesAllScreen,
-                                   .vsync           = profile.vsync,
-                                   .frametimeLimit  = sf::base::clamp(profile.frametimeLimit, 60u, 144u),
-                                   .contextSettings = contextSettings});
-
-            static bool imguiInit = false;
-            if (!imguiInit)
-            {
-                imguiInit = true;
-
-                if (!imGuiContext.init(*optWindow))
-                {
-                    std::cout << "Error: ImGui context initialization failed\n";
-                    return false;
-                }
-
-                fontImGuiSuperBakery  = ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/superbakery.ttf", 26.f);
-                fontImGuiMouldyCheese = ImGui::GetIO().Fonts->AddFontFromFileTTF("resources/mouldycheese.ttf", 26.f);
-            }
-        }
+        if (!gameLoopRecreateWindowIfNeeded())
+            return false;
 
         auto& window = *optWindow;
 
@@ -4933,6 +5179,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         }
 
         gameLoopUpdateMilestones();
+        gameLoopUpdateAchievements();
 
         imGuiContext.update(window, deltaTime);
 
@@ -5032,44 +5279,12 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                         profile.hudScale);
 
         //
-        // UI Toasts
-        ImGui::RenderNotifications(
-            [&]
-        {
-            ImGui::PushFont(fontImGuiMouldyCheese);
-            ImGui::SetWindowFontScale(toolTipFontScale);
-        },
-            [&]
-        {
-            ImGui::SetWindowFontScale(normalFontScale);
-            ImGui::PopFont();
-        });
-
-
-        //
-        // UI
-        imGuiContext.render(window);
+        // UI and Toasts
+        gameLoopDrawImGui();
 
         //
         // High visibility cursor
-        window.setMouseCursorVisible(!profile.highVisibilityCursor);
-
-        if (profile.highVisibilityCursor)
-        {
-            if (profile.multicolorCursor)
-            {
-                profile.cursorHue += deltaTimeMs * 0.5f;
-                profile.cursorHue = wrapHue(profile.cursorHue);
-            }
-
-            window.setView({.center = resolution / 2.f, .size = resolution});
-            window.draw(txCursor,
-                        {.position = sf::Mouse::getPosition(window).toVector2f(),
-                         .scale    = {profile.cursorScale, profile.cursorScale},
-                         .origin   = {5.f, 5.f},
-                         .color    = hueColor(wrapHue(profile.cursorHue), 255u)},
-                        {.shader = &shader});
-        }
+        gameLoopDrawCursor(deltaTimeMs);
 
         //
         // Splash screen
