@@ -1,0 +1,212 @@
+#pragma once
+
+struct AchievementData
+{
+    const char* name;
+    const char* description;
+};
+
+inline constexpr AchievementData achievementData[] = {
+    {"Initiation Pop", "Pop your first bubble by hand."},
+    {"Finger Fitness", "Pop 100 bubbles by hand."},
+    {"Clicker Novice", "Pop 1,000 bubbles by hand."},
+    {"Manual Labor", "Pop 10,000 bubbles by hand."},
+    {"Carpal Tunnel Candidate", "Pop 100,000 bubbles by hand."},
+    {"Popaholic", "Pop 1,000,000 bubbles by hand."},
+    {"Finger of God", "Pop 10,000,000 bubbles by hand."},
+
+    {"Paw Patrol", "Pop your first bubble via cats."},
+    {"Lazy Overlord", "Pop 100 bubbles via cats."},
+    {"Cat-alyst", "Pop 1,000 bubbles via cats."},
+    {"Claw Enforcement", "Pop 10,000 bubbles via cats."},
+    {"Purr Automation", "Pop 100,000 bubbles via cats."},
+    {"Feline Workforce", "Pop 1,000,000 bubbles via cats."},
+    {"Feline Overlords", "Pop 10,000,000 bubbles via cats."},
+
+    {"Combo Curious", "Purchase the \"Combo\" upgrade."},
+
+    {"Combo Apprentice", "Purchase 5 upgrades of \"Longer combos\"."},
+    {"Combo Connoisseur", "Purchase 10 upgrades of \"Longer combos\"."},
+    {"Combo Kingpin", "Purchase 15 upgrades of \"Longer combos\"."},
+    {"Combo Deity", "Purchase 20 upgrades of \"Longer combos\"."},
+
+    {"Scroll Starter", "Purchase the \"Map Scrolling\" upgrade."},
+    {"Horizon Hoarder", "Extend the map up to 40%."},
+    {"Borderline Addict", "Extend the map up to 60%."},
+    {"Map Magnate", "Extend the map up to 80%."},
+    {"Map Monarch", "Extend the map up to 100%."},
+
+    {"Bubble Buff", "Purchase the \"More Bubbles\" upgrade once."},
+    {"Bubble Blizzard", "Purchase the \"More Bubbles\" upgrade 5 times."},
+    {"Bubble Avalanche", "Purchase the \"More Bubbles\" upgrade 10 times."},
+    {"Bubble Tsunami", "Purchase the \"More Bubbles\" upgrade 20 times."},
+    {"Bubble Singularity", "Purchase the \"More Bubbles\" upgrade 30 times."},
+
+    {"Cat Person", "Purchase your first cat."},
+    {"Cat Collector", "Purchase 5 cats."},
+    {"Cat Café Owner", "Purchase 10 cats."},
+    {"Cat Hoarder", "Purchase 20 cats."},
+    {"Cat Overlord", "Purchase 30 cats."},
+    {"Cat God Complex", "Purchase 40 cats."},
+
+    {"Speedy Paws", "Improve cat cooldown once."},
+    {"Rapid Retaliation", "Improve cat cooldown 3 times."},
+    {"Lightning Claws", "Improve cat cooldown 6 times."},
+    {"Supersonic Swipes", "Improve cat cooldown 9 times."},
+    {"Time Lord", "Improve cat cooldown 12 times."},
+
+    {"Eagle-Eyed", "Improve cat range once."},
+    {"Panoramic Paws", "Improve cat range 3 times."},
+    {"Omnipawtent", "Improve cat range 6 times."},
+    {"All-Seeing Whiskers", "Improve cat range 9 times."},
+
+    {"Rainbow", "Purchase your first unicat."},
+    {"Sparkle Squad", "Purchase 5 unicats."},
+    {"Glitter Gang", "Purchase 10 unicats."},
+    {"Celestial Herd", "Purchase 20 unicats."},
+    {"Galactic Uniclan", "Purchase 30 unicats."},
+    {"Mythic Menagerie", "Purchase 40 unicats."},
+
+    {"Sparkle Speed", "Improve unicat cooldown once."},
+    {"Meteor Momentum", "Improve unicat cooldown 3 times."},
+    {"Starlight Surge", "Improve unicat cooldown 6 times."},
+    {"Galactic Gait", "Improve unicat cooldown 9 times."},
+    {"Nova Velocity", "Improve unicat cooldown 12 times."},
+
+    {"Lunar Leash", "Improve unicat range once."},
+    {"Solar Span", "Improve unicat range 3 times."},
+    {"Constellation Coverage", "Improve unicat range 6 times."},
+    {"Celestial Dominion", "Improve unicat range 9 times."},
+
+    {"Chaos Catalyst", "Purchase your first devilcat."},
+    {"Demonic Delegation", "Purchase 5 devilcats."},
+    {"Infernal Army", "Purchase 10 devilcats."},
+    {"Hell's Managers", "Purchase 20 devilcats."},
+    {"Apocalypse Now", "Purchase 30 devilcats."},
+    {"Satan's HR Department", " Purchase 40 devilcats."},
+
+    {"Hellfire Refresh", "Improve devilcat cooldown once."},
+    {"Infernal Impulse", "Improve devilcat cooldown 3 times."},
+    {"Diabolic Drive", "Improve devilcat cooldown 6 times."},
+    {"Abyssal Accelerant", "Improve devilcat cooldown 9 times."},
+    {"Apocalyptic Agility", "Improve devilcat cooldown 12 times."},
+
+    {"Infernal Reach", "Improve devilcat range once."},
+    {"Hellish Horizon", "Improve devilcat range 3 times."},
+    {"Satanic Span", "Improve devilcat range 6 times."},
+    {"Abyssal Ambition", "Improve devilcat range 9 times."},
+
+    {"Boom", "Improve devilcat explosion radius once."},
+    {"Boomer", "Improve devilcat explosion radius 5 times."},
+    {"Boomest", "Improve devilcat explosion radius 10 times."},
+
+    {"Stellar Staff", "Purchase your first astrocat."},
+    {"Space Cadets", "Purchase 5 astrocats."},
+    {"Orbital Overlords", "Purchase 10 astrocats."},
+    {"Galactic Council", "Purchase 20 astrocats."},
+    {"Cosmic Conclave", "Purchase 30 astrocats."},
+    {"Galactic Overlord", "Purchase 40 astrocats."},
+
+    {"Zero-G Zen", "Improve astrocat cooldown once."},
+    {"Orbit Optimized", "Improve astrocat cooldown 3 times."},
+    {"Lightyear Lapse", "Improve astrocat cooldown 6 times."},
+    {"Warp Speed", "Improve astrocat cooldown 9 times."},
+    {"Cosmic Cadence", "Improve astrocat cooldown 12 times."},
+
+    {"Interstellar Scope", "Improve astrocat range once."},
+    {"Galactic Gaze", "Improve astrocat range 3 times."},
+    {"Universal Umbra", "Improve astrocat range 6 times."},
+    {"Astral Authority", "Improve astrocat range 9 times."},
+
+    {"Ascension Apprentice", "Prestige once."},
+    {"Transcendent Twice", "Prestige 2 times."},
+    {"Third Time's a Charm", "Prestige 3 times."},
+    {"Prestige Pilgrim", "Prestige 5 times."},
+    {"Cosmic Conqueror", "Prestige 10 times."},
+    {"Divine Loop", "Prestige 15 times."},
+    {"God of Pops", "Prestige 20 times."},
+
+    {"Pop Goes the Weasel", "Purchase the \"Multipop\" permanent upgrade."},
+    {"Popcorn Popper", "Improve multipop range once."},
+    {"Fireworks Factory", "Improve multipop range 2 times."},
+    {"Big Bang Theory", "Improve multipop range 5 times."},
+    {"Overkill", "Improve multipop range 10 times."},
+
+    {"Cat-culus Master", "Purchase the \"Smart Cats\" permanent upgrade."},
+    {"Feline Einstein", "Purchase the \"Genius Cats\" permanent upgrade."},
+    {"Wind Beneath My Paws", "Purchase the \"Giant Fan\" permanent upgrade."},
+    {"Interstellar Brainwashing", "Purchase the \"Space Propaganda\" permanent upgrade."},
+
+    {"Multiplier Maven", "Reach x5 combo multiplier."},
+    {"Decimator", "Reach x10 combo multiplier."},
+    {"Fifteen Minutes of Fame", "Reach x15 combo multiplier."},
+    {"Twenty-Twenty Vision", "Reach x20 combo multiplier."},
+    {"TODONAME", "Reach x25 combo multiplier."},
+
+    {"Starstruck", "Pop a star bubble with at least x5 combo multiplier."},
+    {"Supernova Strike", "Pop a star bubble with at least x10 combo multiplier."},
+    {"Comet Crusher", "Pop a star bubble with at least x15 combo multiplier."},
+    {"Nebula Nuker", "Pop a star bubble with at least x20 combo multiplier."},
+    {"TODONAME", "Pop a star bubble with at least x25 combo multiplier."},
+
+    {"Starry-Eyed", "Pop your first star bubble by hand."},
+    {"Star Collector", "Pop 100 star bubbles by hand."},
+    {"Stellar Hoarder", "Pop 1,000 star bubbles by hand."},
+    {"Galactic Tycoon", "Pop 10,000 star bubbles by hand."},
+    {"Supernova Supplier", "Pop 100,000 star bubbles by hand."},
+    {"Black Hole Banker", "Pop 1,000,000 star bubbles by hand."},
+    {"Star Forger", "Pop 10,000,000 star bubbles by hand."},
+
+    {"Paw-laris", "Pop your first star bubble via cats."},
+    {"Paw-lar Power", "Pop 100 star bubbles via cats."},
+    {"Feline Constellation", "Pop 1,000 star bubbles via cats."},
+    {"Galactic Guardians", "Pop 10,000 star bubbles via cats."},
+    {"Stellar Syndicate", "Pop 100,000 star bubbles via cats."},
+    {"Celestial Overlords", "Pop 1,000,000 star bubbles via cats."},
+    {"Cosmic Cataclysm", "Pop 10,000,000 star bubbles via cats."},
+
+    {"Explosive Management", "Pop your first bomb by hand."},
+    {"Hand Grenade Hero", "Pop 100 bombs by hand."},
+    {"Dynamite Digits", "Pop 1,000 bombs by hand."},
+    {"Manual Detonator", "Pop 10,000 bombs by hand."},
+    {"Finger on the Button", "Pop 100,000 bombs by hand."},
+
+    {"Bomb Voyage", "Pop your first bomb via cats."},
+    {"Clawed Demolition", "Pop 100 bombs via cats."},
+    {"Feline Firestorm", "Pop 1,000 bombs via cats."},
+    {"Purr-cussion Experts", "Pop 10,000 bombs via cats."},
+    {"Meow-ton Blast", "Pop 100,000 bombs via cats."},
+
+    {"Astro-Boom", "Have an astrocat pop a bomb."},
+    {"Team Spirit", "Have an astrocat inspire a cat."},
+    {"Celestial Synergy", "Have an astrocat inspire a unicat."},
+    {"Hell's Ambassador", "Have an astrocat inspire a devilcat."},
+
+    {"TODONAME", "Activate the 1st shrine."},
+    {"TODONAME", "Activate the 2nd shrine."},
+    {"TODONAME", "Activate the 3th shrine."},
+    {"TODONAME", "Activate the 4th shrine."},
+    {"TODONAME", "Activate the 5th shrine."},
+    {"TODONAME", "Activate the 6th shrine."},
+    {"TODONAME", "Activate the 7th shrine."},
+    {"TODONAME", "Activate the 8th shrine."},
+    {"TODONAME", "Activate the 9th shrine."},
+
+    {"TODONAME", "Complete the 1st shrine (\" Shrine of Magic \")."},
+    {"TODONAME", "Complete the 2nd shrine (\" Shrine of TODO \")."},
+    {"TODONAME", "Complete the 3th shrine (\" Shrine of TODO \")."},
+    {"TODONAME", "Complete the 4th shrine (\" Shrine of TODO \")."},
+    {"TODONAME", "Complete the 5th shrine (\" Shrine of TODO \")."},
+    {"TODONAME", "Complete the 6th shrine (\" Shrine of TODO \")."},
+    {"TODONAME", "Complete the 7th shrine (\" Shrine of TODO \")."},
+    {"TODONAME", "Complete the 8th shrine (\" Shrine of TODO \")."},
+    {"TODONAME", "Complete the 9th shrine (\" Shrine of Victory \")."},
+
+    {"TODONAME", "Reach combo x25 with Mousecat."},
+    {"TODONAME", "Reach combo x50 with Mousecat."},
+    {"TODONAME", "Reach combo x75 with Mousecat."},
+    {"TODONAME", "Reach combo x100 with Mousecat."},
+    {"TODONAME", "Reach combo x125 with Mousecat."},
+    {"TODONAME", "Reach combo x150 with Mousecat."},
+    {"TODONAME", "Reach combo x175 with Mousecat."},
+};
