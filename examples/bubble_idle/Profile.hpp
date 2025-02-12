@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Achievements.hpp"
 #include "Stats.hpp"
 
 #include "SFML/System/Vector2.hpp"
@@ -31,4 +32,6 @@ struct [[nodiscard]] Profile
     bool  multicolorCursor     = false;
     float cursorHue            = 0.f;
     float cursorScale          = 0.4f;
+
+    bool unlockedAchievements[nAchievements] = {};
 };

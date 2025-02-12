@@ -74,6 +74,20 @@ template <typename Iter, typename Predicate>
 
 
 ////////////////////////////////////////////////////////////
+template <typename Iter>
+[[nodiscard, gnu::always_inline, gnu::pure]] constexpr SizeT count(Iter rangeBegin, Iter rangeEnd)
+{
+    SizeT result = 0u;
+
+    for (; rangeBegin != rangeEnd; ++rangeBegin)
+        if (static_cast<bool>(*rangeBegin))
+            ++result;
+
+    return result;
+}
+
+
+////////////////////////////////////////////////////////////
 template <typename Iter, typename Predicate>
 [[nodiscard, gnu::always_inline, gnu::pure]] constexpr SizeT countIf(Iter rangeBegin, Iter rangeEnd, Predicate&& predicate)
 {

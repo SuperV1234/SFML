@@ -14,15 +14,15 @@
 ////////////////////////////////////////////////////////////
 enum class ShrineType : U8
 {
-    Magic         = 0u, // No special effects, unlocks magic menu
-    Clicking      = 1u, // Buff click reward & nerf cat reward, unlocks clicking magic buff
-    Automation    = 2u, // Buff cat reward & nerf click reward, unlocks cat magic buff
-    Repulsion     = 3u, // Pushes bubbles away, unlocks TBD
-    Attraction    = 4u, // Pulls bubbles in, unlocks TBD
-    Decay         = 5u, // All special bubbles become hexed, unlocks TBD
-    Chaos         = 6u, // Periodically turns bubbles into random ones, unlocks TBD
-    Transmutation = 7u, // Changes cats behavior in range, unlocks TBD
-    Victory       = 8u, // TBD special effect, unlocks game victory
+    Magic         = 0u,
+    Clicking      = 1u,
+    Automation    = 2u,
+    Repulsion     = 3u,
+    Attraction    = 4u,
+    Decay         = 5u,
+    Chaos         = 6u,
+    Transmutation = 7u,
+    Victory       = 8u,
 
     Count
 };
@@ -132,6 +132,12 @@ struct [[nodiscard]] Shrine
             return 0.f;
 
         return 256.f * (1.f - getDeathProgress());
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] inline bool isInRange(const sf::Vector2f point) const
+    {
+        return isActive() && (point - position).length() < getRange();
     }
 
     ////////////////////////////////////////////////////////////

@@ -154,12 +154,17 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     Stats,
 
     secondsPlayed,
-    bubblesPopped,
-    bubblesPoppedRevenue,
-    bubblesHandPopped,
-    bubblesHandPoppedRevenue,
+    nBubblesPoppedByType,
+    revenueByType,
+    nBubblesHandPoppedByType,
+    revenueHandByType,
     explosionRevenue,
-    flightRevenue);
+    flightRevenue,
+    highestStarBubblePopCombo,
+    nAbsorbedStarBubbles,
+    nSpellCasts,
+    nMaintenances,
+    highestSimultaneousMaintenances);
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
@@ -226,7 +231,9 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     highVisibilityCursor,
     multicolorCursor,
     cursorHue,
-    cursorScale);
+    cursorScale,
+
+    unlockedAchievements);
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)

@@ -622,20 +622,20 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
-    void statBubblePopped(const bool byHand, const MoneyType reward)
+    void statBubblePopped(const BubbleType bubbleType, const bool byHand, const MoneyType reward)
     {
         withAllStats([&](Stats& stats)
         {
-            stats.bubblesPopped += 1;
-            stats.bubblesPoppedRevenue += reward;
+            stats.nBubblesPoppedByType[asIdx(bubbleType)] += 1u;
+            stats.revenueByType[asIdx(bubbleType)] += reward;
         });
 
         if (byHand)
         {
             withAllStats([&](Stats& stats)
             {
-                stats.bubblesHandPopped += 1;
-                stats.bubblesHandPoppedRevenue += reward;
+                stats.nBubblesHandPoppedByType[asIdx(bubbleType)] += 1u;
+                stats.revenueHandByType[asIdx(bubbleType)] += reward;
             });
         }
     }
@@ -656,6 +656,38 @@ struct Main
     void statSecondsPlayed()
     {
         withAllStats([&](Stats& stats) { stats.secondsPlayed += 1u; });
+    }
+
+    ////////////////////////////////////////////////////////////
+    void statHighestStarBubblePopCombo(const sf::base::U64 comboValue)
+    {
+        withAllStats([&](Stats& stats)
+        { stats.highestStarBubblePopCombo = sf::base::max(stats.highestStarBubblePopCombo, comboValue); });
+    }
+
+    ////////////////////////////////////////////////////////////
+    void statAbsorbedStarBubble()
+    {
+        withAllStats([&](Stats& stats) { stats.nAbsorbedStarBubbles += 1u; });
+    }
+
+    ////////////////////////////////////////////////////////////
+    void statSpellCast(const SizeT spellIndex)
+    {
+        withAllStats([&](Stats& stats) { stats.nSpellCasts[spellIndex] += 1u; });
+    }
+
+    ////////////////////////////////////////////////////////////
+    void statMaintenance()
+    {
+        withAllStats([&](Stats& stats) { stats.nMaintenances += 1u; });
+    }
+
+    ////////////////////////////////////////////////////////////
+    void statHighestSimultaneousMaintenances(const sf::base::U64 value)
+    {
+        withAllStats([&](Stats& stats)
+        { stats.highestSimultaneousMaintenances = sf::base::max(stats.highestSimultaneousMaintenances, value); });
     }
 
     ////////////////////////////////////////////////////////////
@@ -783,6 +815,12 @@ struct Main
     static inline constexpr float buttonWidth        = 150.f;
 
     ////////////////////////////////////////////////////////////
+    inline constexpr float getWindowHeight() const
+    {
+        return getResolution().y - 30.f;
+    }
+
+    ////////////////////////////////////////////////////////////
     char         buffer[256]{};
     char         labelBuffer[512]{};
     char         tooltipBuffer[1024]{};
@@ -897,13 +935,13 @@ struct Main
                 R"(
 ~~ Shrine Of Magic ~~
 
-The legend says that a powerful Wizardcat is sealed inside, capable of absorbing wisdom from star bubbles and casting spells on demand. Guess it wasn't powerful enough to avoid being sealed...
+The legend says that a powerful Wizardcat is sealed inside, capable of absorbing wisdom from star bubbles and casting spells on demand. Guess they weren't powerful enough to avoid being sealed...
 
 The magic of star bubbles seem to be absorbed by the shrine, nullifying their benefits.)",
                 R"(
 ~~ Shrine Of Clicking ~~
 
-Rumor has it that a sneaky Mousecat is sealed inside, capable of clicking bubbles, keeping up its own combos, empowering nearby cats, and providing a global click reward value multiplier by merely existing. That's a lot.
+Rumor has it that a sneaky Mousecat is sealed inside, capable of clicking bubbles, keeping up their own combos, empowering nearby cats, and providing a global click reward value multiplier by merely existing. That's a lot.
 
 The shrine repels cats, wanting you to prove your worth by clicking bubbles.)",
                 R"(
@@ -915,13 +953,13 @@ Bubbles in the shrine's range are immune to clicks, as the shrine wants you to p
                 R"(
 ~~ Shrine Of Repulsion ~~
 
-Experiments reveal that a Repulsocat is sealed inside, who continuously pushes bubbles away from itself with his portable USB fan. Thankfully, other cats are too fat to be affected by the wind.
+Experiments reveal that a Repulsocat is sealed inside, who continuously pushes bubbles away with their portable USB fan. Thankfully, other cats are too fat to be affected by the wind.
 
 Seems like the wind is powerful enough to repel bubbles even from within the shrine.)",
                 R"(
 ~~ Shrine Of Attraction ~~
 
-Electromagnetism readings suggest that an Attractocat is sealed inside, who continuously attracts bubbles with his huge magnet. Despite cats having an engine, they are not affected by the magnet -- can't explain that one.
+Electromagnetism readings suggest that an Attractocat is sealed inside, who continuously attracts bubbles with their huge magnet. Despite cats having an engine, they are not affected by the magnet -- can't explain that one.
 
 The magnet is so powerful that its effects are felt even near the shrine.)",
                 R"(
@@ -961,7 +999,7 @@ Rewards: TODO P1: complete)",
 
 Pops bubbles or bombs, whatever comes first. Not the brightest, despite not being orange.
 
-Prestige points can be spent for its college tuition, making it more cleverer.)";
+Prestige points can be spent for their college tuition, making them more cleverer.)";
 
             if (pt.geniusCatsPurchased)
             {
@@ -971,7 +1009,7 @@ Prestige points can be spent for its college tuition, making it more cleverer.)"
 
 A truly intelligent being: prioritizes popping bombs first, then star bubbles, then normal bubbles. Can be instructed to ignore specific bubble types.
 
-We do not speak of the origin of the large brain attached to its body.)";
+We do not speak of the origin of the large brain attached to their body.)";
             }
             else if (pt.smartCatsPurchased)
             {
@@ -1009,7 +1047,7 @@ Finally financed by the NB (NOBUBBLES) political party to inspire other cats to 
 
 Imbued with the power of stars and rainbows, transforms bubbles (or bombs) into star bubbles, worth x25 more.
 
-Must have eaten something it wasn't supposed to, because it keeps changing color.
+Must have eaten something they weren't supposed to, because they keep changing color.
 )",
                 R"(
 ~~ Devilcat ~~
@@ -1025,17 +1063,17 @@ TODO P1: complete)",
 ~~ Wizardcat ~~
 (unique cat)
 
-Ancient arcane feline capable of unleashing powerful spells, if only it could remember them.
-Can absorb the magic of star bubbles to recall its past lives and remember spells.
+Ancient arcane feline capable of unleashing powerful spells, if only they could remember them.
+Can absorb the magic of star bubbles to recall their past lives and remember spells.
 
-The scriptures say that it "unlocks a Magic menu", but nobody knows what that means.)",
+The scriptures say that they "unlock a Magic menu", but nobody knows what that means.)",
                 R"(
 ~~ Mousecat ~~
 (unique cat)
 
-It stole a Logicat gaming mouse and it's now on the run. Surprisingly, the mouse still works even though it's not plugged in to anything.
+It stole a Logicat gaming mouse and they're now on the run. Surprisingly, the mouse still works even though it's not plugged in to anything.
 
-Able to keep up a combo like for manual popping, and empowers nearby cats to pop bubbles with its current combo multiplier.
+Able to keep up a combo like for manual popping, and empowers nearby cats to pop bubbles with theri current combo multiplier.
 
 Provides a global click reward value multiplier (upgradable via PPs) by merely existing... Logicat does know how to make a good mouse.
 )",
@@ -1045,13 +1083,13 @@ Provides a global click reward value multiplier (upgradable via PPs) by merely e
 
 Periodically performs maintenance on all nearby cats, temporarily increasing their engine efficiency and making them faster. (Note: this buff stacks with inspirational NB propaganda.)
 
-Provides a global cat reward value multiplier (upgradable via PPs) by merely existing... guess it's a "10x engineer"?
+Provides a global cat reward value multiplier (upgradable via PPs) by merely existing... guess they're a "10x engineer"?
 )",
                 R"(
 ~~ Repulsocat ~~
 (unique cat)
 
-Continuously pushes bubbles away from itself with his powerful USB fan, powered by God knows what kind of batteries. (Note: this effect is applied even while Repulsocat is being dragged.)
+Continuously pushes bubbles away with their powerful USB fan, powered by only Dog knows what kind of batteries. (Note: this effect is applied even while Repulsocat is being dragged.)
 
 Using prestige points, the fan can be upgraded to filter specific bubble types and/or convert a percentage of bubbles to star bubbles.
 )",
@@ -1272,7 +1310,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         widgetId = 0u;
 
         ImGui::SetNextWindowPos({getResolution().x - 15.f, 15.f}, 0, {1.f, 0.f});
-        ImGui::SetNextWindowSizeConstraints(ImVec2(windowWidth, 0.f), ImVec2(windowWidth, getResolution().y - 30.f));
+        ImGui::SetNextWindowSizeConstraints(ImVec2(windowWidth, 0.f), ImVec2(windowWidth, getWindowHeight()));
         ImGui::PushFont(fontImGuiSuperBakery);
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.f); // Set corner radius
@@ -2212,6 +2250,8 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                     done = false;
                     ++wizardCat->hits;
                     wizardCat->cooldown.value = maxCooldown * 2.f;
+
+                    statSpellCast(0u);
                 }
 
                 std::sprintf(tooltipBuffer, "Increase the percentage of bubbles converted into star bubbles.");
@@ -2255,6 +2295,8 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                     done = false;
                     ++wizardCat->hits;
                     wizardCat->cooldown.value = maxCooldown * 2.f;
+
+                    statSpellCast(1u);
                 }
 
                 std::sprintf(tooltipBuffer, "Increase the multiplier applied while the aura is active.");
@@ -2288,6 +2330,32 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                     done = false;
                     ++wizardCat->hits;
                     wizardCat->cooldown.value = maxCooldown * 2.f;
+
+                    statSpellCast(2u);
+                }
+            }
+
+            //
+            // SPELL 3 (TODO P0)
+            if (pt.psvSpellCount.nPurchases >= 4)
+            {
+                ImGui::Separator();
+
+                std::sprintf(tooltipBuffer, "TODO");
+                std::sprintf(labelBuffer, "TODO");
+
+                bool done = false;
+                if (makePurchasableButtonOneTimeByCurrency("TODO", done, ManaType{30u}, pt.mana, "%s mana##%u"))
+                {
+                    playSound(sounds.cast0);
+
+                    // TODO: effect
+
+                    done = false;
+                    ++wizardCat->hits;
+                    wizardCat->cooldown.value = maxCooldown * 2.f;
+
+                    statSpellCast(3u);
                 }
             }
 
@@ -2328,19 +2396,23 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             ImGui::Spacing();
             ImGui::Spacing();
 
-            ImGui::Text("Bubbles popped: %s", toStringWithSeparators(stats.bubblesPopped));
+            const auto bubblesPopped            = stats.getTotalNBubblesPopped();
+            const auto bubblesHandPopped        = stats.getTotalNBubblesHandPopped();
+            const auto bubblesPoppedRevenue     = stats.getTotalRevenue();
+            const auto bubblesHandPoppedRevenue = stats.getTotalRevenueHand();
+
+            ImGui::Text("Bubbles popped: %s", toStringWithSeparators(bubblesPopped));
             ImGui::Indent();
-            ImGui::Text("Clicked: %s", toStringWithSeparators(stats.bubblesHandPopped));
-            ImGui::Text("By cats: %s", toStringWithSeparators(stats.bubblesPopped - stats.bubblesHandPopped));
+            ImGui::Text("Clicked: %s", toStringWithSeparators(bubblesHandPopped));
+            ImGui::Text("By cats: %s", toStringWithSeparators(bubblesPopped - bubblesHandPopped));
             ImGui::Unindent();
 
             ImGui::NextColumn();
 
-            ImGui::Text("Revenue: $%s", toStringWithSeparators(stats.bubblesPoppedRevenue));
+            ImGui::Text("Revenue: $%s", toStringWithSeparators(bubblesPoppedRevenue));
             ImGui::Indent();
-            ImGui::Text("Clicked: $%s", toStringWithSeparators(stats.bubblesHandPoppedRevenue));
-            ImGui::Text("By cats: $%s",
-                        toStringWithSeparators(stats.bubblesPoppedRevenue - stats.bubblesHandPoppedRevenue));
+            ImGui::Text("Clicked: $%s", toStringWithSeparators(bubblesHandPoppedRevenue));
+            ImGui::Text("By cats: $%s", toStringWithSeparators(bubblesPoppedRevenue - bubblesHandPoppedRevenue));
             ImGui::Text("Bombs:  $%s", toStringWithSeparators(stats.explosionRevenue));
             ImGui::Text("Flights: $%s", toStringWithSeparators(stats.flightRevenue));
             ImGui::Unindent();
@@ -2446,21 +2518,49 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             ImGui::SetWindowFontScale(0.75f);
             if (ImGui::BeginTabItem(" Achievements "))
             {
-                ImGui::BeginChild("AchScroll");
+                const sf::base::SizeT nAchievementsUnlocked = sf::base::count(profile.unlockedAchievements,
+                                                                              profile.unlockedAchievements + nAchievements);
+
+                ImGui::SetWindowFontScale(normalFontScale);
+                ImGui::Text("%zu / %zu achievements unlocked", nAchievementsUnlocked, sf::base::getArraySize(achievementData));
+                ImGui::Separator();
+                ImGui::SetWindowFontScale(0.75f);
+
+                ImGui::BeginChild("AchScroll", ImVec2(ImGui::GetContentRegionAvail().x, getWindowHeight() - 125.f));
 
                 sf::base::U64 id = 0u;
                 for (const auto& [name, description] : achievementData)
                 {
+                    const bool  unlocked = profile.unlockedAchievements[id]; // TODO
+                    const float opacity  = unlocked ? 1.f : 0.5f;
+
+                    const ImVec4 textColor{1.f, 1.f, 1.f, opacity};
+
                     ImGui::SetWindowFontScale(1.f);
-                    ImGui::Text("%llu - \"%s\"", id++, name);
+                    ImGui::TextColored(textColor, "%llu - %s", id++, name);
 
                     ImGui::PushFont(fontImGuiMouldyCheese);
                     ImGui::SetWindowFontScale(0.75f);
-                    ImGui::Text("%s", description);
+                    ImGui::TextColored(textColor, "%s", description);
                     ImGui::PopFont();
 
                     ImGui::Separator();
                 }
+
+                buttonHueMod = 120.f;
+                uiPushButtonColors();
+
+                ImGui::SetWindowFontScale(normalFontScale);
+                if (ImGui::Button("Reset stats and achievements"))
+                {
+                    withAllStats([](Stats& stats) { stats = {}; });
+
+                    for (bool& b : profile.unlockedAchievements)
+                        b = false;
+                }
+
+                uiPopButtonColors();
+                buttonHueMod = 0.f;
 
                 ImGui::EndChild();
 
@@ -2830,18 +2930,18 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                        const sf::Vector2f tpPosition,
                        bool               popSoundOverlap)
     {
-        statBubblePopped(byHand, reward);
+        statBubblePopped(bubbleType, byHand, reward);
 
         if (profile.showTextParticles)
         {
             auto& tp = textParticles.emplace_back(
                 TextParticle{.buffer = {},
                              .data   = {.position = {tpPosition.x, tpPosition.y - 10.f},
-                                        .velocity = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
-                                        .scale = sf::base::clamp(1.f + 0.1f * static_cast<float>(combo + 1) / 1.75f, 1.f, 3.0f),
-                                        .accelerationY = 0.0042f,
+                                        .velocity = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.395f,
+                                        .scale = sf::base::clamp(1.f + 0.1f * static_cast<float>(combo + 1) / 1.75f, 1.f, 3.0f) * 0.5f,
+                                        .accelerationY = 0.0039f,
                                         .opacity       = 1.f,
-                                        .opacityDecay  = 0.00175f,
+                                        .opacityDecay  = 0.00150f,
                                         .rotation      = 0.f,
                                         .torque        = rng.getF(-0.002f, 0.002f)}});
 
@@ -2901,6 +3001,17 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             reward = static_cast<MoneyType>(
                 sf::base::ceil(static_cast<float>(reward) * pt.psvPPEngiCatGlobalBonusMult.currentValue()));
 
+        if (byHand && bubble.type == BubbleType::Star)
+            statHighestStarBubblePopCombo(static_cast<sf::base::U64>(combo));
+
+        // Boosts clicks x5 around shrine of clicking
+        for (Shrine& shrine : pt.shrines)
+            if (byHand && shrine.type == ShrineType::Clicking && shrine.isInRange(bubble.position))
+            {
+                reward *= 5;
+                break;
+            }
+
         Shrine* collectorShrine = nullptr;
         for (Shrine& shrine : pt.shrines)
         {
@@ -2923,14 +3034,14 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
 
             spawnParticlesWithHue(shrine.getHue(), 6, shrine.getDrawPosition(), ParticleType::Shrine, rng.getF(0.6f, 1.f), 0.5f);
 
-            spawnParticle(ParticleData{.position      = bubble.position,
-                                       .velocity      = -diff.normalized() * 0.5f,
-                                       .scale         = 1.5f,
-                                       .accelerationY = 0.f,
-                                       .opacity       = 1.f,
-                                       .opacityDecay  = 0.00135f + (shrine.getRange() - diff.length()) / 22000.f,
-                                       .rotation      = 0.f,
-                                       .torque        = 0.f},
+            spawnParticle({.position      = bubble.position,
+                           .velocity      = -diff.normalized() * 0.5f,
+                           .scale         = 1.5f,
+                           .accelerationY = 0.f,
+                           .opacity       = 1.f,
+                           .opacityDecay  = 0.00135f + (shrine.getRange() - diff.length()) / 22000.f,
+                           .rotation      = 0.f,
+                           .torque        = 0.f},
                           /* hue */ 0.f,
                           ParticleType::Bubble);
         }
@@ -3032,6 +3143,72 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
 
             bubble.velocity.y += 0.00005f * deltaTimeMs;
         }
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] bool gameLoopUpdateBubbleClick(sf::base::Optional<sf::Vector2f>& clickPosition, const sf::View& gameView)
+    {
+        if (!clickPosition.hasValue())
+            return false;
+
+        bool anyBubblePoppedByClicking = false;
+
+        const auto clickPos = optWindow->mapPixelToCoords(clickPosition->toVector2i(), gameView);
+
+        forEachBubbleInRadius(clickPos,
+                              128.f,
+                              [&](Bubble& bubble)
+        {
+            if ((clickPos - bubble.position).lengthSquared() > bubble.getRadiusSquared())
+                return ControlFlow::Continue;
+
+            // Prevent clicks around shrine of automation
+            for (Shrine& shrine : pt.shrines)
+                if (shrine.type == ShrineType::Automation && shrine.isInRange(clickPos))
+                {
+                    sounds.failpop.setPosition({clickPos.x, clickPos.y});
+                    playSound(sounds.failpop);
+
+                    return ControlFlow::Break;
+                }
+
+            anyBubblePoppedByClicking = true;
+
+            if (pt.comboPurchased)
+            {
+                addCombo(combo, comboCountdown);
+                comboTextShakeEffect.bump(rng, 1.f + static_cast<float>(combo) * 0.2f);
+            }
+            else
+            {
+                combo = 1;
+            }
+
+            const MoneyType reward = computeFinalReward(bubble.position, pt.getComputedRewardByBubbleType(bubble.type), combo);
+            popWithRewardAndReplaceBubble(reward, /* byHand */ true, bubble, combo, /* popSoundOverlap */ true);
+
+            if (pt.multiPopEnabled)
+                forEachBubbleInRadius(clickPos,
+                                      pt.getComputedMultiPopRange(),
+                                      [&](Bubble& otherBubble)
+                {
+                    if (&otherBubble == &bubble)
+                        return ControlFlow::Continue;
+
+                    popWithRewardAndReplaceBubble(reward,
+                                                  /* byHand */ true,
+                                                  otherBubble,
+                                                  combo,
+                                                  /* popSoundOverlap */ false);
+
+                    return ControlFlow::Continue;
+                });
+
+
+            return ControlFlow::Break;
+        });
+
+        return anyBubblePoppedByClicking;
     }
 
     ////////////////////////////////////////////////////////////
@@ -3279,14 +3456,16 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             {
                 auto& tp = textParticles.emplace_back(
                     TextParticle{.buffer = {},
-                                 .data   = {.position      = {drawPosition.x, drawPosition.y - 10.f},
-                                            .velocity      = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.425f,
-                                            .scale         = 1.25f,
-                                            .accelerationY = 0.0042f,
+                                 .data   = {.position = {drawPosition.x, drawPosition.y - 10.f},
+                                            .velocity = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.395f,
+                                            .scale = sf::base::clamp(1.f + 0.1f * static_cast<float>(combo + 1) / 1.75f, 1.f, 3.0f) *
+                                                     0.5f,
+                                            .accelerationY = 0.0039f,
                                             .opacity       = 1.f,
-                                            .opacityDecay  = 0.00175f,
+                                            .opacityDecay  = 0.00150f,
                                             .rotation      = 0.f,
                                             .torque        = rng.getF(-0.002f, 0.002f)}});
+
 
                 std::snprintf(tp.buffer, sizeof(tp.buffer), "+%llu WP", wisdomReward);
             }
@@ -3302,6 +3481,8 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             turnBubbleNormal(bubble);
 
             cat.cooldown.value = maxCooldown;
+
+            statAbsorbedStarBubble();
         }
     }
 
@@ -3361,7 +3542,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         const auto range        = pt.getComputedRangeByCatType(cat.type);
         const auto rangeSquared = range * range;
 
-        bool anyCatHit = false;
+        SizeT nCatsHit = false;
 
         for (Cat& otherCat : pt.cats)
         {
@@ -3371,7 +3552,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             if ((otherCat.position - cat.position).lengthSquared() > rangeSquared)
                 continue;
 
-            anyCatHit = true;
+            ++nCatsHit;
 
             spawnParticles(8, otherCat.getDrawPosition(), ParticleType::Cog, 0.25f, 0.5f);
 
@@ -3382,10 +3563,13 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             otherCat.boostCountdown.value = 1500.f;
         }
 
-        if (anyCatHit)
+        if (nCatsHit > 0)
         {
             cat.textStatusShakeEffect.bump(rng, 1.5f);
-            ++cat.hits;
+            cat.hits += nCatsHit;
+
+            statMaintenance();
+            statHighestSimultaneousMaintenances(nCatsHit);
         }
 
         cat.cooldown.value = maxCooldown;
@@ -3542,6 +3726,9 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                                                   /* popSoundOverlap */ rng.getF(0.f, 1.f) > 0.75f);
 
                     cat.textStatusShakeEffect.bump(rng, 1.5f);
+
+                    if (bubble.type == BubbleType::Bomb)
+                        pt.achAstrocatPopBomb = true;
 
                     return ControlFlow::Continue;
                 };
@@ -4026,22 +4213,24 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         if (pt.psvBubbleValue.nPurchases >= 19)
             updateMilestone("Prestige Level 19 (MAX)", pt.milestones.prestigeLevel20);
 
-        if (pt.statsTotal.bubblesPoppedRevenue >= 10'000)
+        const auto totalRevenue = pt.statsTotal.getTotalRevenue();
+
+        if (totalRevenue >= 10'000)
             updateMilestone("$10.000 Revenue", pt.milestones.revenue10000);
 
-        if (pt.statsTotal.bubblesPoppedRevenue >= 100'000)
+        if (totalRevenue >= 100'000)
             updateMilestone("$100.000 Revenue", pt.milestones.revenue100000);
 
-        if (pt.statsTotal.bubblesPoppedRevenue >= 1'000'000)
+        if (totalRevenue >= 1'000'000)
             updateMilestone("$1.000.000 Revenue", pt.milestones.revenue1000000);
 
-        if (pt.statsTotal.bubblesPoppedRevenue >= 10'000'000)
+        if (totalRevenue >= 10'000'000)
             updateMilestone("$10.000.000 Revenue", pt.milestones.revenue10000000);
 
-        if (pt.statsTotal.bubblesPoppedRevenue >= 100'000'000)
+        if (totalRevenue >= 100'000'000)
             updateMilestone("$100.000.000 Revenue", pt.milestones.revenue100000000);
 
-        if (pt.statsTotal.bubblesPoppedRevenue >= 1'000'000'000)
+        if (totalRevenue >= 1'000'000'000)
             updateMilestone("$1.000.000.000 Revenue", pt.milestones.revenue1000000000);
 
         for (SizeT i = 0u; i < pt.nShrinesCompleted; ++i)
@@ -4054,17 +4243,15 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
     ////////////////////////////////////////////////////////////
     void gameLoopUpdateAchievements()
     {
-        static std::vector<bool> achievementsUnlocked(512, false);
-
         SizeT nextId = 0u;
 
         const auto unlockIf = [&](const bool condition)
         {
             const auto achievementId = nextId++;
 
-            if (condition && !achievementsUnlocked[achievementId])
+            if (condition && !profile.unlockedAchievements[achievementId])
             {
-                achievementsUnlocked[achievementId] = true;
+                profile.unlockedAchievements[achievementId] = true;
 
                 ImGuiToast toast{ImGuiToastType::None, 3000};
                 toast.setTitle("Achievement unlocked!");
@@ -4080,21 +4267,24 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
 
         const auto skip = [&] { ++nextId; };
 
-        unlockIf(profile.statsLifetime.bubblesHandPopped >= 1);
-        unlockIf(profile.statsLifetime.bubblesHandPopped >= 100);
-        unlockIf(profile.statsLifetime.bubblesHandPopped >= 1'000);
-        unlockIf(profile.statsLifetime.bubblesHandPopped >= 10'000);
-        unlockIf(profile.statsLifetime.bubblesHandPopped >= 100'000);
-        unlockIf(profile.statsLifetime.bubblesHandPopped >= 1'000'000);
-        unlockIf(profile.statsLifetime.bubblesHandPopped >= 10'000'000);
+        const auto bubblesHandPopped = profile.statsLifetime.getTotalNBubblesHandPopped();
+        const auto bubblesCatPopped  = profile.statsLifetime.getTotalNBubblesCatPopped();
 
-        unlockIf(profile.statsLifetime.getBubblesCatPopped() >= 1);
-        unlockIf(profile.statsLifetime.getBubblesCatPopped() >= 100);
-        unlockIf(profile.statsLifetime.getBubblesCatPopped() >= 1'000);
-        unlockIf(profile.statsLifetime.getBubblesCatPopped() >= 10'000);
-        unlockIf(profile.statsLifetime.getBubblesCatPopped() >= 100'000);
-        unlockIf(profile.statsLifetime.getBubblesCatPopped() >= 1'000'000);
-        unlockIf(profile.statsLifetime.getBubblesCatPopped() >= 10'000'000);
+        unlockIf(bubblesHandPopped >= 1);
+        unlockIf(bubblesHandPopped >= 100);
+        unlockIf(bubblesHandPopped >= 1'000);
+        unlockIf(bubblesHandPopped >= 10'000);
+        unlockIf(bubblesHandPopped >= 100'000);
+        unlockIf(bubblesHandPopped >= 1'000'000);
+        unlockIf(bubblesHandPopped >= 10'000'000);
+
+        unlockIf(bubblesCatPopped >= 1);
+        unlockIf(bubblesCatPopped >= 100);
+        unlockIf(bubblesCatPopped >= 1'000);
+        unlockIf(bubblesCatPopped >= 10'000);
+        unlockIf(bubblesCatPopped >= 100'000);
+        unlockIf(bubblesCatPopped >= 1'000'000);
+        unlockIf(bubblesCatPopped >= 10'000'000);
 
         unlockIf(pt.comboPurchased);
 
@@ -4216,13 +4406,161 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         unlockIf(combo >= 20);
         unlockIf(combo >= 25);
 
-        skip(); // 112
-        skip(); // 113
-        skip(); // 114
-        skip(); // 115
-        skip(); // 116
+        unlockIf(profile.statsLifetime.highestStarBubblePopCombo >= 5);
+        unlockIf(profile.statsLifetime.highestStarBubblePopCombo >= 10);
+        unlockIf(profile.statsLifetime.highestStarBubblePopCombo >= 15);
+        unlockIf(profile.statsLifetime.highestStarBubblePopCombo >= 20);
+        unlockIf(profile.statsLifetime.highestStarBubblePopCombo >= 25);
 
-        // TODO: carry on
+        const auto nStarBubblesPoppedByHand = profile.statsLifetime.getNBubblesHandPopped(BubbleType::Star);
+        const auto nStarBubblesPoppedByCat  = profile.statsLifetime.getNBubblesCatPopped(BubbleType::Star);
+
+        unlockIf(nStarBubblesPoppedByHand >= 1);
+        unlockIf(nStarBubblesPoppedByHand >= 100);
+        unlockIf(nStarBubblesPoppedByHand >= 1'000);
+        unlockIf(nStarBubblesPoppedByHand >= 10'000);
+        unlockIf(nStarBubblesPoppedByHand >= 100'000);
+        unlockIf(nStarBubblesPoppedByHand >= 1'000'000);
+        unlockIf(nStarBubblesPoppedByHand >= 10'000'000);
+
+        unlockIf(nStarBubblesPoppedByCat >= 1);
+        unlockIf(nStarBubblesPoppedByCat >= 100);
+        unlockIf(nStarBubblesPoppedByCat >= 1'000);
+        unlockIf(nStarBubblesPoppedByCat >= 10'000);
+        unlockIf(nStarBubblesPoppedByCat >= 100'000);
+        unlockIf(nStarBubblesPoppedByCat >= 1'000'000);
+        unlockIf(nStarBubblesPoppedByCat >= 10'000'000);
+
+        const auto nBombBubblesPoppedByHand = profile.statsLifetime.getNBubblesHandPopped(BubbleType::Bomb);
+        const auto nBombBubblesPoppedByCat  = profile.statsLifetime.getNBubblesCatPopped(BubbleType::Bomb);
+
+        unlockIf(nBombBubblesPoppedByHand >= 1);
+        unlockIf(nBombBubblesPoppedByHand >= 100);
+        unlockIf(nBombBubblesPoppedByHand >= 1'000);
+        unlockIf(nBombBubblesPoppedByHand >= 10'000);
+        unlockIf(nBombBubblesPoppedByHand >= 100'000);
+
+        unlockIf(nBombBubblesPoppedByCat >= 1);
+        unlockIf(nBombBubblesPoppedByCat >= 100);
+        unlockIf(nBombBubblesPoppedByCat >= 1'000);
+        unlockIf(nBombBubblesPoppedByCat >= 10'000);
+        unlockIf(nBombBubblesPoppedByCat >= 100'000);
+
+        unlockIf(pt.achAstrocatPopBomb);
+
+        unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Normal)]);
+        unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Uni)]);
+        unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Devil)]);
+        unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Wizard)]);
+        unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Mouse)]);
+        unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Engi)]);
+        unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Repulso)]);
+
+        unlockIf(pt.psvShrineActivation.nPurchases >= 1);
+        unlockIf(pt.psvShrineActivation.nPurchases >= 2);
+        unlockIf(pt.psvShrineActivation.nPurchases >= 3);
+        unlockIf(pt.psvShrineActivation.nPurchases >= 4);
+        unlockIf(pt.psvShrineActivation.nPurchases >= 5);
+        unlockIf(pt.psvShrineActivation.nPurchases >= 6);
+        unlockIf(pt.psvShrineActivation.nPurchases >= 7);
+        unlockIf(pt.psvShrineActivation.nPurchases >= 8);
+        unlockIf(pt.psvShrineActivation.nPurchases >= 9);
+
+        unlockIf(pt.nShrinesCompleted >= 1);
+        unlockIf(pt.nShrinesCompleted >= 2);
+        unlockIf(pt.nShrinesCompleted >= 3);
+        unlockIf(pt.nShrinesCompleted >= 4);
+        unlockIf(pt.nShrinesCompleted >= 5);
+        unlockIf(pt.nShrinesCompleted >= 6);
+        unlockIf(pt.nShrinesCompleted >= 7);
+        unlockIf(pt.nShrinesCompleted >= 8);
+        unlockIf(pt.nShrinesCompleted >= 9);
+
+        unlockIf(profile.statsLifetime.nAbsorbedStarBubbles >= 1);
+        unlockIf(profile.statsLifetime.nAbsorbedStarBubbles >= 100);
+        unlockIf(profile.statsLifetime.nAbsorbedStarBubbles >= 1'000);
+        unlockIf(profile.statsLifetime.nAbsorbedStarBubbles >= 10'000);
+        unlockIf(profile.statsLifetime.nAbsorbedStarBubbles >= 100'000);
+
+        unlockIf(pt.psvSpellCount.nPurchases >= 1);
+        unlockIf(pt.psvSpellCount.nPurchases >= 2);
+        unlockIf(pt.psvSpellCount.nPurchases >= 3);
+        unlockIf(pt.psvSpellCount.nPurchases >= 4);
+
+        unlockIf(profile.statsLifetime.nSpellCasts[0] >= 1);
+        unlockIf(profile.statsLifetime.nSpellCasts[0] >= 10);
+        unlockIf(profile.statsLifetime.nSpellCasts[0] >= 100);
+        unlockIf(profile.statsLifetime.nSpellCasts[0] >= 1'000);
+
+        unlockIf(profile.statsLifetime.nSpellCasts[1] >= 1);
+        unlockIf(profile.statsLifetime.nSpellCasts[1] >= 10);
+        unlockIf(profile.statsLifetime.nSpellCasts[1] >= 100);
+        unlockIf(profile.statsLifetime.nSpellCasts[1] >= 1'000);
+
+        unlockIf(profile.statsLifetime.nSpellCasts[2] >= 1);
+        unlockIf(profile.statsLifetime.nSpellCasts[2] >= 10);
+        unlockIf(profile.statsLifetime.nSpellCasts[2] >= 100);
+        unlockIf(profile.statsLifetime.nSpellCasts[2] >= 1'000);
+
+        unlockIf(profile.statsLifetime.nSpellCasts[3] >= 1);
+        unlockIf(profile.statsLifetime.nSpellCasts[3] >= 10);
+        unlockIf(profile.statsLifetime.nSpellCasts[3] >= 100);
+        unlockIf(profile.statsLifetime.nSpellCasts[3] >= 1'000);
+
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Wizard)].nPurchases >= 1);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Wizard)].nPurchases >= 3);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Wizard)].nPurchases >= 6);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Wizard)].nPurchases >= 9);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Wizard)].nPurchases >= 12);
+
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Wizard)].nPurchases >= 1);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Wizard)].nPurchases >= 3);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Wizard)].nPurchases >= 6);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Wizard)].nPurchases >= 9);
+
+        unlockIf(pt.mouseCatCombo >= 25);
+        unlockIf(pt.mouseCatCombo >= 50);
+        unlockIf(pt.mouseCatCombo >= 75);
+        unlockIf(pt.mouseCatCombo >= 100);
+        unlockIf(pt.mouseCatCombo >= 125);
+        unlockIf(pt.mouseCatCombo >= 150);
+        unlockIf(pt.mouseCatCombo >= 175);
+
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Mouse)].nPurchases >= 1);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Mouse)].nPurchases >= 3);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Mouse)].nPurchases >= 6);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Mouse)].nPurchases >= 9);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Mouse)].nPurchases >= 12);
+
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Mouse)].nPurchases >= 1);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Mouse)].nPurchases >= 3);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Mouse)].nPurchases >= 6);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Mouse)].nPurchases >= 9);
+
+        unlockIf(profile.statsLifetime.nMaintenances >= 1);
+        unlockIf(profile.statsLifetime.nMaintenances >= 10);
+        unlockIf(profile.statsLifetime.nMaintenances >= 100);
+        unlockIf(profile.statsLifetime.nMaintenances >= 1'000);
+        unlockIf(profile.statsLifetime.nMaintenances >= 10'000);
+        unlockIf(profile.statsLifetime.nMaintenances >= 100'000);
+        unlockIf(profile.statsLifetime.nMaintenances >= 1'000'000);
+
+        unlockIf(profile.statsLifetime.highestSimultaneousMaintenances >= 3);
+        unlockIf(profile.statsLifetime.highestSimultaneousMaintenances >= 6);
+        unlockIf(profile.statsLifetime.highestSimultaneousMaintenances >= 9);
+        unlockIf(profile.statsLifetime.highestSimultaneousMaintenances >= 12);
+        unlockIf(profile.statsLifetime.highestSimultaneousMaintenances >= 15);
+
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Engi)].nPurchases >= 1);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Engi)].nPurchases >= 3);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Engi)].nPurchases >= 6);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Engi)].nPurchases >= 9);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Engi)].nPurchases >= 12);
+
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Engi)].nPurchases >= 1);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Engi)].nPurchases >= 3);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Engi)].nPurchases >= 6);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Engi)].nPurchases >= 9);
     }
 
     ////////////////////////////////////////////////////////////
@@ -4528,10 +4866,10 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             return;
 
         sf::Text tempText{fontSuperBakery,
-                          {.characterSize    = 16u,
+                          {.characterSize    = 32u,
                            .fillColor        = sf::Color::White,
                            .outlineColor     = colorBlueOutline,
-                           .outlineThickness = 1.f}};
+                           .outlineThickness = 2.f}};
 
         for (const auto& textParticle : textParticles)
         {
@@ -4967,87 +5305,17 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         }
 
         //
-        //
         // Update spatial partitioning
         spatialGrid.clear();
         spatialGrid.populate(pt.bubbles);
 
+        //
+        // Update bubbles
         gameLoopUpdateBubbles(deltaTimeMs);
 
-        bool anyBubblePoppedByClicking = false;
-
-        if (clickPosition.hasValue())
-        {
-            const auto clickPos = window.mapPixelToCoords(clickPosition->toVector2i(), gameView);
-
-            const auto clickAction = [&](Bubble& bubble)
-            {
-                if ((clickPos - bubble.position).lengthSquared() > bubble.getRadiusSquared())
-                    return ControlFlow::Continue;
-
-                // Prevent clicks around shrine of automation
-                // Boosts clicks around shrine of clicking
-                bool clickingBoost = false;
-                {
-                    for (Shrine& shrine : pt.shrines)
-                    {
-                        if (shrine.type == ShrineType::Automation && shrine.isActive() &&
-                            (clickPos - shrine.position).length() < shrine.getRange())
-                        {
-                            sounds.failpop.setPosition({clickPos.x, clickPos.y});
-                            playSound(sounds.failpop);
-
-                            return ControlFlow::Break;
-                        }
-
-                        if (shrine.type == ShrineType::Clicking && shrine.isActive() &&
-                            (clickPos - shrine.position).length() < shrine.getRange())
-                        {
-                            clickingBoost = true;
-                            break;
-                        }
-                    }
-                }
-
-                anyBubblePoppedByClicking = true;
-
-                if (pt.comboPurchased)
-                {
-                    addCombo(combo, comboCountdown);
-                    comboTextShakeEffect.bump(rng, 1.f + static_cast<float>(combo) * 0.2f);
-                }
-                else
-                {
-                    combo = 1;
-                }
-
-                MoneyType reward = computeFinalReward(bubble.position, pt.getComputedRewardByBubbleType(bubble.type), combo);
-                if (clickingBoost)
-                    reward *= 5;
-
-                popWithRewardAndReplaceBubble(reward, /* byHand */ true, bubble, combo, /* popSoundOverlap */ true);
-
-                if (pt.multiPopEnabled)
-                    forEachBubbleInRadius(clickPos,
-                                          pt.getComputedMultiPopRange(),
-                                          [&](Bubble& otherBubble)
-                    {
-                        if (&otherBubble != &bubble)
-                            popWithRewardAndReplaceBubble(reward,
-                                                          /* byHand */ true,
-                                                          otherBubble,
-                                                          combo,
-                                                          /* popSoundOverlap */ false);
-
-                        return ControlFlow::Continue;
-                    });
-
-
-                return ControlFlow::Break;
-            };
-
-            forEachBubbleInRadius(clickPos, 128.f, clickAction);
-        }
+        //
+        // Process clicks
+        const bool anyBubblePoppedByClicking = gameLoopUpdateBubbleClick(clickPosition, gameView);
 
         //
         // Combo failure due to timer end
@@ -5095,7 +5363,11 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                     {
                         if (pt.astroCatInspirePurchased &&
                             detectCollision(catA.position, catB.position, catA.getRadius(), catB.getRadius()))
+                        {
                             catB.inspiredCountdown.value = pt.getComputedInspirationDuration();
+
+                            pt.achAstrocatInspireByType[asIdx(catB.type)] = true;
+                        }
 
                         return true;
                     }
@@ -5288,6 +5560,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
 
         //
         // Splash screen
+        window.setView(hudView);
         if (splashCountdown.value > 0.f)
             drawSplashScreen(window, txLogo, splashCountdown, resolution, profile.hudScale);
 

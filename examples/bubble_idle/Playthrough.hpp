@@ -164,6 +164,11 @@ struct Playthrough
     Milestones milestones;
 
     //
+    // Achievement tracking
+    bool achAstrocatPopBomb                  = false;
+    bool achAstrocatInspireByType[nCatTypes] = {};
+
+    //
     // Other flags
     bool prestigeTipShown = false;
     bool shrinesSpawned   = false;
