@@ -4,7 +4,9 @@
 #include "Bubble.hpp"
 #include "Cat.hpp"
 #include "CatConstants.hpp"
+#include "CatType.hpp"
 #include "Constants.hpp"
+#include "Doll.hpp"
 #include "ExactArray.hpp"
 #include "Milestones.hpp"
 #include "PSVDataConstants.hpp"
@@ -14,6 +16,8 @@
 #include "Stats.hpp"
 
 #include "SFML/System/Vector2.hpp"
+
+#include "SFML/Base/Optional.hpp"
 
 #include <vector>
 
@@ -37,8 +41,8 @@ struct Playthrough
     PurchasableScalingValue psvSpellCount{&PSVDataConstants::spellCount};
     PurchasableScalingValue psvBubbleValue{&PSVDataConstants::bubbleValue}; // also tracks prestige level
     PurchasableScalingValue psvExplosionRadiusMult{&PSVDataConstants::explosionRadiusMult};
-    PurchasableScalingValue psvStarpawPercentage{&PSVDataConstants::starpawPercentage};
-    PurchasableScalingValue psvMewltiplierMult{&PSVDataConstants::mewltiplierMult};
+    PurchasableScalingValue psvStarpawPercentage{&PSVDataConstants::starpawPercentage}; // uses WPs
+    PurchasableScalingValue psvMewltiplierMult{&PSVDataConstants::mewltiplierMult};     // uses WPs
 
     EXACT_ARRAY(PurchasableScalingValue,
                 psvPerCatType,
@@ -47,13 +51,14 @@ struct Playthrough
                     {&PSVDataConstants::catNormal},
                     {&PSVDataConstants::catUni},
                     {&PSVDataConstants::catDevil},
-                    {&PSVDataConstants::catWitch},
                     {&PSVDataConstants::catAstro},
 
-                    {&PSVDataConstants::catWizard},  // TODO P1: unused?
-                    {&PSVDataConstants::catMouse},   // TODO P1: unused?
-                    {&PSVDataConstants::catEngi},    // TODO P1: unused?
-                    {&PSVDataConstants::catRepulso}, // TODO P1: unused?
+                    {&PSVDataConstants::catWitch},
+                    {&PSVDataConstants::catWizard},   // TODO P1: unused?
+                    {&PSVDataConstants::catMouse},    // TODO P1: unused?
+                    {&PSVDataConstants::catEngi},     // TODO P1: unused?
+                    {&PSVDataConstants::catRepulso},  // TODO P1: unused?
+                    {&PSVDataConstants::catAttracto}, // TODO P1: unused?
                 });
 
     EXACT_ARRAY(PurchasableScalingValue,
@@ -63,13 +68,14 @@ struct Playthrough
                     {&PSVDataConstants::catNormalCooldownMult},
                     {&PSVDataConstants::catUniCooldownMult},
                     {&PSVDataConstants::catDevilCooldownMult},
-                    {&PSVDataConstants::catWitchCooldownMult},
                     {&PSVDataConstants::catAstroCooldownMult},
 
+                    {&PSVDataConstants::catWitchCooldownMult},
                     {&PSVDataConstants::catWizardCooldownMult},
                     {&PSVDataConstants::catMouseCooldownMult},
                     {&PSVDataConstants::catEngiCooldownMult},
                     {&PSVDataConstants::catRepulsoCooldownMult},
+                    {&PSVDataConstants::catAttractoCooldownMult},
                 });
 
     EXACT_ARRAY(PurchasableScalingValue,
@@ -79,13 +85,14 @@ struct Playthrough
                     {&PSVDataConstants::catNormalRangeDiv},
                     {&PSVDataConstants::catUniRangeDiv},
                     {&PSVDataConstants::catDevilRangeDiv},
-                    {&PSVDataConstants::catWitchRangeDiv},
                     {&PSVDataConstants::catAstroRangeDiv},
 
+                    {&PSVDataConstants::catWitchRangeDiv},
                     {&PSVDataConstants::catWizardRangeDiv},
                     {&PSVDataConstants::catMouseRangeDiv},
                     {&PSVDataConstants::catEngiRangeDiv},
                     {&PSVDataConstants::catRepulsoRangeDiv},
+                    {&PSVDataConstants::catAttractoRangeDiv},
                 });
 
     //
@@ -134,24 +141,29 @@ struct Playthrough
     bool starpawConversionIgnoreBombs = false;
     bool repulsoCatFilterPurchased    = false;
     bool repulsoCatConverterPurchased = false;
+    bool attractoCatFilterPurchased   = false;
 
     //
     // Permanent purchases settings
-    bool multiPopEnabled               = false;
-    bool windEnabled                   = false;
-    bool geniusCatIgnoreNormalBubbles  = false;
-    bool geniusCatIgnoreStarBubbles    = false;
-    bool geniusCatIgnoreBombBubbles    = false;
-    bool repulsoCatIgnoreNormalBubbles = false;
-    bool repulsoCatIgnoreStarBubbles   = false;
-    bool repulsoCatIgnoreBombBubbles   = false;
-    bool repulsoCatConverterEnabled    = false;
+    bool multiPopEnabled                = false;
+    bool windEnabled                    = false;
+    bool geniusCatIgnoreNormalBubbles   = false;
+    bool geniusCatIgnoreStarBubbles     = false;
+    bool geniusCatIgnoreBombBubbles     = false;
+    bool repulsoCatIgnoreNormalBubbles  = false;
+    bool repulsoCatIgnoreStarBubbles    = false;
+    bool repulsoCatIgnoreBombBubbles    = false;
+    bool repulsoCatConverterEnabled     = false;
+    bool attractoCatIgnoreNormalBubbles = false;
+    bool attractoCatIgnoreStarBubbles   = false;
+    bool attractoCatIgnoreBombBubbles   = false;
 
     //
     // Object state
     std::vector<Bubble> bubbles;
     std::vector<Cat>    cats;
     std::vector<Shrine> shrines;
+    std::vector<Doll>   dolls;
 
     //
     // Shrines
@@ -180,6 +192,7 @@ struct Playthrough
             return;
 
         shrinesSpawned = true;
+        shrines.reserve(9u);
 
         for (SizeT i = 0u; i < 9u; ++i)
             shrines.push_back({
@@ -214,6 +227,8 @@ struct Playthrough
         psvBubbleCount.nPurchases         = 0u;
         psvSpellCount.nPurchases          = 0u;
         psvExplosionRadiusMult.nPurchases = 0u;
+        psvStarpawPercentage.nPurchases   = 0u;
+        psvMewltiplierMult.nPurchases     = 0u;
 
         for (auto& psv : psvPerCatType)
             psv.nPurchases = 0u;
@@ -239,7 +254,8 @@ struct Playthrough
         mouseCatCombo                = 0.f;
         mouseCatComboCountdown.value = 0.f;
 
-        windEnabled = false;
+        multiPopEnabled = false;
+        windEnabled     = false;
 
         // bubbles, cats, and shrines are cleaned in the game loop
 
@@ -284,12 +300,12 @@ struct Playthrough
                               baseRequiredRewards,
                               nShrineTypes,
                               {
-                                  1'000,         // Magic // TODO P0: decide on values, implement all magic spells
+                                  1'000,         // Voodoo
+                                  5'000,         // Magic
                                   10'000,        // Clicking
                                   50'000,        // Automation
                                   150'000,       // Repulsion
                                   500'000,       // Attraction
-                                  1'500'000,     // Decay
                                   25'000'000,    // Chaos
                                   500'000'000,   // Transmutation
                                   1'000'000'000, // Victory
@@ -363,10 +379,11 @@ struct Playthrough
     ////////////////////////////////////////////////////////////
     [[nodiscard]] float getComputedGlobalCostMultiplier() const
     {
+        // TODO P1: revisit and maybe add more factors
+
         const auto nCatNormal = getCatCountByType(CatType::Normal);
         const auto nCatUni    = getCatCountByType(CatType::Uni);
         const auto nCatDevil  = getCatCountByType(CatType::Devil);
-        const auto nCatWitch  = getCatCountByType(CatType::Witch);
         const auto nCatAstro  = getCatCountByType(CatType::Astro);
 
         // [ 0.25, 0.25 + 0.125, 0.25 + 0.125 + 0.0625, ... ]
@@ -380,7 +397,6 @@ struct Playthrough
                (geomSum(nCatNormal) * 0.35f) +                  //
                (geomSum(nCatUni) * 0.5f) +                      //
                (geomSum(nCatDevil) * 0.75f) +                   //
-               (geomSum(nCatWitch) * 0.75f) +                   //
                (geomSum(nCatAstro) * 0.75f);
     }
 

@@ -2,6 +2,7 @@
 
 #include <SFML/Base/InitializerList.hpp>
 
+
 ////////////////////////////////////////////////////////////
 template <typename T>
 [[nodiscard, gnu::always_inline, gnu::const]] consteval auto count(const std::initializer_list<T>& l) noexcept

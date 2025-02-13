@@ -9,6 +9,7 @@
 #include "Profile.hpp"
 #include "PurchasableScalingValue.hpp"
 #include "Shrine.hpp"
+#include "Timer.hpp"
 #include "json.hpp"
 
 #include "SFML/System/Vector2.hpp"
@@ -64,11 +65,56 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Bubble, position, velocity, radius, rotation,
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Cat, type, position, wobbleRadians, cooldown, hue, inspiredCountdown, boostCountdown, nameIdx, hits);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
+    Cat,
+    type,
+    position,
+    wobbleRadians,
+    cooldown,
+    hue,
+    inspiredCountdown,
+    boostCountdown,
+    nameIdx,
+    hits,
+    hexedTimer);
+
+////////////////////////////////////////////////////////////
+// NOLINTNEXTLINE(modernize-use-constraints)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Doll, position, wobbleRadians, hue, buffPower, catType, tcActivation, tcDeath);
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Shrine, position, wobbleRadians, tcActivation, tcDeath, collectedReward, type);
+
+////////////////////////////////////////////////////////////
+// NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
+void to_json(nlohmann::json& j, const Timer& p)
+{
+    j = p.value;
+}
+
+////////////////////////////////////////////////////////////
+// NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
+void from_json(const nlohmann::json& j, Timer& p)
+{
+    p.value = j;
+}
+
+////////////////////////////////////////////////////////////
+// NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
+void to_json(nlohmann::json& j, const BidirectionalTimer& p)
+{
+    j[0] = p.value;
+    j[1] = static_cast<bool>(p.direction);
+}
+
+////////////////////////////////////////////////////////////
+// NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
+void from_json(const nlohmann::json& j, BidirectionalTimer& p)
+{
+    p.value     = j[0];
+    p.direction = static_cast<TimerDirection>(j[1].get<bool>());
+}
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(readability-identifier-naming, misc-use-internal-linkage)
@@ -291,6 +337,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     starpawConversionIgnoreBombs,
     repulsoCatFilterPurchased,
     repulsoCatConverterPurchased,
+    attractoCatFilterPurchased,
 
     multiPopEnabled,
     windEnabled,
@@ -301,10 +348,14 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     repulsoCatIgnoreStarBubbles,
     repulsoCatIgnoreBombBubbles,
     repulsoCatConverterEnabled,
+    attractoCatIgnoreNormalBubbles,
+    attractoCatIgnoreStarBubbles,
+    attractoCatIgnoreBombBubbles,
 
     bubbles,
     cats,
     shrines,
+    dolls,
 
     nShrinesCompleted,
 

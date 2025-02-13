@@ -6,11 +6,11 @@
 
 
 ////////////////////////////////////////////////////////////
-constexpr sf::Vector2f gameScreenSize{1366.f, 768.f};
-constexpr auto         gameScreenSizeUInt = gameScreenSize.toVector2u();
+inline constexpr sf::Vector2f gameScreenSize{1366.f, 768.f};
+inline constexpr auto         gameScreenSizeUInt = gameScreenSize.toVector2u();
 
 ////////////////////////////////////////////////////////////
-constexpr sf::Vector2f boundaries{1366.f * 10.f, 768.f};
+inline constexpr sf::Vector2f boundaries{gameScreenSize.x * 10.f, gameScreenSize.y};
 
 ////////////////////////////////////////////////////////////
-constexpr sf::Color colorBlueOutline{50u, 84u, 135u};
+inline constexpr sf::Color colorBlueOutline{50u, 84u, 135u};

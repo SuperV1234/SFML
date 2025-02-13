@@ -25,7 +25,7 @@
         bubbleIndexBuffer0.clear();
         bubbleIndexBuffer0.reserve(pt.bubbles.size());
 
-        spatialGrid.pushAllIndicesInRadius(center, radius, bubbleIndexBuffer0);
+        sweepAndPrune.pushAllIndicesInRadius(center, radius, bubbleIndexBuffer0);
 
         std::sort(bubbleIndexBuffer0.begin(), bubbleIndexBuffer0.end());
 
@@ -49,7 +49,7 @@
 
         const float radiusSq = radius * radius;
 
-        spatialGrid.forEachIndexInRadius(center,
+        sweepAndPrune.forEachIndexInRadius(center,
                                          radius,
                                          [&](const SizeT index)
         {

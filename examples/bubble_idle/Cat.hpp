@@ -1,7 +1,9 @@
 #pragma once
 
+#include "CatType.hpp"
 #include "Countdown.hpp"
 #include "TextShakeEffect.hpp"
+#include "Timer.hpp"
 
 #include "SFML/System/Vector2.hpp"
 
@@ -9,42 +11,8 @@
 #include "SFML/Base/Optional.hpp"
 #include "SFML/Base/SizeT.hpp"
 
+#include <cmath>
 
-////////////////////////////////////////////////////////////
-enum class [[nodiscard]] CatType : sf::base::U8
-{
-    Normal = 0u,
-    Uni    = 1u,
-    Devil  = 2u,
-    Witch  = 3u,
-    Astro  = 4u,
-
-    Wizard  = 5u,
-    Mouse   = 6u,
-    Engi    = 7u,
-    Repulso = 8u,
-
-    Count
-};
-
-////////////////////////////////////////////////////////////
-[[nodiscard, gnu::always_inline, gnu::const]] inline constexpr auto asIdx(const CatType type) noexcept
-{
-    return static_cast<sf::base::SizeT>(type);
-}
-
-////////////////////////////////////////////////////////////
-enum : sf::base::SizeT
-{
-    nCatTypes = asIdx(CatType::Count)
-};
-
-////////////////////////////////////////////////////////////
-[[nodiscard, gnu::always_inline, gnu::const]] inline constexpr bool isUniqueCatType(const CatType catType) noexcept
-{
-    SFML_BASE_ASSERT(catType < CatType::Count);
-    return catType >= CatType::Wizard;
-}
 
 ////////////////////////////////////////////////////////////
 struct [[nodiscard]] Cat
@@ -72,6 +40,8 @@ struct [[nodiscard]] Cat
     sf::base::U32 hits = 0u;
 
     CatType type;
+
+    sf::base::Optional<BidirectionalTimer> hexedTimer;
 
     ////////////////////////////////////////////////////////////
     struct [[nodiscard]] AstroState

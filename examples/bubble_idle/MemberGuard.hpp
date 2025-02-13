@@ -5,22 +5,6 @@
 
 ////////////////////////////////////////////////////////////
 template <typename This, auto Fn>
-struct MemberInitGuard
-{
-    This* thisPtr;
-
-    MemberInitGuard(This* ptr) : thisPtr(ptr)
-    {
-        Fn(*thisPtr);
-    }
-};
-
-////////////////////////////////////////////////////////////
-#define MEMBER_INIT_GUARD(type, ...) \
-    MemberInitGuard<type, [](auto& self) __VA_ARGS__> SFML_BASE_TOKEN_PASTE(bbMemberInitGuard, __LINE__) { this }
-
-////////////////////////////////////////////////////////////
-template <typename This, auto Fn>
 struct MemberScopeGuard
 {
     This* thisPtr;

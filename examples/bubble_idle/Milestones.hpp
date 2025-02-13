@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ExactArray.hpp"
-#include "Shrine.hpp"
+#include "ShrineType.hpp"
 
 #include "SFML/Base/IntTypes.hpp"
 
@@ -50,12 +50,12 @@ struct [[nodiscard]] Milestones
                 shrineCompletions,
                 nShrineTypes,
                 {
+                    maxMilestone, // Voodoo
                     maxMilestone, // Magic
                     maxMilestone, // Clicking
                     maxMilestone, // Automation
                     maxMilestone, // Repulsion
                     maxMilestone, // Attraction
-                    maxMilestone, // Decay
                     maxMilestone, // Chaos
                     maxMilestone, // Transmutation
                     maxMilestone, // Victory

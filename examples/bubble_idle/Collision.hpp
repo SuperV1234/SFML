@@ -16,10 +16,10 @@ struct [[nodiscard]] CollisionResolution
 };
 
 ////////////////////////////////////////////////////////////
-[[nodiscard]] inline bool detectCollision(const sf::Vector2f iPosition,
-                                          const sf::Vector2f jPosition,
-                                          const float        iRadius,
-                                          const float        jRadius)
+[[nodiscard, gnu::const]] inline bool detectCollision(const sf::Vector2f iPosition,
+                                                      const sf::Vector2f jPosition,
+                                                      const float        iRadius,
+                                                      const float        jRadius)
 {
     const sf::Vector2f diff            = jPosition - iPosition;
     const float        squaredDistance = diff.lengthSquared();
@@ -29,7 +29,7 @@ struct [[nodiscard]] CollisionResolution
 }
 
 ////////////////////////////////////////////////////////////
-[[nodiscard]] inline sf::base::Optional<CollisionResolution> handleCollision(
+[[nodiscard, gnu::pure]] inline sf::base::Optional<CollisionResolution> handleCollision(
     const float        deltaTimeMs,
     const sf::Vector2f iPosition,
     const sf::Vector2f jPosition,

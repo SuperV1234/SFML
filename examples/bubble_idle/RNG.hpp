@@ -1,9 +1,8 @@
 #pragma once
 
-#include "SFML/System/Vector2.hpp"
+#include "AssertAssume.hpp"
 
-#include "SFML/Base/Assert.hpp"
-#include "SFML/Base/Builtins/Assume.hpp"
+#include "SFML/System/Vector2.hpp"
 
 #include <random>
 
@@ -49,18 +48,14 @@ public:
     template <typename T>
     [[nodiscard, gnu::always_inline, gnu::flatten]] inline T getI(const T min, const T max)
     {
-        SFML_BASE_ASSERT(min <= max);
-        SFML_BASE_ASSUME(min <= max);
-
+        ASSERT_AND_ASSUME(min <= max);
         return std::uniform_int_distribution<T>{min, max}(m_engine);
     }
 
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline, gnu::flatten]] inline float getF(const float min, const float max)
     {
-        SFML_BASE_ASSERT(min <= max);
-        SFML_BASE_ASSUME(min <= max);
-
+        ASSERT_AND_ASSUME(min <= max);
         return std::uniform_real_distribution<float>{min, max}(m_engine);
     }
 

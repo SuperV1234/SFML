@@ -70,21 +70,18 @@ inline constexpr PSVData catDevilRangeDiv //
      .cost          = {.initial = 150'000.f, .exponential = 1.85f},
      .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
 
-// TODO P1: ??
 inline constexpr PSVData catWitch //
-    {.nMaxPurchases = 64u, .cost = {.initial = 1000000.f, .exponential = 1.5}, .value = {}};
+    {.nMaxPurchases = 0u, .cost = {}, .value = {}};
 
-// TODO P1: ??
 inline constexpr PSVData catWitchCooldownMult //
     {.nMaxPurchases = 12u,
-     .cost          = {.initial = 3'500'000.f, .exponential = 1.68f},
+     .cost          = {.initial = 40'000.f, .exponential = 1.68f},
      .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
 
-// TODO P1: ??
 inline constexpr PSVData catWitchRangeDiv //
     {.nMaxPurchases = 9u,
-     .cost          = {.initial = 5'500'000.f, .exponential = 1.85f},
-     .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
+     .cost          = {.initial = 15'000.f, .exponential = 1.85f},
+     .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.8f, .flat = 0.4f}};
 
 inline constexpr PSVData catWizard //
     {.nMaxPurchases = 0u, .cost = {}, .value = {}};
@@ -136,6 +133,19 @@ inline constexpr PSVData catRepulsoCooldownMult //
 inline constexpr PSVData catRepulsoRangeDiv //
     {.nMaxPurchases = 9u,
      .cost          = {.initial = 225'000.f, .exponential = 1.85f},
+     .value         = {.initial = 0.7f, .multiplicative = -0.025f, .exponential = 0.95f, .flat = 0.3f}};
+
+inline constexpr PSVData catAttracto //
+    {.nMaxPurchases = 0u, .cost = {}, .value = {}};
+
+inline constexpr PSVData catAttractoCooldownMult //
+    {.nMaxPurchases = 12u,
+     .cost          = {.initial = 300'000.f, .exponential = 1.68f},
+     .value         = {.initial = 1.f, .linear = 0.015f, .multiplicative = 0.05f, .exponential = 0.8f}};
+
+inline constexpr PSVData catAttractoRangeDiv //
+    {.nMaxPurchases = 9u,
+     .cost          = {.initial = 275'000.f, .exponential = 1.85f},
      .value         = {.initial = 0.7f, .multiplicative = -0.025f, .exponential = 0.95f, .flat = 0.3f}};
 
 inline constexpr PSVData catAstro //
@@ -192,7 +202,7 @@ inline constexpr PSVData repulsoCatConverterChance //
      .value         = {.initial = 5.f, .linear = 5.f}};
 
 inline constexpr PSVData starpawPercentage //
-    {.nMaxPurchases = 8u, .cost = {.initial = 1000.f, .exponential = 1.25f}, .value = {.initial = 20.f, .linear = 10.f}};
+    {.nMaxPurchases = 8u, .cost = {.initial = 1000.f, .exponential = 1.25f}, .value = {.initial = 40.f, .linear = 7.5f}};
 
 inline constexpr PSVData mewltiplierMult //
     {.nMaxPurchases = 15u, .cost = {.initial = 1500.f, .exponential = 1.5f}, .value = {.initial = 2.5f, .linear = 0.5f}};

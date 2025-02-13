@@ -1,32 +1,24 @@
 #pragma once
 
-#include "Aliases.hpp"
+#include "CatType.hpp"
 #include "Countdown.hpp"
-#include "MathUtils.hpp"
-#include "ShrineConstants.hpp"
-#include "ShrineType.hpp"
-#include "TextShakeEffect.hpp"
 
 #include "SFML/System/Vector2.hpp"
 
+#include <cmath>
+
 
 ////////////////////////////////////////////////////////////
-struct [[nodiscard]] Shrine
+struct [[nodiscard]] Doll
 {
     sf::Vector2f position;
+    float        wobbleRadians;
+    float        buffPower;
+    float        hue = 0.f;
+    CatType      catType;
 
-    float wobbleRadians = 0.f;
-
-    float mainOpacity = 255.f;
-
-    OptionalTargetedCountdown tcActivation;
+    TargetedCountdown         tcActivation;
     OptionalTargetedCountdown tcDeath;
-
-    TextShakeEffect textStatusShakeEffect;
-
-    MoneyType collectedReward = 0u;
-
-    ShrineType type;
 
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline]] inline bool isActive() const
@@ -49,12 +41,11 @@ struct [[nodiscard]] Shrine
     ////////////////////////////////////////////////////////////
     [[gnu::always_inline]] inline void update(const float deltaTime)
     {
-        textStatusShakeEffect.update(deltaTime);
-        wobbleRadians = sf::base::fmod(wobbleRadians + deltaTime * 0.002f + getDeathProgress() * 0.2f, sf::base::tau);
+        wobbleRadians = sf::base::fmod(wobbleRadians + deltaTime * 0.002f, sf::base::tau);
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline sf::Vector2f getDrawPosition() const
+    [[nodiscard, gnu::always_inline, gnu::pure]] inline sf::Vector2f getDrawPosition() const
     {
         const sf::Vector2f wobbleOffset{std::cos(wobbleRadians) * (7.5f + getDeathProgress() * 128.f),
                                         std::sin(wobbleRadians) * (14.f + getDeathProgress() * 128.f)};
@@ -63,34 +54,13 @@ struct [[nodiscard]] Shrine
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline float getRange() const
+    [[nodiscard, gnu::always_inline, gnu::pure]] inline float getRadius() const noexcept
     {
-        if (!isActive())
-            return 0.f;
-
-        return 256.f * (1.f - getDeathProgress());
+        return 32.f;
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] inline bool isInRange(const sf::Vector2f point) const
-    {
-        return isActive() && (point - position).length() < getRange();
-    }
-
-    ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline float getHue() const
-    {
-        return wrapHue(shrineHues[static_cast<U8>(type)]);
-    }
-
-    ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline]] inline float getRadius() const noexcept
-    {
-        return 64.f;
-    }
-
-    ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline, gnu::flatten]] inline float getRadiusSquared() const
+    [[nodiscard, gnu::always_inline, gnu::flatten, gnu::pure]] inline float getRadiusSquared() const
     {
         const float radius = getRadius();
         return radius * radius;

@@ -12,7 +12,7 @@ struct [[nodiscard]] ParticleData
     sf::Vector2f position;
     sf::Vector2f velocity;
 
-    float scale;
+    float scale; // TODO P2: consider optimizing memory layout
     float accelerationY;
 
     float opacity;

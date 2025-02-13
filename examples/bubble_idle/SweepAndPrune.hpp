@@ -9,7 +9,7 @@
 
 #include <cassert>
 
-class SpatialGrid
+class SweepAndPrune
 {
 private:
     struct AABB

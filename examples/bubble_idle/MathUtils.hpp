@@ -1,9 +1,9 @@
 #pragma once
 
+#include "AssertAssume.hpp"
+
 #include "SFML/System/Vector2.hpp"
 
-#include "SFML/Base/Assert.hpp"
-#include "SFML/Base/Builtins/Assume.hpp"
 #include "SFML/Base/Math/Exp.hpp"
 
 
@@ -15,9 +15,7 @@
     const float newMin,
     const float newMax)
 {
-    SFML_BASE_ASSERT(oldMax != oldMin);
-    SFML_BASE_ASSUME(oldMax != oldMin);
-
+    ASSERT_AND_ASSUME(oldMax != oldMin);
     return newMin + ((x - oldMin) / (oldMax - oldMin)) * (newMax - newMin);
 }
 
@@ -28,8 +26,7 @@
     const float deltaTimeMs,
     const float speed)
 {
-    SFML_BASE_ASSERT(speed >= 0.f);
-    SFML_BASE_ASSUME(speed >= 0.f);
+    ASSERT_AND_ASSUME(speed >= 0.f);
 
     const float factor = 1.f - sf::base::exp(-deltaTimeMs / speed);
     return current + (target - current) * factor;

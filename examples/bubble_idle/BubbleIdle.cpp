@@ -4,6 +4,7 @@
 #include "Cat.hpp"
 #include "CatConstants.hpp"
 #include "CatNames.hpp"
+#include "CatType.hpp"
 #include "Collision.hpp"
 #include "Constants.hpp"
 #include "ControlFlow.hpp"
@@ -21,11 +22,12 @@
 #include "Serialization.hpp"
 #include "Shrine.hpp"
 #include "Sounds.hpp"
-#include "SpatialGrid.hpp"
 #include "Stats.hpp"
+#include "SweepAndPrune.hpp"
 #include "TextParticle.hpp"
 #include "TextShakeEffect.hpp"
 #include "ThreadPool/Pool.hpp"
+#include "Timer.hpp"
 
 #include "SFML/ImGui/ImGui.hpp"
 
@@ -57,6 +59,7 @@
 #include "SFML/Window/EventUtils.hpp"
 #include "SFML/Window/Keyboard.hpp"
 #include "SFML/Window/Mouse.hpp"
+#include "SFML/Window/Touch.hpp"
 #include "SFML/Window/VideoMode.hpp"
 #include "SFML/Window/VideoModeUtils.hpp"
 #include "SFML/Window/WindowSettings.hpp"
@@ -69,6 +72,7 @@
 #include "SFML/System/Vector2.hpp"
 
 #include "SFML/Base/Algorithm.hpp"
+#include "SFML/Base/Assert.hpp"
 #include "SFML/Base/IntTypes.hpp"
 #include "SFML/Base/Math/Ceil.hpp"
 #include "SFML/Base/Optional.hpp"
@@ -365,6 +369,9 @@ struct Main
     sf::FloatRect txrEngiCatPaw{addImgResourceToAtlas("engicatpaw.png")};
     sf::FloatRect txrRepulsoCat{addImgResourceToAtlas("repulsocat.png")};
     sf::FloatRect txrRepulsoCatPaw{addImgResourceToAtlas("repulsocatpaw.png")};
+    sf::FloatRect txrAttractoCat{addImgResourceToAtlas("attractocat.png")};
+    sf::FloatRect txrAttractoCatPaw{addImgResourceToAtlas("attractocatpaw.png")};
+    sf::FloatRect txrDoll{addImgResourceToAtlas("doll.png")};
 
     ///////////////////////////////////////////////////////////
     // Profile (stores settings)
@@ -405,7 +412,7 @@ struct Main
     TextShakeEffect comboTextShakeEffect;
 
     ////////////////////////////////////////////////////////////
-    SpatialGrid spatialGrid;
+    SweepAndPrune sweepAndPrune;
 
     ////////////////////////////////////////////////////////////
     std::vector<Particle>     particles;
@@ -545,8 +552,7 @@ struct Main
                                   const ParticleType particleType,
                                   const float        scaleMult,
                                   const float        speedMult,
-                                  const float        opacity = 1.f,
-                                  const float        hue     = 0.f)
+                                  const float        opacity = 1.f)
     {
         return particles.emplace_back(ParticleData{.position = position,
                                                    .velocity = rng.getVec2f({-0.75f, -0.75f}, {0.75f, 0.75f}) * speedMult,
@@ -556,7 +562,7 @@ struct Main
                                                    .opacityDecay  = rng.getF(0.00025f, 0.0015f),
                                                    .rotation      = rng.getF(0.f, sf::base::tau),
                                                    .torque        = rng.getF(-0.002f, 0.002f)},
-                                      hue,
+                                      0.f,
                                       particleType);
     }
 
@@ -566,7 +572,7 @@ struct Main
         if (!profile.showParticles || !particleCullingBoundaries.isInside(particleData.position))
             return;
 
-        particles.emplace_back(particleData, hue, particleType);
+        particles.emplace_back(particleData, hueToByte(hue), particleType);
     }
 
     ////////////////////////////////////////////////////////////
@@ -586,7 +592,7 @@ struct Main
             return;
 
         for (SizeT i = 0; i < n; ++i)
-            implEmplaceParticle(position, args...).hue = hue;
+            implEmplaceParticle(position, args...).hueByte = hueToByte(hue);
     }
 
     ////////////////////////////////////////////////////////////
@@ -609,7 +615,7 @@ struct Main
         {
             auto& p              = implEmplaceParticle(position, args...);
             p.data.accelerationY = 0.f;
-            p.hue                = hue;
+            p.hueByte            = hueToByte(hue);
         }
     }
 
@@ -813,6 +819,7 @@ struct Main
     static inline constexpr float toolTipFontScale   = 0.65f;
     static inline constexpr float windowWidth        = 425.f;
     static inline constexpr float buttonWidth        = 150.f;
+    const float                   tooltipWidth       = windowWidth;
 
     ////////////////////////////////////////////////////////////
     inline constexpr float getWindowHeight() const
@@ -868,8 +875,6 @@ struct Main
     ////////////////////////////////////////////////////////////
     void uiBeginTooltip() const
     {
-        const float tooltipWidth = 400.f;
-
         ImGui::SetNextWindowSizeConstraints(ImVec2(tooltipWidth, 0), ImVec2(tooltipWidth, FLT_MAX));
 
         ImGui::BeginTooltip();
@@ -890,8 +895,6 @@ struct Main
     {
         if (!ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) || std::strlen(tooltipBuffer) == 0u)
             return;
-
-        const float tooltipWidth = 400.f;
 
         ImGui::SetNextWindowPos(ImVec2(ImGui::GetMousePos().x - tooltipWidth, ImGui::GetMousePos().y + 20));
         uiBeginTooltip();
@@ -933,6 +936,12 @@ struct Main
         {
             constexpr const char* shrineTooltipsByType[]{
                 R"(
+~~ Shrine Of Voodoo ~~
+
+Effects: TODO P1: complete
+
+Rewards: TODO P1: complete)",
+                R"(
 ~~ Shrine Of Magic ~~
 
 The legend says that a powerful Wizardcat is sealed inside, capable of absorbing wisdom from star bubbles and casting spells on demand. Guess they weren't powerful enough to avoid being sealed...
@@ -941,7 +950,7 @@ The magic of star bubbles seem to be absorbed by the shrine, nullifying their be
                 R"(
 ~~ Shrine Of Clicking ~~
 
-Rumor has it that a sneaky Mousecat is sealed inside, capable of clicking bubbles, keeping up their own combos, empowering nearby cats, and providing a global click reward value multiplier by merely existing. That's a lot.
+Rumor has it that a sneaky Mousecat is sealed inside, capable of clicking bubbles, keeping up their own combos, empowering nearby cats, and providing a global click reward value multiplier by merely existing. That's a mouthful.
 
 The shrine repels cats, wanting you to prove your worth by clicking bubbles.)",
                 R"(
@@ -962,12 +971,6 @@ Seems like the wind is powerful enough to repel bubbles even from within the shr
 Electromagnetism readings suggest that an Attractocat is sealed inside, who continuously attracts bubbles with their huge magnet. Despite cats having an engine, they are not affected by the magnet -- can't explain that one.
 
 The magnet is so powerful that its effects are felt even near the shrine.)",
-                R"(
-~~ Shrine Of Decay ~~
-
-Effects: TODO P1: complete
-
-Rewards: TODO P1: complete)",
                 R"(
 ~~ Shrine Of Chaos ~~
 
@@ -1053,12 +1056,12 @@ Must have eaten something they weren't supposed to, because they keep changing c
 ~~ Devilcat ~~
 
 Hired diplomat of the NB (NOBUBBLES) political party. Convinces bubbles to turn into bombs and explode for the rightful cause. Bubbles caught in explosions are worth x10 more.)",
+                catAstroTooltip,
                 R"(
 ~~ Witchcat ~~
 (unique cat)
 
 TODO P1: complete)",
-                catAstroTooltip,
                 R"(
 ~~ Wizardcat ~~
 (unique cat)
@@ -1071,9 +1074,9 @@ The scriptures say that they "unlock a Magic menu", but nobody knows what that m
 ~~ Mousecat ~~
 (unique cat)
 
-It stole a Logicat gaming mouse and they're now on the run. Surprisingly, the mouse still works even though it's not plugged in to anything.
+They stole a Logicat gaming mouse and they're now on the run. Surprisingly, the mouse still works even though it's not plugged in to anything.
 
-Able to keep up a combo like for manual popping, and empowers nearby cats to pop bubbles with theri current combo multiplier.
+Able to keep up a combo like for manual popping, and empowers nearby cats to pop bubbles with Mousecat's current combo multiplier.
 
 Provides a global click reward value multiplier (upgradable via PPs) by merely existing... Logicat does know how to make a good mouse.
 )",
@@ -1092,6 +1095,14 @@ Provides a global cat reward value multiplier (upgradable via PPs) by merely exi
 Continuously pushes bubbles away with their powerful USB fan, powered by only Dog knows what kind of batteries. (Note: this effect is applied even while Repulsocat is being dragged.)
 
 Using prestige points, the fan can be upgraded to filter specific bubble types and/or convert a percentage of bubbles to star bubbles.
+)",
+                R"(
+~~ Attractocat ~~
+(unique cat)
+
+Continuously attracts bubbles with their huge magnet, because soap is definitely magnetic. (Note: this effect is applied even while Attractocat is being dragged.)
+
+Using prestige points, TODO P0
 )",
             };
 
@@ -1396,15 +1407,17 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         const auto nCatNormal = pt.getCatCountByType(CatType::Normal);
         const auto nCatUni    = pt.getCatCountByType(CatType::Uni);
         const auto nCatDevil  = pt.getCatCountByType(CatType::Devil);
-        const auto nCatWitch  = pt.getCatCountByType(CatType::Witch);
         const auto nCatAstro  = pt.getCatCountByType(CatType::Astro);
 
-        Cat* catWizard  = findCatWizard();
-        Cat* catMouse   = findCatMouse();
-        Cat* catEngi    = findCatEngi();
-        Cat* catRepulso = findCatRepulso();
+        Cat* catWitch    = findCatWitch();
+        Cat* catWizard   = findCatWizard();
+        Cat* catMouse    = findCatMouse();
+        Cat* catEngi     = findCatEngi();
+        Cat* catRepulso  = findCatRepulso();
+        Cat* catAttracto = findCatAttracto();
 
-        const bool anyUniqueCat = catWizard != nullptr || catMouse != nullptr || catEngi != nullptr || catRepulso != nullptr;
+        const bool anyUniqueCat = catWitch != nullptr || catWizard != nullptr || catMouse != nullptr ||
+                                  catEngi != nullptr || catRepulso != nullptr || catAttracto != nullptr;
 
         uiBeginColumns();
 
@@ -1622,6 +1635,12 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             ImGui::NextColumn();
             ImGui::NextColumn();
 
+            if (catWitch != nullptr)
+            {
+                makeCooldownButton("- witchcat cooldown", CatType::Witch);
+                makeRangeButton("- witchcat range", CatType::Witch);
+            }
+
             if (catWizard != nullptr)
             {
                 makeCooldownButton("- wizardcat cooldown", CatType::Wizard);
@@ -1644,6 +1663,12 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             {
                 // makeCooldownButton("- repulsocat cooldown", CatType::Repulso);
                 makeRangeButton("- repulsocat range", CatType::Repulso);
+            }
+
+            if (catAttracto != nullptr)
+            {
+                // makeCooldownButton("- attractocat cooldown", CatType::Attracto);
+                makeRangeButton("- attractocat range", CatType::Attracto);
             }
 
             ImGui::Separator();
@@ -1675,7 +1700,6 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                 if      (&count == &nCatNormal) name = "cat";
                 else if (&count == &nCatUni)    name = "unicat";
                 else if (&count == &nCatDevil)  name = "devilcat";
-                else if (&count == &nCatWitch)  name = "witchcat";
                 else if (&count == &nCatAstro)  name = "astrocat";
                 // clang-format on
 
@@ -1956,6 +1980,11 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             makePrestigePurchasablePPButtonPSV("- buff duration", pt.psvPPInspireDurationMult);
         }
 
+        if (findCatWitch() != nullptr || pt.psvBubbleValue.nPurchases >= 3)
+        {
+            // TODO P1:
+        }
+
         if (findCatWizard() != nullptr || pt.psvBubbleValue.nPurchases >= 3)
         {
             ImGui::Separator();
@@ -2022,9 +2051,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
 
             // TODO P1: unshackle
 
-            std::sprintf(tooltipBuffer,
-                         "The Repulsocat does some quantum science stuff to its magnet to allow filtering of repelled "
-                         "bubbles by type.");
+            std::sprintf(tooltipBuffer, "The Repulsocat cordially asks their fan to filter repelled bubbles by type.");
             std::sprintf(labelBuffer, "");
             (void)makePurchasablePPButtonOneTime("- Repulsion filter", 64u, pt.repulsoCatFilterPurchased);
 
@@ -2049,7 +2076,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             }
 
             std::sprintf(tooltipBuffer,
-                         "The Repulsocat does some more weird science to its magnet, giving it a chance to convert "
+                         "The Repulsocat coats the fan blades with star powder, giving it a chance to convert "
                          "repelled bubbles to star bubbles.");
             std::sprintf(labelBuffer, "");
             (void)makePurchasablePPButtonOneTime("- Conversion field", 256u, pt.repulsoCatConverterPurchased);
@@ -2066,6 +2093,64 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                 std::sprintf(labelBuffer, "%.2f%%", static_cast<double>(pt.psvPPRepulsoCatConverterChance.currentValue()));
                 makePrestigePurchasablePPButtonPSV("- Conversion chance", pt.psvPPRepulsoCatConverterChance);
             }
+        }
+
+        if (findCatAttracto() != nullptr || pt.psvBubbleValue.nPurchases >= 5)
+        {
+            ImGui::Separator();
+
+            ImGui::Columns(1);
+            ImGui::Text("Attractocat");
+            uiBeginColumns();
+
+            // TODO P1: unshackle
+
+            std::sprintf(tooltipBuffer,
+                         "The Attractocat does some quantum science stuff to its magnet to allow filtering of "
+                         "attracted bubbles by type.");
+            std::sprintf(labelBuffer, "");
+            (void)makePurchasablePPButtonOneTime("- Attraction filter", 96u, pt.attractoCatFilterPurchased);
+
+            if (pt.attractoCatFilterPurchased)
+            {
+                ImGui::Columns(1);
+                ImGui::SetWindowFontScale(subBulletFontScale);
+
+                ImGui::Text("- ignore: ");
+                ImGui::SameLine();
+
+                ImGui::Checkbox("normal##attracto", &pt.attractoCatIgnoreNormalBubbles);
+                ImGui::SameLine();
+
+                ImGui::Checkbox("star##attracto", &pt.attractoCatIgnoreStarBubbles);
+                ImGui::SameLine();
+
+                ImGui::Checkbox("bombs##attracto", &pt.attractoCatIgnoreBombBubbles);
+
+                ImGui::SetWindowFontScale(normalFontScale);
+                uiBeginColumns();
+            }
+
+            /* TODO P0:
+            std::sprintf(tooltipBuffer,
+                         "The Repulsocat does some more weird science to its magnet, giving it a chance to convert "
+                         "repelled bubbles to star bubbles.");
+            std::sprintf(labelBuffer, "");
+            (void)makePurchasablePPButtonOneTime("- Conversion field", 256u, pt.attractoCatConverterPurchased);
+
+            if (pt.attractoCatConverterPurchased)
+            {
+                ImGui::SetWindowFontScale(subBulletFontScale);
+                ImGui::Checkbox("enable ##attractoconv", &pt.attractoCatConverterEnabled);
+                ImGui::SetWindowFontScale(normalFontScale);
+                ImGui::NextColumn();
+                ImGui::NextColumn();
+
+                std::sprintf(tooltipBuffer, "Increase the repelled bubble conversion chance.");
+                std::sprintf(labelBuffer, "%.2f%%", static_cast<double>(pt.psvPPRepulsoCatConverterChance.currentValue()));
+                makePrestigePurchasablePPButtonPSV("- Conversion chance", pt.psvPPRepulsoCatConverterChance);
+            }
+            */
         }
 
         buttonHueMod = 0.f;
@@ -2110,10 +2195,12 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
     }
 
     ////////////////////////////////////////////////////////////
+    DEFINE_CAT_FINDER_BY_TYPE(Witch);
     DEFINE_CAT_FINDER_BY_TYPE(Wizard);
     DEFINE_CAT_FINDER_BY_TYPE(Mouse);
     DEFINE_CAT_FINDER_BY_TYPE(Engi);
     DEFINE_CAT_FINDER_BY_TYPE(Repulso);
+    DEFINE_CAT_FINDER_BY_TYPE(Attracto);
 
     ////////////////////////////////////////////////////////////
     void addCombo(int& xCombo, Countdown& xComboCountdown) const
@@ -2834,7 +2921,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                         continue;
 
                     const auto requiredReward = pt.getComputedRequiredRewardByShrineType(shrine.type);
-                    shrine.collectedReward += requiredReward / 10u;
+                    shrine.collectedReward += requiredReward / 3u;
                     break;
                 }
             }
@@ -2888,6 +2975,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                     "Mouse",
                     "Engi",
                     "Repulso",
+                    "Attracto",
                 };
 
                 static_assert(sf::base::getArraySize(catNames) == nCatTypes);
@@ -3347,51 +3435,6 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
     }
 
     ////////////////////////////////////////////////////////////
-    void gameLoopUpdateCatActionWitch(const float /* deltaTimeMs */, Cat& cat) // TODO P1: change
-    {
-        const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
-        const auto range       = pt.getComputedRangeByCatType(cat.type);
-        const auto [cx, cy]    = getCatRangeCenter(cat);
-
-        sf::base::U32 witchHits = 0u;
-        bool          pawSet    = false;
-
-        for (auto& otherCat : pt.cats)
-        {
-            if (otherCat.type == CatType::Witch)
-                continue;
-
-            if ((otherCat.position - cat.position).length() > range)
-                continue;
-
-            otherCat.cooldown.value = pt.getComputedCooldownByCatType(cat.type);
-            ++witchHits;
-
-            if (!pawSet && rng.getF(0.f, 100.f) > 50.f)
-            {
-                pawSet = true;
-
-                cat.pawPosition = otherCat.position;
-                cat.pawOpacity  = 255.f;
-                cat.pawRotation = (otherCat.position - cat.position).angle() + sf::degrees(45);
-            }
-
-            spawnParticles(8, otherCat.position, ParticleType::Hex, 0.5f, 0.35f);
-        }
-
-        if (witchHits > 0)
-        {
-            sounds.hex.setPosition({cx, cy});
-            playSound(sounds.hex);
-
-            cat.textStatusShakeEffect.bump(rng, 1.5f);
-            cat.hits += witchHits;
-        }
-
-        cat.cooldown.value = maxCooldown;
-    }
-
-    ////////////////////////////////////////////////////////////
     void gameLoopUpdateCatActionAstro(const float /* deltaTimeMs */, Cat& cat)
     {
         const auto [cx, cy] = getCatRangeCenter(cat);
@@ -3405,6 +3448,93 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         ++cat.hits;
         cat.astroState.emplace(/* startX */ cat.position.x, /* velocityX */ 0.f, /* wrapped */ false);
         --cat.position.x;
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] Cat* getHexedCat()
+    {
+        for (Cat& cat : pt.cats)
+            if (cat.hexedTimer.hasValue())
+                return &cat;
+
+        return nullptr;
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] bool anyCatHexed() const
+    {
+        return sf::base::anyOf(pt.cats.begin(), pt.cats.end(), [](const Cat& cat) { return cat.hexedTimer.hasValue(); });
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopUpdateCatActionWitch(const float /* deltaTimeMs */, Cat& cat) // TODO P1: change
+    {
+        SFML_BASE_ASSERT(!anyCatHexed());
+
+        const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
+        const auto range       = pt.getComputedRangeByCatType(cat.type);
+        const auto [cx, cy]    = getCatRangeCenter(cat);
+
+        SizeT otherCatCount = 0u;
+        Cat*  selected      = nullptr;
+
+        for (Cat& otherCat : pt.cats)
+        {
+            if (otherCat.type == CatType::Witch)
+                continue;
+
+            if ((otherCat.position - cat.position).length() > range)
+                continue;
+
+            ++otherCatCount;
+
+            // Select the current cat with probability `1/count` (reservoir sampling)
+            if (rng.getI<SizeT>(0, otherCatCount - 1) == 0)
+                selected = &otherCat;
+        }
+
+        if (otherCatCount > 0)
+        {
+            // TODO P0: spawn multiple dolls, all must be clicked to remove the hex
+            // each in a different screen?
+            // also add nice transitions like for shrines
+            // kill dolls on prestige
+            // maybe some prestige upgrades
+
+            SFML_BASE_ASSERT(selected != nullptr);
+
+            selected->hexedTimer.emplace(BidirectionalTimer{.direction = TimerDirection::Forward});
+
+            const float buffPower = 1.f + static_cast<float>(otherCatCount) * 0.25f + (pt.mapPurchased ? 0.35f : 0.f) +
+                                    static_cast<float>(pt.psvMapExtension.nPurchases) * 0.35f;
+
+            SFML_BASE_ASSERT(pt.dolls.empty());
+
+            constexpr float offset = 64.f;
+
+            for (SizeT i = 0u; i < 6u; ++i) // TODO
+            {
+                auto& d = pt.dolls.emplace_back(
+                    Doll{.position = rng.getVec2f({offset, offset}, {pt.getMapLimit() - offset, boundaries.y - offset}),
+                         .wobbleRadians = rng.getF(0.f, sf::base::tau),
+                         .buffPower     = buffPower,
+                         .catType       = selected->type,
+                         .tcActivation  = {.startingValue = rng.getF(300.f, 600.f) * static_cast<float>(i + 1)},
+                         .tcDeath       = {}});
+
+                d.tcActivation.restart();
+            }
+
+            spawnParticles(128, selected->position, ParticleType::Hex, 0.5f, 0.35f);
+
+            sounds.hex.setPosition({cx, cy});
+            playSound(sounds.hex);
+
+            cat.textStatusShakeEffect.bump(rng, 1.5f);
+            cat.hits += 1u;
+        }
+
+        cat.cooldown.value = maxCooldown;
     }
 
     ////////////////////////////////////////////////////////////
@@ -3542,7 +3672,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         const auto range        = pt.getComputedRangeByCatType(cat.type);
         const auto rangeSquared = range * range;
 
-        SizeT nCatsHit = false;
+        SizeT nCatsHit = 0u;
 
         for (Cat& otherCat : pt.cats)
         {
@@ -3597,6 +3727,17 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                 ++cat.hits;
             }
         }
+
+        cat.cooldown.value = maxCooldown;
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopUpdateCatActionAttracto(const float /* deltaTimeMs */, Cat& cat)
+    {
+        const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
+        const auto range       = pt.getComputedRangeByCatType(cat.type);
+
+        // TODO P0: ?
 
         cat.cooldown.value = maxCooldown;
     }
@@ -3662,6 +3803,30 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                 cat.pawOpacity -= 0.5f * deltaTimeMs;
 
             cat.update(deltaTimeMs);
+
+            if (cat.hexedTimer.hasValue())
+            {
+                const auto res = cat.hexedTimer->updateAndStop(deltaTimeMs * 0.001f);
+
+                if (cat.hexedTimer->direction == TimerDirection::Backwards && res == TimerStatusStop::JustFinished)
+                    cat.hexedTimer.reset();
+            }
+
+            if (cat.hexedTimer.hasValue() || (cat.type == CatType::Witch && anyCatHexed()))
+            {
+                spawnParticle({.position = drawPosition + sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius},
+                               .velocity = rng.getVec2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
+                               .scale    = rng.getF(0.08f, 0.27f) * 0.5f,
+                               .accelerationY = -0.002f,
+                               .opacity       = 255.f,
+                               .opacityDecay  = rng.getF(0.00025f, 0.0015f),
+                               .rotation      = rng.getF(0.f, sf::base::tau),
+                               .torque        = rng.getF(-0.002f, 0.002f)},
+                              /* hue */ 0.f,
+                              ParticleType::Hex);
+
+                continue;
+            }
 
             const auto [cx, cy] = getCatRangeCenter(cat);
 
@@ -3801,28 +3966,43 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                 }
             }
 
-            if (cat.type == CatType::Repulso)
+            const auto makeMagnetAction =
+                [&](const float direction, bool& ignoreNormalBubbles, bool& ignoreStarBubbles, bool& ignoreBombBubbles)
             {
-                forEachBubbleInRadius(cat.position,
-                                      pt.getComputedRangeByCatType(cat.type),
-                                      [&](Bubble& bubble)
+                return [&, direction](Bubble& bubble)
                 {
-                    if (pt.repulsoCatIgnoreNormalBubbles && bubble.type == BubbleType::Normal)
+                    if (ignoreNormalBubbles && bubble.type == BubbleType::Normal)
                         return ControlFlow::Continue;
 
-                    if (pt.repulsoCatIgnoreStarBubbles && bubble.type == BubbleType::Star)
+                    if (ignoreStarBubbles && bubble.type == BubbleType::Star)
                         return ControlFlow::Continue;
 
-                    if (pt.repulsoCatIgnoreBombBubbles && bubble.type == BubbleType::Bomb)
+                    if (ignoreBombBubbles && bubble.type == BubbleType::Bomb)
                         return ControlFlow::Continue;
 
                     const auto diff = (cat.position - bubble.position);
-                    const auto strength = (pt.getComputedRangeByCatType(cat.type) - diff.length()) * 0.00001f * deltaTimeMs;
-                    bubble.velocity -= diff.normalized() * strength * (pt.windEnabled ? 10.f : 1.f);
+                    const auto strength = (pt.getComputedRangeByCatType(cat.type) - diff.length()) * 0.000017f * deltaTimeMs;
+                    bubble.velocity += (diff.normalized() * strength * (pt.windEnabled ? 10.f : 1.f)) * direction;
 
                     return ControlFlow::Continue;
-                });
-            }
+                };
+            };
+
+            if (cat.type == CatType::Repulso)
+                forEachBubbleInRadius(cat.position,
+                                      pt.getComputedRangeByCatType(cat.type),
+                                      makeMagnetAction(-1.f,
+                                                       pt.repulsoCatIgnoreNormalBubbles,
+                                                       pt.repulsoCatIgnoreStarBubbles,
+                                                       pt.repulsoCatIgnoreBombBubbles));
+
+            if (cat.type == CatType::Attracto)
+                forEachBubbleInRadius(cat.position,
+                                      pt.getComputedRangeByCatType(cat.type),
+                                      makeMagnetAction(1.f,
+                                                       pt.attractoCatIgnoreNormalBubbles,
+                                                       pt.attractoCatIgnoreStarBubbles,
+                                                       pt.attractoCatIgnoreBombBubbles));
 
             if (!cat.updateCooldown(deltaTimeMs))
                 continue;
@@ -3833,12 +4013,13 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                 &Main::gameLoopUpdateCatActionNormal,
                 &Main::gameLoopUpdateCatActionUni,
                 &Main::gameLoopUpdateCatActionDevil,
-                &Main::gameLoopUpdateCatActionWitch,
                 &Main::gameLoopUpdateCatActionAstro,
+                &Main::gameLoopUpdateCatActionWitch,
                 &Main::gameLoopUpdateCatActionWizard,
                 &Main::gameLoopUpdateCatActionMouse,
                 &Main::gameLoopUpdateCatActionEngi,
                 &Main::gameLoopUpdateCatActionRepulso,
+                &Main::gameLoopUpdateCatActionAttracto,
             };
 
             static_assert(sf::base::getArraySize(fnPtrs) == nCatTypes);
@@ -3882,7 +4063,13 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                 if (cat.isAstroAndInFlight())
                     continue;
 
+                if (cat.hexedTimer.hasValue())
+                    continue;
+
                 if (cat.type == CatType::Wizard && isWizardBusy())
+                    continue;
+
+                if (cat.type == CatType::Witch && anyCatHexed())
                     continue;
 
                 if ((mousePos - cat.position).length() > cat.getRadius())
@@ -4041,7 +4228,12 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                         };
 
                         // TODO P0: handle all shrine death rewards
-                        if (shrine.type == ShrineType::Magic)
+                        if (shrine.type == ShrineType::Voodoo)
+                        {
+                            spawnSpecialCat(CatType::Witch);
+                            doTip("TODO: witch tip", /* maxPrestigeLevel */ UINT_MAX);
+                        }
+                        else if (shrine.type == ShrineType::Magic)
                         {
                             spawnSpecialCat(CatType::Wizard);
                             doTip("TODO: wizard tip", /* maxPrestigeLevel */ UINT_MAX);
@@ -4060,6 +4252,11 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                         {
                             spawnSpecialCat(CatType::Repulso);
                             doTip("TODO: repulso tip", /* maxPrestigeLevel */ UINT_MAX);
+                        }
+                        else if (shrine.type == ShrineType::Attraction)
+                        {
+                            spawnSpecialCat(CatType::Attracto);
+                            doTip("TODO: attracto tip", /* maxPrestigeLevel */ UINT_MAX);
                         }
                     }
                     else if (cdStatus == CountdownStatusStop::Running)
@@ -4083,6 +4280,105 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         }
 
         std::erase_if(pt.shrines, [](const Shrine& shrine) { return shrine.getDeathProgress() >= 1.f; });
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopUpdateDolls(const float deltaTimeMs, const sf::Vector2f mousePos)
+    {
+        Cat* hexedCat = getHexedCat();
+
+        if (pt.dolls.empty())
+        {
+            if (hexedCat != nullptr)
+                hexedCat->hexedTimer->direction = TimerDirection::Backwards;
+
+            return;
+        }
+
+        SFML_BASE_ASSERT(hexedCat != nullptr);
+
+        for (Doll& d : pt.dolls)
+        {
+            d.update(deltaTimeMs);
+
+            if (!d.tcActivation.isDone())
+            {
+                (void)d.tcActivation.updateAndStop(deltaTimeMs);
+                continue;
+            }
+
+            if (!d.tcDeath.hasValue())
+            {
+                const bool click = (mBtnDown(sf::Mouse::Button::Left) || sf::Touch::isDown(0u));
+
+                if (click && (mousePos - d.position).length() <= d.getRadius())
+                {
+                    switch (d.catType)
+                    {
+                        case CatType::Normal:
+                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
+                            break;
+                        case CatType::Uni:
+                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
+                            break;
+                        case CatType::Devil:
+                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
+                            break;
+                        case CatType::Astro:
+                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
+                            break;
+                        case CatType::Witch:
+                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
+                            break;
+                        case CatType::Wizard:
+                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
+                            break;
+                        case CatType::Mouse:
+                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
+                            break;
+                        case CatType::Engi:
+                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
+                            break;
+                        case CatType::Repulso:
+                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
+                            break;
+                        case CatType::Attracto:
+                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
+                            break;
+                        case CatType::Count:
+                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
+                            break;
+                    }
+
+                    spawnParticles(64, d.getDrawPosition(), ParticleType::Hex, 0.5f, 0.35f);
+
+                    screenShakeAmount = 1.5f;
+                    screenShakeTimer  = 500.f;
+
+                    d.tcDeath.emplace(TargetedCountdown{.startingValue = 750.f});
+                    d.tcDeath->restart();
+
+
+                    sounds.hex.setPosition({d.position.x, d.position.y});
+                    playSound(sounds.hex);
+
+                    // TODO P0: sound, particles, etc
+                }
+            }
+            else
+            {
+                (void)d.tcDeath->updateAndStop(deltaTimeMs);
+
+                spawnParticlesWithHue(wrapHue(d.hue),
+                                      static_cast<SizeT>(1 + 12 * d.getDeathProgress()),
+                                      d.getDrawPosition() + rng.getVec2f({-1.f, -1.f}, {1.f, 1.f}) * 32.f,
+                                      ParticleType::Hex,
+                                      sf::base::max(0.25f, 1.f - d.getDeathProgress()),
+                                      0.75f);
+            }
+        }
+
+        std::erase_if(pt.dolls, [](const Doll& d) { return d.getDeathProgress() >= 1.f; });
     }
 
     ////////////////////////////////////////////////////////////
@@ -4451,10 +4747,12 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Normal)]);
         unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Uni)]);
         unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Devil)]);
+        unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Witch)]);
         unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Wizard)]);
         unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Mouse)]);
         unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Engi)]);
         unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Repulso)]);
+        unlockIf(pt.achAstrocatInspireByType[asIdx(CatType::Attracto)]);
 
         unlockIf(pt.psvShrineActivation.nPurchases >= 1);
         unlockIf(pt.psvShrineActivation.nPurchases >= 2);
@@ -4615,13 +4913,14 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             normalCatTxr, // Normal
             &txrUniCat,   // Uni
             &txrDevilCat, // Devil
-            &txrWitchCat, // Witch
             astroCatTxr,  // Astro
 
-            &txrWizardCat,  // Wizard
-            &txrMouseCat,   // Mouse
-            &txrEngiCat,    // Engi
-            &txrRepulsoCat, // Repulso
+            &txrWitchCat,    // Witch
+            &txrWizardCat,   // Wizard
+            &txrMouseCat,    // Mouse
+            &txrEngiCat,     // Engi
+            &txrRepulsoCat,  // Repulso
+            &txrAttractoCat, // Attracto
         };
 
         static_assert(sf::base::getArraySize(catTxrsByType) == nCatTypes);
@@ -4630,13 +4929,14 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             &txrCatPaw,      // Normal
             &txrUniCatPaw,   // Uni
             &txrDevilCatPaw, // Devil
-            &txrWitchCatPaw, // Witch
             &txrWhiteDot,    // Astro
 
-            &txrWizardCatPaw,  // Wizard
-            &txrMouseCatPaw,   // Mouse
-            &txrEngiCatPaw,    // Engi
-            &txrRepulsoCatPaw, // Repulso
+            &txrWitchCatPaw,    // Witch
+            &txrWizardCatPaw,   // Wizard
+            &txrMouseCatPaw,    // Mouse
+            &txrEngiCatPaw,     // Engi
+            &txrRepulsoCatPaw,  // Repulso
+            &txrAttractoCatPaw, // Attracto
         };
 
         static_assert(sf::base::getArraySize(catPawTxrsByType) == nCatTypes);
@@ -4671,9 +4971,16 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                 else if (cat.astroState.hasValue())
                     catRotation = 0.523599f;
             }
+            else if (cat.hexedTimer.hasValue())
+            {
+                catRotation = cat.hexedTimer->remap(0.f, cat.wobbleRadians);
+            }
 
-            const auto range    = pt.getComputedRangeByCatType(cat.type);
-            const auto alpha    = static_cast<U8>(cat.mainOpacity);
+            const auto range = pt.getComputedRangeByCatType(cat.type);
+
+            const auto alpha = cat.hexedTimer.hasValue() ? static_cast<U8>(cat.hexedTimer->remap(255.f, 128.f))
+                                                         : static_cast<U8>(cat.mainOpacity);
+
             const auto catColor = hueColor(wrapHue(cat.hue), alpha);
 
             const auto circleAlpha = cat.cooldown.value < 0.f
@@ -4701,13 +5008,14 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                            .textureRect = catTxr,
                            .color       = catColor});
 
-            cpuDrawableBatch.add(
-                sf::Sprite{.position    = cat.pawPosition,
-                           .scale       = {0.1f, 0.1f},
-                           .origin      = catPawTxr.size / 2.f,
-                           .rotation    = cat.type == CatType::Mouse ? sf::radians(-0.6f) : cat.pawRotation,
-                           .textureRect = catPawTxr,
-                           .color       = catColor.withAlpha(static_cast<U8>(cat.pawOpacity))});
+            if (!cat.hexedTimer.hasValue())
+                cpuDrawableBatch.add(
+                    sf::Sprite{.position    = cat.pawPosition,
+                               .scale       = {0.1f, 0.1f},
+                               .origin      = catPawTxr.size / 2.f,
+                               .rotation    = cat.type == CatType::Mouse ? sf::radians(-0.6f) : cat.pawRotation,
+                               .textureRect = catPawTxr,
+                               .color       = catColor.withAlpha(static_cast<U8>(cat.pawOpacity))});
 
             if (profile.showCatText)
             {
@@ -4812,6 +5120,29 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
     }
 
     ////////////////////////////////////////////////////////////
+    void gameLoopDrawDolls(const sf::Vector2f mousePos)
+    {
+        for (Doll& doll : pt.dolls)
+        {
+            const float invDeathProgress = 1.f - doll.getDeathProgress();
+            const float progress         = doll.tcDeath.hasValue() ? invDeathProgress : doll.getActivationProgress();
+
+            auto dollAlpha = static_cast<U8>(remap(progress, 0.f, 1.f, 128.f, 255.f));
+
+            if ((mousePos - doll.position).lengthSquared() <= doll.getRadiusSquared() && !mBtnDown(sf::Mouse::Button::Left))
+                dollAlpha = 128.f;
+
+            const auto dollColor = hueColor(doll.hue, dollAlpha);
+
+            cpuDrawableBatch.add(sf::Sprite{.position    = doll.getDrawPosition(),
+                                            .scale       = sf::Vector2f{0.5f, 0.5f} * progress,
+                                            .origin      = txrDoll.size / 2.f,
+                                            .textureRect = txrDoll,
+                                            .color       = dollColor});
+        }
+    }
+
+    ////////////////////////////////////////////////////////////
     [[nodiscard]] sf::Vector2f getViewCenter() const
     {
         return {sf::base::clamp(gameScreenSize.x / 2.f + actualScroll * 2.f,
@@ -4851,7 +5182,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
 
             particle.data.applyToTransformable(tempSprite);
 
-            tempSprite.color       = hueColor(particle.hue, particle.data.opacityAsAlpha());
+            tempSprite.color       = hueByteColor(particle.hueByte, particle.data.opacityAsAlpha());
             tempSprite.textureRect = particleRects[asIdx(particle.type)];
             tempSprite.origin      = tempSprite.textureRect.size / 2.f;
 
@@ -4958,7 +5289,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
                           .characterSize    = 60u,
                           .fillColor        = sf::Color::White.withAlpha(alpha),
                           .outlineColor     = colorBlueOutline.withAlpha(alpha),
-                          .outlineThickness = 2.f}};
+                          .outlineThickness = 4.f}};
 
         if (tipText.getString().getSize() < tipString.size() && tipText.getString().getSize() > 0)
             playSound(sounds.byteSpeak, /* overlap */ false);
@@ -5306,8 +5637,8 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
 
         //
         // Update spatial partitioning
-        spatialGrid.clear();
-        spatialGrid.populate(pt.bubbles);
+        sweepAndPrune.clear();
+        sweepAndPrune.populate(pt.bubbles);
 
         //
         // Update bubbles
@@ -5338,10 +5669,11 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         const unsigned int nWorkers = threadPool.getWorkerCount();
         std::latch         latch{nWorkers};
 
-        spatialGrid.forEachUniqueIndexPair(nWorkers,
-                                           latch,
-                                           threadPool,
-                                           [&](const SizeT bubbleIdxI, const SizeT bubbleIdxJ) __attribute__((always_inline))
+        sweepAndPrune.forEachUniqueIndexPair(nWorkers,
+                                             latch,
+                                             threadPool,
+                                             [&](const SizeT bubbleIdxI, const SizeT bubbleIdxJ)
+                                                 __attribute__((always_inline))
         { handleBubbleCollision(deltaTimeMs, pt.bubbles[bubbleIdxI], pt.bubbles[bubbleIdxJ]); });
 
         latch.wait();
@@ -5394,8 +5726,11 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         gameLoopUpdateCatDragging(deltaTimeMs, countFingersDown, mousePos);
         gameLoopUpdateCatActions(deltaTimeMs);
         gameLoopUpdateShrines(deltaTimeMs, gameView);
+        gameLoopUpdateDolls(deltaTimeMs, mousePos);
         gameLoopUpdateMana(deltaTimeMs);
 
+        //
+        // Screen shake
         if (screenShakeTimer > 0.f)
         {
             screenShakeTimer -= deltaTimeMs;
@@ -5412,6 +5747,8 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             screenShakeAmount = sf::base::max(0.f, screenShakeAmount);
         }
 
+        //
+        // Particles and text particles
         const auto updateParticleLike = [&](auto& particleLikeVec)
         {
             for (auto& particleLike : particleLikeVec)
@@ -5424,6 +5761,8 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         updateParticleLike(particles);
         updateParticleLike(textParticles);
 
+        //
+        // Sounds and volume
         const float volumeMult = profile.playAudioInBackground || window.hasFocus() ? 1.f : 0.f;
 
         listener.volume = profile.masterVolume * volumeMult;
@@ -5432,6 +5771,8 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         if (sounds.isPlayingPooled(sounds.prestige))
             musicBGM.setVolume(0.f);
 
+        //
+        // Time played
         playedUsAccumulator += playedClock.getElapsedTime().asMicroseconds();
         autosaveUsAccumulator += playedClock.getElapsedTime().asMicroseconds();
         playedClock.restart();
@@ -5442,6 +5783,8 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             statSecondsPlayed();
         }
 
+        //
+        // Autosave
         if (autosaveUsAccumulator >= 180'000'000) // 3 min
         {
             autosaveUsAccumulator = 0;
@@ -5450,6 +5793,8 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
             savePlaythroughToFile(pt);
         }
 
+        //
+        // Milestones and achievements
         gameLoopUpdateMilestones();
         gameLoopUpdateAchievements();
 
@@ -5475,6 +5820,7 @@ Using prestige points, the fan can be upgraded to filter specific bubble types a
         cpuDrawableBatch.clear();
         gameLoopDrawCats(mousePos);
         gameLoopDrawShrines(mousePos);
+        gameLoopDrawDolls(mousePos);
         gameLoopDrawParticles();
         gameLoopDrawTextParticles();
         window.draw(cpuDrawableBatch, {.texture = &textureAtlas.getTexture(), .shader = &shader});

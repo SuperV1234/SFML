@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Cat.hpp"
+#include "CatType.hpp"
 #include "ExactArray.hpp"
 
 #include "SFML/Base/Algorithm.hpp"
@@ -131,13 +131,14 @@ inline constexpr EXACT_ARRAY(
         {normalCatNames, sf::base::getArraySize(normalCatNames)}, // Normal
         {uniCatNames, sf::base::getArraySize(uniCatNames)},       // Uni
         {devilCatNames, sf::base::getArraySize(devilCatNames)},   // Devil
-        {normalCatNames, sf::base::getArraySize(normalCatNames)}, // Witch (TODO)
         {astroCatNames, sf::base::getArraySize(astroCatNames)},   // Astro
 
-        {wizardCatNames, sf::base::getArraySize(wizardCatNames)},   // Wizard
-        {mouseCatNames, sf::base::getArraySize(mouseCatNames)},     // Mouse
-        {engiCatNames, sf::base::getArraySize(engiCatNames)},       // Engi
-        {repulsoCatNames, sf::base::getArraySize(repulsoCatNames)}, // Repulso
+        {normalCatNames, sf::base::getArraySize(normalCatNames)},     // Witch (TODO)
+        {wizardCatNames, sf::base::getArraySize(wizardCatNames)},     // Wizard
+        {mouseCatNames, sf::base::getArraySize(mouseCatNames)},       // Mouse
+        {engiCatNames, sf::base::getArraySize(engiCatNames)},         // Engi
+        {repulsoCatNames, sf::base::getArraySize(repulsoCatNames)},   // Repulso
+        {attractoCatNames, sf::base::getArraySize(attractoCatNames)}, // Attracto
     });
 
 ////////////////////////////////////////////////////////////

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Bubble.hpp"
+#include "BubbleType.hpp"
 #include "PSVDataConstants.hpp"
 
 #include "SFML/Base/IntTypes.hpp"
