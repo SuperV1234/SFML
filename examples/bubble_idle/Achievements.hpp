@@ -307,3 +307,7 @@ enum : sf::base::SizeT
 {
     nAchievements = sf::base::getArraySize(achievementData)
 };
+
+// TODO P1: add achievements for every special cat
+// TODO P1: fill in missing names
+// TODO P1: link to Steam

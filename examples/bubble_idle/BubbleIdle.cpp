@@ -75,6 +75,7 @@
 #include "SFML/Base/Assert.hpp"
 #include "SFML/Base/IntTypes.hpp"
 #include "SFML/Base/Math/Ceil.hpp"
+#include "SFML/Base/Math/Pow.hpp"
 #include "SFML/Base/Optional.hpp"
 #include "SFML/Base/ScopeGuard.hpp"
 
@@ -134,8 +135,11 @@ bool handleCatCollision(const float deltaTimeMs, Cat& iCat, Cat& jCat)
     if (!result.hasValue())
         return false;
 
-    iCat.position += result->iDisplacement;
-    jCat.position += result->jDisplacement;
+    if (!iCat.hexedTimer.hasValue())
+        iCat.position += result->iDisplacement;
+
+    if (!jCat.hexedTimer.hasValue())
+        jCat.position += result->jDisplacement;
 
     return true;
 }
@@ -170,7 +174,7 @@ bool handleCatShrineCollision(const float deltaTimeMs, Cat& cat, Shrine& shrine)
     constexpr float initial = 1.f;
     constexpr float decay   = 0.95f;
 
-    return initial * (1.f - std::pow(decay, static_cast<float>(n))) / (1.f - decay);
+    return initial * (1.f - sf::base::pow(decay, static_cast<float>(n))) / (1.f - decay);
 }
 
 ////////////////////////////////////////////////////////////
@@ -330,11 +334,13 @@ struct Main
     ////////////////////////////////////////////////////////////
     // Textures (not in atlas)
     sf::Texture txLogo{sf::Texture::loadFromFile("resources/logo.png", {.smooth = true}).value()};
+    sf::Texture txFixedBg{sf::Texture::loadFromFile("resources/fixedbg.png", {.smooth = true}).value()};
     sf::Texture txBackground{sf::Texture::loadFromFile("resources/background.png", {.smooth = true}).value()};
     sf::Texture txByteTip{sf::Texture::loadFromFile("resources/bytetip.png", {.smooth = true}).value()};
     sf::Texture txTipBg{sf::Texture::loadFromFile("resources/tipbg.png", {.smooth = true}).value()};
     sf::Texture txTipByte{sf::Texture::loadFromFile("resources/tipbyte.png", {.smooth = true}).value()};
     sf::Texture txCursor{sf::Texture::loadFromFile("resources/cursor.png", {.smooth = true}).value()};
+    sf::Texture txCursorGrab{sf::Texture::loadFromFile("resources/cursorgrab.png", {.smooth = true}).value()};
 
     ////////////////////////////////////////////////////////////
     // Texture atlas rects
@@ -412,6 +418,16 @@ struct Main
     TextShakeEffect comboTextShakeEffect;
 
     ////////////////////////////////////////////////////////////
+    // HUD buff text
+    sf::Text buffText{fontSuperBakery,
+                      {.position         = comboText.position + sf::Vector2f{0.f, 35.f},
+                       .string           = "buffs go here",
+                       .characterSize    = 48u,
+                       .fillColor        = sf::Color::White,
+                       .outlineColor     = colorBlueOutline,
+                       .outlineThickness = 3.f}};
+
+    ////////////////////////////////////////////////////////////
     SweepAndPrune sweepAndPrune;
 
     ////////////////////////////////////////////////////////////
@@ -455,6 +471,7 @@ struct Main
     sf::Clock     playedClock;
     sf::base::I64 playedUsAccumulator{0};
     sf::base::I64 autosaveUsAccumulator{0};
+    sf::base::I64 fixedBgSlideAccumulator{0};
 
     ////////////////////////////////////////////////////////////
     // FPS and delta time clocks
@@ -782,25 +799,40 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
+    Cat& spawnCat(const sf::Vector2f pos, const CatType catType, const float hue)
+    {
+        spawnParticles(32, pos, ParticleType::Star, 0.5f, 0.75f);
+
+        return pt.cats.emplace_back(Cat{
+            .position              = pos,
+            .wobbleRadians         = {},
+            .cooldown              = {.value = pt.getComputedCooldownByCatType(catType)},
+            .pawPosition           = pos,
+            .pawRotation           = sf::radians(0.f),
+            .hue                   = hue,
+            .inspiredCountdown     = {},
+            .boostCountdown        = {},
+            .nameIdx               = getNextCatNameIdx(catType),
+            .textStatusShakeEffect = {},
+            .type                  = catType,
+            .hexedTimer            = {},
+            .astroState            = {},
+        });
+    }
+
+    ////////////////////////////////////////////////////////////
     Cat& spawnCat(const sf::View& gameView, const CatType catType, const float hue)
     {
         const auto pos = getWindow().mapPixelToCoords((getResolution() / 2.f).toVector2i(), gameView);
-        spawnParticles(32, pos, ParticleType::Star, 0.5f, 0.75f);
-
-        return pt.cats.emplace_back(
-            Cat{.position              = pos,
-                .wobbleRadians         = {},
-                .cooldown              = {.value = pt.getComputedCooldownByCatType(catType)},
-                .pawPosition           = pos,
-                .pawRotation           = sf::radians(0.f),
-                .hue                   = hue,
-                .inspiredCountdown     = {},
-                .boostCountdown        = {},
-                .nameIdx               = getNextCatNameIdx(catType),
-                .textStatusShakeEffect = {},
-                .type                  = catType,
-                .astroState            = {}});
+        return spawnCat(pos, catType, hue);
     }
+
+    ////////////////////////////////////////////////////////////
+    Cat& spawnSpecialCat(const sf::Vector2f pos, const CatType catType)
+    {
+        ++pt.psvPerCatType[static_cast<SizeT>(catType)].nPurchases;
+        return spawnCat(pos, catType, /* hue */ 0.f);
+    };
 
     ////////////////////////////////////////////////////////////
     void doTip(const std::string& str, const SizeT maxPrestigeLevel = 0u)
@@ -938,9 +970,12 @@ struct Main
                 R"(
 ~~ Shrine Of Voodoo ~~
 
-Effects: TODO P1: complete
+Spirits can be felt emanating from this shrine, where a Witchcat is sealed inside. They performs rituals on nearby cats, hexing one of them and capturing their soul in voodoo dolls that appear around the map.
 
-Rewards: TODO P1: complete)",
+Collecting all the dolls will release the hex and trigger a powerful timed effect depending on the type of the cursed cat.
+
+The spirits seem to demand a cat... only one, at least.
+)",
                 R"(
 ~~ Shrine Of Magic ~~
 
@@ -1004,7 +1039,7 @@ Pops bubbles or bombs, whatever comes first. Not the brightest, despite not bein
 
 Prestige points can be spent for their college tuition, making them more cleverer.)";
 
-            if (pt.geniusCatsPurchased)
+            if (pt.perm.geniusCatsPurchased)
             {
                 catNormalTooltip =
                     R"(
@@ -1014,7 +1049,7 @@ A truly intelligent being: prioritizes popping bombs first, then star bubbles, t
 
 We do not speak of the origin of the large brain attached to their body.)";
             }
-            else if (pt.smartCatsPurchased)
+            else if (pt.perm.smartCatsPurchased)
             {
                 catNormalTooltip =
                     R"(
@@ -1032,7 +1067,7 @@ Pride of the NCSA, a highly trained feline astronaut that continuously flies acr
 
 Desperately trying to get funding from the government for a mission on the cheese moon. Perhaps some prestige points could help?)";
 
-            if (pt.astroCatInspirePurchased)
+            if (pt.perm.astroCatInspirePurchased)
             {
                 catAstroTooltip =
                     R"(
@@ -1061,7 +1096,11 @@ Hired diplomat of the NB (NOBUBBLES) political party. Convinces bubbles to turn 
 ~~ Witchcat ~~
 (unique cat)
 
-TODO P1: complete)",
+Loves to perform rituals on other cats, hexing one of them at random and capturing their soul in voodoo dolls that appear around the map.
+
+Collecting all the dolls will release the hex and trigger a powerful timed effect depending on the type of the cursed cat.
+
+Their dark magic is puzzling... but not as puzzling as the sheer number of dolls they carry around.)",
                 R"(
 ~~ Wizardcat ~~
 (unique cat)
@@ -1381,11 +1420,21 @@ Using prestige points, TODO P0
                 doTip("Prestige to increase bubble value\nand unlock permanent upgrades!");
             }
 
+            if (pt.canBuyNextPrestige())
+            {
+                ImGui::PushStyleColor(ImGuiCol_Tab, IM_COL32(135, 50, 84, 255));
+                ImGui::PushStyleColor(ImGuiCol_TabHovered, IM_COL32(136, 65, 105, 255));
+                ImGui::PushStyleColor(ImGuiCol_TabSelected, IM_COL32(136, 65, 105, 255));
+            }
+
             if (ImGui::BeginTabItem("Prestige"))
             {
                 uiTabBarPrestige();
                 ImGui::EndTabItem();
             }
+
+            if (pt.canBuyNextPrestige())
+                ImGui::PopStyleColor(3);
         }
 
         if (ImGui::BeginTabItem("Stats"))
@@ -1501,7 +1550,7 @@ Using prestige points, TODO P0
             auto& psv = pt.psvCooldownMultsPerCatType[asIdx(catType)];
 
             std::sprintf(tooltipBuffer,
-                         "Decrease cooldown.\n\nNote: can be reverted by right-clicking, but no refunds!");
+                         "Decrease cooldown.\n\n(Note: can be reverted by right-clicking, but no refunds!)");
             std::sprintf(labelBuffer, "%.2fs", static_cast<double>(pt.getComputedCooldownByCatType(catType) / 1000.f));
             makePSVButton(label, psv);
 
@@ -1517,7 +1566,7 @@ Using prestige points, TODO P0
         {
             auto& psv = pt.psvRangeDivsPerCatType[asIdx(catType)];
 
-            std::sprintf(tooltipBuffer, "Increase range.\n\nNote: can be reverted by right-clicking, but no refunds!");
+            std::sprintf(tooltipBuffer, "Increase range.\n\n(Note: can be reverted by right-clicking, but no refunds!)");
             std::sprintf(labelBuffer, "%.2fpx", static_cast<double>(pt.getComputedRangeByCatType(catType)));
             makePSVButton(label, psv);
 
@@ -1565,7 +1614,8 @@ Using prestige points, TODO P0
         }
 
         // DEVILCAT
-        const bool catDevilUnlocked         = pt.psvBubbleValue.nPurchases > 0 && nCatNormal >= 6 && nCatUni >= 4;
+        const bool catDevilUnlocked = pt.psvBubbleValue.nPurchases > 0 && nCatNormal >= 6 && nCatUni >= 4 &&
+                                      pt.nShrinesCompleted >= 1;
         const bool catDevilUpgradesUnlocked = catDevilUnlocked && nCatDevil >= 2 && nCatAstro >= 1;
         if (catDevilUnlocked)
         {
@@ -1598,7 +1648,7 @@ Using prestige points, TODO P0
         }
 
         // ASTROCAT
-        const bool astroCatUnlocked         = nCatNormal >= 10 && nCatUni >= 5 && nCatDevil >= 2;
+        const bool astroCatUnlocked = nCatNormal >= 10 && nCatUni >= 5 && nCatDevil >= 2 && pt.nShrinesCompleted >= 2;
         const bool astroCatUpgradesUnlocked = astroCatUnlocked && nCatDevil >= 9 && nCatAstro >= 5;
         if (astroCatUnlocked)
         {
@@ -1734,13 +1784,16 @@ Using prestige points, TODO P0
                 needNCats(nCatUni, 1);
             }
 
-            // TODO P1: change dynamically
+            // TODO P2: change dynamically
             if (catUnicornUnlocked && !pt.isBubbleValueUnlocked())
             {
                 startList("to unlock prestige:");
 
                 if (pt.psvBubbleCount.nPurchases == 0)
                     result += "\n- buy more bubbles";
+
+                if (pt.nShrinesCompleted < 1)
+                    result += "\n- complete at least one shrine";
 
                 needNCats(nCatUni, 3);
             }
@@ -1751,6 +1804,9 @@ Using prestige points, TODO P0
 
                 if (pt.psvBubbleValue.nPurchases == 0)
                     result += "\n- prestige at least once";
+
+                if (pt.nShrinesCompleted < 1)
+                    result += "\n- complete at least one shrine";
 
                 needNCats(nCatNormal, 6);
                 needNCats(nCatUni, 4);
@@ -1766,6 +1822,10 @@ Using prestige points, TODO P0
             if (catUnicornUnlocked && catDevilUnlocked && !astroCatUnlocked)
             {
                 startList("to unlock astrocats:");
+
+                if (pt.nShrinesCompleted < 1)
+                    result += "\n- complete at least two shrines";
+
                 needNCats(nCatNormal, 10);
                 needNCats(nCatUni, 5);
                 needNCats(nCatDevil, 2);
@@ -1790,7 +1850,7 @@ Using prestige points, TODO P0
 
         if (nextGoalsText != "")
         {
-            ImGui::SetWindowFontScale(toolTipFontScale);
+            ImGui::SetWindowFontScale(subBulletFontScale);
             ImGui::Text("%s", nextGoalsText.c_str());
             ImGui::SetWindowFontScale(normalFontScale);
         }
@@ -1829,6 +1889,7 @@ Using prestige points, TODO P0
         uiBeginColumns();
 
         buttonHueMod = 120.f;
+        ImGui::BeginDisabled(!pt.canBuyNextPrestige());
         if (makePSVButtonEx("Prestige", pt.psvBubbleValue, times, maxCost))
         {
             playSound(sounds.prestige);
@@ -1841,6 +1902,7 @@ Using prestige points, TODO P0
 
             pt.onPrestige(ppReward);
         }
+        ImGui::EndDisabled();
 
         ImGui::Columns(1);
 
@@ -1851,14 +1913,20 @@ Using prestige points, TODO P0
 
         ImGui::Text("(next prestige: $%s)", toStringWithSeparators(nextCost));
 
-        if (maxCost == 0u)
-            ImGui::Text("- not enough money to prestige");
-        else
+        if (pt.canBuyNextPrestige())
         {
             ImGui::Text("- increase bubble value from x%zu to x%zu\n- obtain %zu prestige points",
                         currentMult,
                         currentMult + times,
                         ppReward);
+        }
+        else
+        {
+            if (maxCost == 0u)
+                ImGui::Text("- not enough money to prestige");
+
+            if (pt.nShrinesCompleted < pt.psvBubbleValue.nPurchases)
+                ImGui::Text("- must complete %llu more shrine(s)", pt.psvBubbleValue.nPurchases - pt.nShrinesCompleted);
         }
 
         ImGui::SetWindowFontScale(normalFontScale);
@@ -1880,15 +1948,14 @@ Using prestige points, TODO P0
         buttonHueMod = 190.f;
 
         std::sprintf(tooltipBuffer,
-                     "Manually popping a bubble now also pops nearby bubbles automatically!\n\nNote that combo "
-                     "multiplier still only increases once per successful click.\n\nNote: this effect can be toggled "
-                     "at will.");
+                     "Manually popping a bubble now also pops nearby bubbles automatically!\n\n(Note: combo multiplier "
+                     "still only increases once per successful click.)\n\n(Note: this effect can be toggled at will.)");
         std::sprintf(labelBuffer, "");
-        if (makePurchasablePPButtonOneTime("Multipop click", 1u, pt.multiPopPurchased))
+        if (makePurchasablePPButtonOneTime("Multipop click", 1u, pt.perm.multiPopPurchased))
             doTip("Popping a bubble now also pops\nnearby bubbles automatically!",
                   /* maxPrestigeLevel */ UINT_MAX);
 
-        if (pt.multiPopPurchased)
+        if (pt.perm.multiPopPurchased)
         {
             std::sprintf(tooltipBuffer, "Increase the range of the multipop effect.");
             std::sprintf(labelBuffer, "%.2fpx", static_cast<double>(pt.getComputedMultiPopRange()));
@@ -1907,24 +1974,24 @@ Using prestige points, TODO P0
                      "Cats have graduated!\n\nThey still cannot resist their popping insticts, but they will go for "
                      "star bubbles and bombs first, ensuring they are not wasted!");
         std::sprintf(labelBuffer, "");
-        if (makePurchasablePPButtonOneTime("Smart cats", 1u, pt.smartCatsPurchased))
+        if (makePurchasablePPButtonOneTime("Smart cats", 1u, pt.perm.smartCatsPurchased))
             doTip("Cats will now prioritize popping\nspecial bubbles over basic ones!",
                   /* maxPrestigeLevel */ UINT_MAX);
 
-        if (pt.smartCatsPurchased)
+        if (pt.perm.smartCatsPurchased)
         {
             std::sprintf(tooltipBuffer,
                          "Embrace the glorious evolution!\n\nCats have ascended beyond their primal "
                          "insticts and will now prioritize bombs, then star bubbles, then normal "
-                         "bubbles!\n\nThey will also ignore any bubble type of your choosing.\n\nNote: "
-                         "this effect can be toggled at will.");
+                         "bubbles!\n\nThey will also ignore any bubble type of your choosing.\n\n(Note: "
+                         "this effect can be toggled at will.)");
             std::sprintf(labelBuffer, "");
-            if (makePurchasablePPButtonOneTime("- genius cats", 16u, pt.geniusCatsPurchased))
+            if (makePurchasablePPButtonOneTime("- genius cats", 16u, pt.perm.geniusCatsPurchased))
                 doTip("Genius cats prioritize bombs and\ncan be instructed to ignore certain bubbles!",
                       /* maxPrestigeLevel */ UINT_MAX);
         }
 
-        if (pt.geniusCatsPurchased)
+        if (pt.perm.geniusCatsPurchased)
         {
             ImGui::Columns(1);
             ImGui::SetWindowFontScale(subBulletFontScale);
@@ -1932,13 +1999,15 @@ Using prestige points, TODO P0
             ImGui::Text("- ignore: ");
             ImGui::SameLine();
 
-            ImGui::Checkbox("normal##genius", &pt.geniusCatIgnoreNormalBubbles);
+            auto& [ignoreNormal, ignoreStar, ignoreBomb] = pt.geniusCatIgnoreBubbles;
+
+            ImGui::Checkbox("normal##genius", &ignoreNormal);
             ImGui::SameLine();
 
-            ImGui::Checkbox("star##genius", &pt.geniusCatIgnoreStarBubbles);
+            ImGui::Checkbox("star##genius", &ignoreStar);
             ImGui::SameLine();
 
-            ImGui::Checkbox("bombs##genius", &pt.geniusCatIgnoreBombBubbles);
+            ImGui::Checkbox("bombs##genius", &ignoreBomb);
 
             ImGui::SetWindowFontScale(normalFontScale);
             uiBeginColumns();
@@ -1948,12 +2017,12 @@ Using prestige points, TODO P0
 
         std::sprintf(tooltipBuffer,
                      "A giant fan (off-screen) will produce an intense wind, making bubbles move and "
-                     "flow much faster.\n\nNote: this effect can be toggled at will.");
+                     "flow much faster.\n\n(Note: this effect can be toggled at will.)");
         std::sprintf(labelBuffer, "");
-        if (makePurchasablePPButtonOneTime("Giant fan", 8u, pt.windPurchased))
+        if (makePurchasablePPButtonOneTime("Giant fan", 8u, pt.perm.windPurchased))
             doTip("Hold onto something!", /* maxPrestigeLevel */ UINT_MAX);
 
-        if (pt.windPurchased)
+        if (pt.perm.windPurchased)
         {
             ImGui::SetWindowFontScale(subBulletFontScale);
             ImGui::Checkbox("enable ##wind", &pt.windEnabled);
@@ -1962,27 +2031,73 @@ Using prestige points, TODO P0
             ImGui::NextColumn();
         }
 
-        ImGui::Separator();
-
-        std::sprintf(tooltipBuffer,
-                     "Astrocats are now equipped with fancy patriotic flags, inspiring cats watching "
-                     "them fly by to work faster!");
-        std::sprintf(labelBuffer, "");
-        if (makePurchasablePPButtonOneTime("Space propaganda", 32u, pt.astroCatInspirePurchased))
-            doTip("Astrocats will inspire other cats\nto work faster when flying by!",
-                  /* maxPrestigeLevel */ UINT_MAX);
-
-        if (pt.astroCatInspirePurchased)
+        if (pt.getCatCountByType(CatType::Astro) >= 1u)
         {
-            std::sprintf(tooltipBuffer, "Increase the duration of the inspiration effect.");
-            std::sprintf(labelBuffer, "%.2fs", static_cast<double>(pt.getComputedInspirationDuration() / 1000.f));
+            ImGui::Separator();
 
-            makePrestigePurchasablePPButtonPSV("- buff duration", pt.psvPPInspireDurationMult);
+            std::sprintf(tooltipBuffer,
+                         "Astrocats are now equipped with fancy patriotic flags, inspiring cats watching "
+                         "them fly by to work faster!");
+            std::sprintf(labelBuffer, "");
+
+            if (makePurchasablePPButtonOneTime("Space propaganda", 32u, pt.perm.astroCatInspirePurchased))
+                doTip("Astrocats will inspire other cats\nto work faster when flying by!",
+                      /* maxPrestigeLevel */ UINT_MAX);
+
+            if (pt.perm.astroCatInspirePurchased)
+            {
+                std::sprintf(tooltipBuffer, "Increase the duration of the inspiration effect.");
+                std::sprintf(labelBuffer, "%.2fs", static_cast<double>(pt.getComputedInspirationDuration() / 1000.f));
+
+                makePrestigePurchasablePPButtonPSV("- buff duration", pt.psvPPInspireDurationMult);
+            }
         }
+
+        const auto makeUnsealButton = [&](const PrestigePointsType ppCost, const char* catName, const CatType type)
+        {
+            if (findFirstCatByType(type) == nullptr)
+                return;
+
+            std::sprintf(tooltipBuffer,
+                         "Permanently release the %s from their shrine. They will be waiting for you right "
+                         "outside when the shrine is activated.\n\n(Note: completing the shrine will now grant 1.5x "
+                         "the money it absorbed.)",
+                         catName);
+            std::sprintf(labelBuffer, "");
+            (void)makePurchasablePPButtonOneTime("- Break the seal", ppCost, pt.perm.unsealedByType[asIdx(type)]);
+        };
 
         if (findCatWitch() != nullptr || pt.psvBubbleValue.nPurchases >= 3)
         {
-            // TODO P1:
+            ImGui::Separator();
+
+            ImGui::Columns(1);
+            ImGui::Text("Witchcat");
+            uiBeginColumns();
+
+            makeUnsealButton(8u, "Witchcat", CatType::Witch);
+
+            std::sprintf(tooltipBuffer, "Increase the base duration of Witchcat buffs.");
+            std::sprintf(labelBuffer, "%.2fs", static_cast<double>(pt.psvPPWitchCatBuffDuration.currentValue()));
+            makePrestigePurchasablePPButtonPSV("- Buff duration", pt.psvPPWitchCatBuffDuration);
+
+            std::sprintf(tooltipBuffer,
+                         "The duration of Witchcat buffs scales with the number of cats that were in range while the "
+                         "ritual was performed.");
+            std::sprintf(labelBuffer, "");
+            (void)makePurchasablePPButtonOneTime("- Group ritual", 4u, pt.perm.witchCatBuffPowerScalesWithNCats);
+
+            std::sprintf(tooltipBuffer, "The duration of Witchcat buffs scales with the size of the explored map.");
+            std::sprintf(labelBuffer, "");
+            (void)makePurchasablePPButtonOneTime("- Worldwide cult", 4u, pt.perm.witchCatBuffPowerScalesWithMapSize);
+
+            std::sprintf(tooltipBuffer, "Half as many voodoo dolls will appear per ritual.");
+            std::sprintf(labelBuffer, "");
+            (void)makePurchasablePPButtonOneTime("- Material shortage", 128u, pt.perm.witchCatBuffFewerDolls);
+
+            std::sprintf(tooltipBuffer, "TODO P0: implement, poppable dolls");
+            std::sprintf(labelBuffer, "");
+            (void)makePurchasablePPButtonOneTime("- Fragile dolls", 256u, pt.perm.witchCatBuffFragileDolls);
         }
 
         if (findCatWizard() != nullptr || pt.psvBubbleValue.nPurchases >= 3)
@@ -1993,7 +2108,8 @@ Using prestige points, TODO P0
             ImGui::Text("Wizardcat");
             uiBeginColumns();
 
-            // TODO P1: unshackle
+            makeUnsealButton(16u, "Wizardcat", CatType::Wizard);
+
             // TODO P1: autocast
 
             std::sprintf(tooltipBuffer, "Increase the speed of mana generation.");
@@ -2008,7 +2124,7 @@ Using prestige points, TODO P0
                          "Starpaw conversion ignores bombs, transforming only normal bubbles around the wizard into "
                          "star bubbles.");
             std::sprintf(labelBuffer, "");
-            (void)makePurchasablePPButtonOneTime("- Selective starpaw", 64u, pt.astroCatInspirePurchased);
+            (void)makePurchasablePPButtonOneTime("- Selective starpaw", 64u, pt.perm.astroCatInspirePurchased);
         }
 
         if (findCatMouse() != nullptr || pt.psvBubbleValue.nPurchases >= 4)
@@ -2019,7 +2135,7 @@ Using prestige points, TODO P0
             ImGui::Text("Mousecat");
             uiBeginColumns();
 
-            // TODO P1: unshackle
+            makeUnsealButton(32u, "Mousecat", CatType::Mouse);
 
             std::sprintf(tooltipBuffer, "Increase the global click reward value multiplier.");
             std::sprintf(labelBuffer, "x%.2f", static_cast<double>(pt.psvPPMouseCatGlobalBonusMult.currentValue()));
@@ -2034,7 +2150,7 @@ Using prestige points, TODO P0
             ImGui::Text("Engicat");
             uiBeginColumns();
 
-            // TODO P1: unshackle
+            makeUnsealButton(64u, "Engicat", CatType::Engi);
 
             std::sprintf(tooltipBuffer, "Increase the global cat reward value multiplier.");
             std::sprintf(labelBuffer, "x%.2f", static_cast<double>(pt.psvPPEngiCatGlobalBonusMult.currentValue()));
@@ -2049,13 +2165,13 @@ Using prestige points, TODO P0
             ImGui::Text("Repulsocat");
             uiBeginColumns();
 
-            // TODO P1: unshackle
+            makeUnsealButton(128u, "Repulsocat", CatType::Repulso);
 
             std::sprintf(tooltipBuffer, "The Repulsocat cordially asks their fan to filter repelled bubbles by type.");
             std::sprintf(labelBuffer, "");
-            (void)makePurchasablePPButtonOneTime("- Repulsion filter", 64u, pt.repulsoCatFilterPurchased);
+            (void)makePurchasablePPButtonOneTime("- Repulsion filter", 64u, pt.perm.repulsoCatFilterPurchased);
 
-            if (pt.repulsoCatFilterPurchased)
+            if (pt.perm.repulsoCatFilterPurchased)
             {
                 ImGui::Columns(1);
                 ImGui::SetWindowFontScale(subBulletFontScale);
@@ -2063,13 +2179,15 @@ Using prestige points, TODO P0
                 ImGui::Text("- ignore: ");
                 ImGui::SameLine();
 
-                ImGui::Checkbox("normal##repulso", &pt.repulsoCatIgnoreNormalBubbles);
+                auto& [ignoreNormal, ignoreStar, ignoreBomb] = pt.repulsoCatIgnoreBubbles;
+
+                ImGui::Checkbox("normal##repulso", &ignoreNormal);
                 ImGui::SameLine();
 
-                ImGui::Checkbox("star##repulso", &pt.repulsoCatIgnoreStarBubbles);
+                ImGui::Checkbox("star##repulso", &ignoreStar);
                 ImGui::SameLine();
 
-                ImGui::Checkbox("bombs##repulso", &pt.repulsoCatIgnoreBombBubbles);
+                ImGui::Checkbox("bombs##repulso", &ignoreBomb);
 
                 ImGui::SetWindowFontScale(normalFontScale);
                 uiBeginColumns();
@@ -2079,9 +2197,9 @@ Using prestige points, TODO P0
                          "The Repulsocat coats the fan blades with star powder, giving it a chance to convert "
                          "repelled bubbles to star bubbles.");
             std::sprintf(labelBuffer, "");
-            (void)makePurchasablePPButtonOneTime("- Conversion field", 256u, pt.repulsoCatConverterPurchased);
+            (void)makePurchasablePPButtonOneTime("- Conversion field", 256u, pt.perm.repulsoCatConverterPurchased);
 
-            if (pt.repulsoCatConverterPurchased)
+            if (pt.perm.repulsoCatConverterPurchased)
             {
                 ImGui::SetWindowFontScale(subBulletFontScale);
                 ImGui::Checkbox("enable ##repulsoconv", &pt.repulsoCatConverterEnabled);
@@ -2103,15 +2221,15 @@ Using prestige points, TODO P0
             ImGui::Text("Attractocat");
             uiBeginColumns();
 
-            // TODO P1: unshackle
+            makeUnsealButton(256u, "Attractocat", CatType::Attracto);
 
             std::sprintf(tooltipBuffer,
                          "The Attractocat does some quantum science stuff to its magnet to allow filtering of "
                          "attracted bubbles by type.");
             std::sprintf(labelBuffer, "");
-            (void)makePurchasablePPButtonOneTime("- Attraction filter", 96u, pt.attractoCatFilterPurchased);
+            (void)makePurchasablePPButtonOneTime("- Attraction filter", 96u, pt.perm.attractoCatFilterPurchased);
 
-            if (pt.attractoCatFilterPurchased)
+            if (pt.perm.attractoCatFilterPurchased)
             {
                 ImGui::Columns(1);
                 ImGui::SetWindowFontScale(subBulletFontScale);
@@ -2119,13 +2237,15 @@ Using prestige points, TODO P0
                 ImGui::Text("- ignore: ");
                 ImGui::SameLine();
 
-                ImGui::Checkbox("normal##attracto", &pt.attractoCatIgnoreNormalBubbles);
+                auto& [ignoreNormal, ignoreStar, ignoreBomb] = pt.attractoCatIgnoreBubbles;
+
+                ImGui::Checkbox("normal##attracto", &ignoreNormal);
                 ImGui::SameLine();
 
-                ImGui::Checkbox("star##attracto", &pt.attractoCatIgnoreStarBubbles);
+                ImGui::Checkbox("star##attracto", &ignoreStar);
                 ImGui::SameLine();
 
-                ImGui::Checkbox("bombs##attracto", &pt.attractoCatIgnoreBombBubbles);
+                ImGui::Checkbox("bombs##attracto", &ignoreBomb);
 
                 ImGui::SetWindowFontScale(normalFontScale);
                 uiBeginColumns();
@@ -2166,7 +2286,8 @@ Using prestige points, TODO P0
         if (wizardCat == nullptr)
             return false;
 
-        return pt.absorbingWisdom || wizardCat->cooldown.value != 0.f;
+        return pt.absorbingWisdom || wizardCat->cooldown.value != 0.f || wizardCat->hexedTimer.hasValue() ||
+               draggedCat == wizardCat;
     }
 
     ////////////////////////////////////////////////////////////
@@ -2319,7 +2440,7 @@ Using prestige points, TODO P0
                                           range,
                                           [&](Bubble& bubble)
                     {
-                        if (pt.starpawConversionIgnoreBombs && bubble.type != BubbleType::Normal)
+                        if (pt.perm.starpawConversionIgnoreBombs && bubble.type != BubbleType::Normal)
                             return ControlFlow::Continue;
 
                         if (rng.getF(0.f, 99.f) > pt.psvStarpawPercentage.currentValue())
@@ -2400,6 +2521,7 @@ Using prestige points, TODO P0
             //
             // SPELL 2 (TODO P0: should cost 30 mana, and is usually unlocked around prestige 4, so both devils and astros exist)
             // idea: stasis, makes all bubbles stationary and when popped they do not disappear (except bombs maybe)
+            // make it refresh witch cooldown
             if (pt.psvSpellCount.nPurchases >= 3)
             {
                 ImGui::Separator();
@@ -2618,7 +2740,7 @@ Using prestige points, TODO P0
                 sf::base::U64 id = 0u;
                 for (const auto& [name, description] : achievementData)
                 {
-                    const bool  unlocked = profile.unlockedAchievements[id]; // TODO
+                    const bool  unlocked = profile.unlockedAchievements[id];
                     const float opacity  = unlocked ? 1.f : 0.5f;
 
                     const ImVec4 textColor{1.f, 1.f, 1.f, opacity};
@@ -2939,6 +3061,17 @@ Using prestige points, TODO P0
 
             ImGui::Separator();
 
+            const auto scalarInput = [&](const char* label, float& value)
+            {
+                std::string lbuf = label;
+                lbuf += "##";
+                lbuf += std::to_string(counter++);
+
+                ImGui::SetNextItemWidth(140.f);
+                if (ImGui::InputScalar(lbuf.c_str(), ImGuiDataType_Float, &value, &step, nullptr, nullptr, ImGuiInputTextFlags_CharsDecimal))
+                    value = sf::base::clamp(value, 0.f, 10000.f);
+            };
+
             const auto psvScalarInput = [&](const char* label, PurchasableScalingValue& psv)
             {
                 if (psv.data->nMaxPurchases == 0u)
@@ -2960,6 +3093,13 @@ Using prestige points, TODO P0
             psvScalarInput("SpellCount", pt.psvSpellCount);
             psvScalarInput("BubbleValue", pt.psvBubbleValue);
             psvScalarInput("ExplosionRadiusMult", pt.psvExplosionRadiusMult);
+
+            ImGui::Separator();
+
+            for (SizeT i = 0u; i < nCatTypes; ++i)
+            {
+                scalarInput((std::to_string(i) + "Buff").c_str(), pt.buffCountdownsPerType[i].value);
+            }
 
             ImGui::Separator();
 
@@ -3010,6 +3150,21 @@ Using prestige points, TODO P0
     }
 
     ////////////////////////////////////////////////////////////
+    TextParticle& makeRewardTextParticle(const sf::Vector2f position)
+    {
+        return textParticles.emplace_back(
+            TextParticle{.buffer = {},
+                         .data   = {.position = {position.x, position.y - 10.f},
+                                    .velocity = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.395f,
+                                    .scale = sf::base::clamp(1.f + 0.1f * static_cast<float>(combo + 1) / 1.75f, 1.f, 3.0f) * 0.5f,
+                                    .accelerationY = 0.0039f,
+                                    .opacity       = 1.f,
+                                    .opacityDecay  = 0.00150f,
+                                    .rotation      = 0.f,
+                                    .torque        = rng.getF(-0.002f, 0.002f)}});
+    }
+
+    ////////////////////////////////////////////////////////////
     void popBubbleImpl(const bool         byHand,
                        const BubbleType   bubbleType,
                        const MoneyType    reward,
@@ -3022,17 +3177,7 @@ Using prestige points, TODO P0
 
         if (profile.showTextParticles)
         {
-            auto& tp = textParticles.emplace_back(
-                TextParticle{.buffer = {},
-                             .data   = {.position = {tpPosition.x, tpPosition.y - 10.f},
-                                        .velocity = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.395f,
-                                        .scale = sf::base::clamp(1.f + 0.1f * static_cast<float>(combo + 1) / 1.75f, 1.f, 3.0f) * 0.5f,
-                                        .accelerationY = 0.0039f,
-                                        .opacity       = 1.f,
-                                        .opacityDecay  = 0.00150f,
-                                        .rotation      = 0.f,
-                                        .torque        = rng.getF(-0.002f, 0.002f)}});
-
+            auto& tp = makeRewardTextParticle(tpPosition);
             std::snprintf(tp.buffer, sizeof(tp.buffer), "+$%llu", reward);
         }
 
@@ -3099,6 +3244,14 @@ Using prestige points, TODO P0
                 reward *= 5;
                 break;
             }
+
+        // Boosts clicks x5 if global click boost witch buff is enabled
+        if (byHand && pt.buffCountdownsPerType[asIdx(CatType::Mouse)].value > 0.f)
+            reward *= 5;
+
+        // Boosts cats x5 if global cat boost witch buff is enabled
+        if (!byHand && pt.buffCountdownsPerType[asIdx(CatType::Normal)].value > 0.f)
+            reward *= 5;
 
         Shrine* collectorShrine = nullptr;
         for (Shrine& shrine : pt.shrines)
@@ -3197,7 +3350,7 @@ Using prestige points, TODO P0
 
             auto& pos = bubble.position;
 
-            if (pt.windPurchased && pt.windEnabled)
+            if (pt.perm.windPurchased && pt.windEnabled)
             {
                 bubble.velocity.x += 0.00055f * deltaTimeMs;
                 bubble.velocity.y += 0.00055f * deltaTimeMs;
@@ -3222,7 +3375,20 @@ Using prestige points, TODO P0
                 if (sf::base::fabs(bubble.velocity.x) > 0.04f)
                     bubble.velocity.x = 0.04f;
 
-                turnBubbleNormal(bubble);
+                const bool uniBuffEnabled   = pt.buffCountdownsPerType[asIdx(CatType::Uni)].value > 0.f;
+                const bool devilBuffEnabled = pt.buffCountdownsPerType[asIdx(CatType::Devil)].value > 0.f;
+
+                const bool willBeStar = uniBuffEnabled && rng.getF(0.f, 100.f) <= 15.f;  // TODO P1: improve with PPs?
+                const bool willBeBomb = devilBuffEnabled && rng.getF(0.f, 100.f) <= 1.f; // TODO P1: improve with PPs?
+
+                if (!willBeStar && !willBeBomb)
+                    turnBubbleNormal(bubble);
+                else if (willBeBomb && willBeStar)
+                    bubble.type = rng.getF(0.f, 1.f) > 0.5f ? BubbleType::Star : BubbleType::Bomb;
+                else if (willBeBomb)
+                    bubble.type = BubbleType::Bomb;
+                else if (willBeStar)
+                    bubble.type = BubbleType::Star;
             }
             else if (pos.y + radius < 0.f)
             {
@@ -3239,9 +3405,15 @@ Using prestige points, TODO P0
         if (!clickPosition.hasValue())
             return false;
 
-        bool anyBubblePoppedByClicking = false;
-
         const auto clickPos = optWindow->mapPixelToCoords(clickPosition->toVector2i(), gameView);
+
+        if (!particleCullingBoundaries.isInside(clickPos))
+        {
+            clickPosition.reset();
+            return false;
+        }
+
+        bool anyBubblePoppedByClicking = false;
 
         forEachBubbleInRadius(clickPos,
                               128.f,
@@ -3339,7 +3511,7 @@ Using prestige points, TODO P0
             cat.cooldown.value = maxCooldown;
         };
 
-        if (!pt.smartCatsPurchased)
+        if (!pt.perm.smartCatsPurchased)
         {
             if (Bubble* b = pickRandomBubbleInRadius({cx, cy}, range))
                 normalCatPopBubble(*b);
@@ -3354,7 +3526,7 @@ Using prestige points, TODO P0
                                                     [&](Bubble& b) { return ((b.type == types) || ...); });
         };
 
-        if (!pt.geniusCatsPurchased)
+        if (!pt.perm.geniusCatsPurchased)
         {
             if (Bubble* specialBubble = pickAny(BubbleType::Star, BubbleType::Bomb))
                 normalCatPopBubble(*specialBubble);
@@ -3364,11 +3536,11 @@ Using prestige points, TODO P0
             return;
         }
 
-        if (Bubble* bBomb = pickAny(BubbleType::Bomb); bBomb != nullptr && !pt.geniusCatIgnoreBombBubbles)
+        if (Bubble* bBomb = pickAny(BubbleType::Bomb); bBomb != nullptr && !pt.geniusCatIgnoreBubbles.bomb)
             normalCatPopBubble(*bBomb);
-        else if (Bubble* bStar = pickAny(BubbleType::Star); bStar != nullptr && !pt.geniusCatIgnoreStarBubbles)
+        else if (Bubble* bStar = pickAny(BubbleType::Star); bStar != nullptr && !pt.geniusCatIgnoreBubbles.star)
             normalCatPopBubble(*bStar);
-        else if (Bubble* bNormal = pickAny(BubbleType::Normal); bNormal != nullptr && !pt.geniusCatIgnoreNormalBubbles)
+        else if (Bubble* bNormal = pickAny(BubbleType::Normal); bNormal != nullptr && !pt.geniusCatIgnoreBubbles.normal)
             normalCatPopBubble(*bNormal);
     }
 
@@ -3467,7 +3639,7 @@ Using prestige points, TODO P0
     }
 
     ////////////////////////////////////////////////////////////
-    void gameLoopUpdateCatActionWitch(const float /* deltaTimeMs */, Cat& cat) // TODO P1: change
+    void gameLoopUpdateCatActionWitch(const float /* deltaTimeMs */, Cat& cat)
     {
         SFML_BASE_ASSERT(!anyCatHexed());
 
@@ -3495,24 +3667,34 @@ Using prestige points, TODO P0
 
         if (otherCatCount > 0)
         {
-            // TODO P0: spawn multiple dolls, all must be clicked to remove the hex
+            // TODO P0:
             // each in a different screen?
-            // also add nice transitions like for shrines
-            // kill dolls on prestige
-            // maybe some prestige upgrades
+            // cats can kill dolls on prestige
+            // maybe some prestige upgrades for buff duration, etc
+            // magic spell to refresh witch cooldown immediately
 
             SFML_BASE_ASSERT(selected != nullptr);
 
             selected->hexedTimer.emplace(BidirectionalTimer{.direction = TimerDirection::Forward});
+            selected->wobbleRadians = 0.f;
 
-            const float buffPower = 1.f + static_cast<float>(otherCatCount) * 0.25f + (pt.mapPurchased ? 0.35f : 0.f) +
-                                    static_cast<float>(pt.psvMapExtension.nPurchases) * 0.35f;
+            float buffPower = pt.psvPPWitchCatBuffDuration.currentValue();
+
+            if (pt.perm.witchCatBuffPowerScalesWithNCats)
+                buffPower += static_cast<float>(otherCatCount) * 0.5f;
+
+            if (pt.perm.witchCatBuffPowerScalesWithMapSize)
+                buffPower += (pt.mapPurchased ? 0.75f : 0.f) + static_cast<float>(pt.psvMapExtension.nPurchases) * 0.75f;
+
+            const auto nDollsToSpawn = sf::base::max(SizeT{2u},
+                                                     static_cast<SizeT>(
+                                                         buffPower * (pt.perm.witchCatBuffFewerDolls ? 1.f : 2.f) / 4.f));
 
             SFML_BASE_ASSERT(pt.dolls.empty());
 
             constexpr float offset = 64.f;
 
-            for (SizeT i = 0u; i < 6u; ++i) // TODO
+            for (SizeT i = 0u; i < nDollsToSpawn; ++i) // TODO
             {
                 auto& d = pt.dolls.emplace_back(
                     Doll{.position = rng.getVec2f({offset, offset}, {pt.getMapLimit() - offset, boundaries.y - offset}),
@@ -3584,19 +3766,7 @@ Using prestige points, TODO P0
 
             if (profile.showTextParticles)
             {
-                auto& tp = textParticles.emplace_back(
-                    TextParticle{.buffer = {},
-                                 .data   = {.position = {drawPosition.x, drawPosition.y - 10.f},
-                                            .velocity = rng.getVec2f({-0.1f, -1.65f}, {0.1f, -1.35f}) * 0.395f,
-                                            .scale = sf::base::clamp(1.f + 0.1f * static_cast<float>(combo + 1) / 1.75f, 1.f, 3.0f) *
-                                                     0.5f,
-                                            .accelerationY = 0.0039f,
-                                            .opacity       = 1.f,
-                                            .opacityDecay  = 0.00150f,
-                                            .rotation      = 0.f,
-                                            .torque        = rng.getF(-0.002f, 0.002f)}});
-
-
+                auto& tp = makeRewardTextParticle(drawPosition);
                 std::snprintf(tp.buffer, sizeof(tp.buffer), "+%llu WP", wisdomReward);
             }
 
@@ -3711,7 +3881,7 @@ Using prestige points, TODO P0
         const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
         const auto range       = pt.getComputedRangeByCatType(cat.type);
 
-        if (pt.repulsoCatConverterEnabled && !pt.repulsoCatIgnoreNormalBubbles)
+        if (pt.repulsoCatConverterEnabled && !pt.repulsoCatIgnoreBubbles.normal)
         {
             Bubble* b = pickRandomBubbleInRadiusMatching(cat.position,
                                                          range,
@@ -3737,7 +3907,7 @@ Using prestige points, TODO P0
         const auto maxCooldown = pt.getComputedCooldownByCatType(cat.type);
         const auto range       = pt.getComputedRangeByCatType(cat.type);
 
-        // TODO P0: ?
+        // TODO P0: ? maybe absorb all bubbles in range and give a reward based on the number of bubbles absorbed
 
         cat.cooldown.value = maxCooldown;
     }
@@ -3765,10 +3935,16 @@ Using prestige points, TODO P0
                 }
                 else if (shrine.type == ShrineType::Automation && shrine.isActive())
                 {
-                    const auto diff = (shrine.position - cat.position);
-                    if (diff.length() < shrine.getRange())
-                    {
+                    if (shrine.isInRange(cat.position))
                         cat.boostCountdown.value = 250.f;
+                }
+                else if (shrine.type == ShrineType::Voodoo && shrine.isActive())
+                {
+                    if (shrine.isInRange(cat.position) && findCatWitch() == nullptr && !anyCatHexed() &&
+                        !cat.hexedTimer.hasValue())
+                    {
+                        cat.hexedTimer.emplace(BidirectionalTimer{.direction = TimerDirection::Forward});
+                        cat.wobbleRadians = 0.f;
                     }
                 }
             }
@@ -3789,7 +3965,7 @@ Using prestige points, TODO P0
             cat.pawPosition -= diff * 0.01f * deltaTimeMs;
             cat.pawRotation = cat.pawRotation.rotatedTowards(sf::degrees(-45.f), deltaTimeMs * 0.005f);
 
-            if (cat.cooldown.value == INFINITY)
+            if (cat.cooldown.value == INFINITY) // TODO P0:
             {
                 cat.pawOpacity  = 128.f;
                 cat.mainOpacity = 128.f;
@@ -3814,12 +3990,12 @@ Using prestige points, TODO P0
 
             if (cat.hexedTimer.hasValue() || (cat.type == CatType::Witch && anyCatHexed()))
             {
-                spawnParticle({.position = drawPosition + sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius},
-                               .velocity = rng.getVec2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
-                               .scale    = rng.getF(0.08f, 0.27f) * 0.5f,
-                               .accelerationY = -0.002f,
+                spawnParticle({.position = drawPosition + sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius - 25.f},
+                               .velocity      = rng.getVec2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
+                               .scale         = rng.getF(0.08f, 0.27f) * 0.5f,
+                               .accelerationY = -0.0017f,
                                .opacity       = 255.f,
-                               .opacityDecay  = rng.getF(0.00025f, 0.0015f),
+                               .opacityDecay  = rng.getF(0.00035f, 0.0025f),
                                .rotation      = rng.getF(0.f, sf::base::tau),
                                .torque        = rng.getF(-0.002f, 0.002f)},
                               /* hue */ 0.f,
@@ -3844,7 +4020,8 @@ Using prestige points, TODO P0
                               ParticleType::Star);
             }
 
-            if (cat.boostCountdown.value > 0.f && rng.getF(0.f, 1.f) > 0.75f)
+            const float globalBoost = pt.buffCountdownsPerType[asIdx(CatType::Engi)].value;
+            if ((globalBoost > 0.f || cat.boostCountdown.value > 0.f) && rng.getF(0.f, 1.f) > 0.75f)
             {
                 spawnParticle({.position = drawPosition + sf::Vector2f{rng.getF(-catRadius, +catRadius), catRadius - 25.f},
                                .velocity      = rng.getVec2f({-0.025f, -0.015f}, {0.025f, 0.015f}),
@@ -3992,19 +4169,24 @@ Using prestige points, TODO P0
                 forEachBubbleInRadius(cat.position,
                                       pt.getComputedRangeByCatType(cat.type),
                                       makeMagnetAction(-1.f,
-                                                       pt.repulsoCatIgnoreNormalBubbles,
-                                                       pt.repulsoCatIgnoreStarBubbles,
-                                                       pt.repulsoCatIgnoreBombBubbles));
+                                                       pt.repulsoCatIgnoreBubbles.normal,
+                                                       pt.repulsoCatIgnoreBubbles.star,
+                                                       pt.repulsoCatIgnoreBubbles.bomb));
 
             if (cat.type == CatType::Attracto)
                 forEachBubbleInRadius(cat.position,
                                       pt.getComputedRangeByCatType(cat.type),
                                       makeMagnetAction(1.f,
-                                                       pt.attractoCatIgnoreNormalBubbles,
-                                                       pt.attractoCatIgnoreStarBubbles,
-                                                       pt.attractoCatIgnoreBombBubbles));
+                                                       pt.attractoCatIgnoreBubbles.normal,
+                                                       pt.attractoCatIgnoreBubbles.star,
+                                                       pt.attractoCatIgnoreBubbles.bomb));
 
-            if (!cat.updateCooldown(deltaTimeMs))
+            const bool beingDragged = &cat == draggedCat;
+            if (beingDragged)
+                continue;
+
+            const float globalBoostMult = globalBoost > 0.f ? 2.f : 1.f;
+            if (!cat.updateCooldown(deltaTimeMs * globalBoostMult))
                 continue;
 
             using FnPtr = void (Main::*)(const float, Cat&);
@@ -4035,8 +4217,6 @@ Using prestige points, TODO P0
         {
             if (draggedCat)
             {
-                draggedCat->cooldown.value = pt.getComputedCooldownByCatType(draggedCat->type);
-
                 playSound(sounds.drop);
                 draggedCat = nullptr;
             }
@@ -4047,8 +4227,7 @@ Using prestige points, TODO P0
 
         if (draggedCat)
         {
-            draggedCat->position       = exponentialApproach(draggedCat->position, mousePos, deltaTimeMs, 50.f);
-            draggedCat->cooldown.value = INFINITY;
+            draggedCat->position = exponentialApproach(draggedCat->position, mousePos + sf::Vector2f{-10.f, 13.f}, deltaTimeMs, 25.f);
             return;
         }
 
@@ -4091,7 +4270,7 @@ Using prestige points, TODO P0
     }
 
     ////////////////////////////////////////////////////////////
-    void gameLoopUpdateShrines(const float deltaTimeMs, const sf::View& gameView)
+    void gameLoopUpdateShrines(const float deltaTimeMs)
     {
         for (SizeT i = 0u; i < pt.psvShrineActivation.nPurchases; ++i)
         {
@@ -4142,6 +4321,13 @@ Using prestige points, TODO P0
                 else if (cdStatus == CountdownStatusStop::JustFinished)
                 {
                     playSound(sounds.woosh);
+
+                    const auto shrineTypeToCatType = asIdx(shrine.type) + 4u;
+                    if (shrineTypeToCatType >= asIdx(CatType::Count))
+                        return;
+
+                    if (pt.perm.unsealedByType[shrineTypeToCatType])
+                        spawnSpecialCat(shrine.position, static_cast<CatType>(shrineTypeToCatType));
                 }
             }
 
@@ -4220,44 +4406,43 @@ Using prestige points, TODO P0
                         playSound(sounds.woosh);
                         ++pt.nShrinesCompleted;
 
-                        const auto spawnSpecialCat = [&](const CatType catType)
+                        const auto doShrineReward = [&](const CatType catType)
                         {
-                            auto& c    = spawnCat(gameView, catType, /* hue */ 0.f);
-                            c.position = shrine.position;
-                            ++pt.psvPerCatType[static_cast<SizeT>(catType)].nPurchases;
+                            if (findFirstCatByType(catType) == nullptr)
+                            {
+                                spawnSpecialCat(shrine.position, catType);
+                                doTip("TODO:  tip", /* maxPrestigeLevel */ UINT_MAX);
+                            }
+                            else // unsealed
+                            {
+                                const auto unsealedReward = static_cast<MoneyType>(
+                                    static_cast<float>(shrine.collectedReward) * 1.5f);
+                                pt.money += unsealedReward;
+
+                                sounds.kaching.setPosition({shrine.position.x, shrine.position.y});
+                                playSound(sounds.kaching);
+
+                                if (profile.showTextParticles)
+                                {
+                                    auto& tp = makeRewardTextParticle(shrine.position);
+                                    std::snprintf(tp.buffer, sizeof(tp.buffer), "+$%llu", unsealedReward);
+                                }
+                            }
                         };
 
                         // TODO P0: handle all shrine death rewards
                         if (shrine.type == ShrineType::Voodoo)
-                        {
-                            spawnSpecialCat(CatType::Witch);
-                            doTip("TODO: witch tip", /* maxPrestigeLevel */ UINT_MAX);
-                        }
+                            doShrineReward(CatType::Witch);
                         else if (shrine.type == ShrineType::Magic)
-                        {
-                            spawnSpecialCat(CatType::Wizard);
-                            doTip("TODO: wizard tip", /* maxPrestigeLevel */ UINT_MAX);
-                        }
+                            doShrineReward(CatType::Wizard);
                         else if (shrine.type == ShrineType::Clicking)
-                        {
-                            spawnSpecialCat(CatType::Mouse);
-                            doTip("TODO: mouse tip", /* maxPrestigeLevel */ UINT_MAX);
-                        }
+                            doShrineReward(CatType::Mouse);
                         else if (shrine.type == ShrineType::Automation)
-                        {
-                            spawnSpecialCat(CatType::Engi);
-                            doTip("TODO: engi tip", /* maxPrestigeLevel */ UINT_MAX);
-                        }
+                            doShrineReward(CatType::Engi);
                         else if (shrine.type == ShrineType::Repulsion)
-                        {
-                            spawnSpecialCat(CatType::Repulso);
-                            doTip("TODO: repulso tip", /* maxPrestigeLevel */ UINT_MAX);
-                        }
+                            doShrineReward(CatType::Repulso);
                         else if (shrine.type == ShrineType::Attraction)
-                        {
-                            spawnSpecialCat(CatType::Attracto);
-                            doTip("TODO: attracto tip", /* maxPrestigeLevel */ UINT_MAX);
-                        }
+                            doShrineReward(CatType::Attracto);
                     }
                     else if (cdStatus == CountdownStatusStop::Running)
                     {
@@ -4279,12 +4464,15 @@ Using prestige points, TODO P0
             }
         }
 
-        std::erase_if(pt.shrines, [](const Shrine& shrine) { return shrine.getDeathProgress() >= 1.f; });
+        sf::base::vectorEraseIf(pt.shrines, [](const Shrine& shrine) { return shrine.getDeathProgress() >= 1.f; });
     }
 
     ////////////////////////////////////////////////////////////
     void gameLoopUpdateDolls(const float deltaTimeMs, const sf::Vector2f mousePos)
     {
+        if (findCatWitch() == nullptr)
+            return;
+
         Cat* hexedCat = getHexedCat();
 
         if (pt.dolls.empty())
@@ -4309,46 +4497,30 @@ Using prestige points, TODO P0
 
             if (!d.tcDeath.hasValue())
             {
+                if (rng.getF(0.f, 1.f) > 0.8f)
+                    spawnParticle({.position      = d.getDrawPosition() + sf::Vector2f{rng.getF(-32.f, +32.f), 32.f},
+                                   .velocity      = rng.getVec2f({-0.05f, -0.05f}, {0.05f, 0.05f}),
+                                   .scale         = rng.getF(0.08f, 0.27f) * 0.5f,
+                                   .accelerationY = -0.002f,
+                                   .opacity       = 255.f,
+                                   .opacityDecay  = rng.getF(0.00025f, 0.0015f),
+                                   .rotation      = rng.getF(0.f, sf::base::tau),
+                                   .torque        = rng.getF(-0.002f, 0.002f)},
+                                  /* hue */ 0.f,
+                                  ParticleType::Hex);
+
                 const bool click = (mBtnDown(sf::Mouse::Button::Left) || sf::Touch::isDown(0u));
 
                 if (click && (mousePos - d.position).length() <= d.getRadius())
                 {
-                    switch (d.catType)
-                    {
-                        case CatType::Normal:
-                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
-                            break;
-                        case CatType::Uni:
-                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
-                            break;
-                        case CatType::Devil:
-                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
-                            break;
+                    /*
                         case CatType::Astro:
-                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
-                            break;
-                        case CatType::Witch:
-                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
-                            break;
-                        case CatType::Wizard:
-                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
-                            break;
-                        case CatType::Mouse:
-                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
-                            break;
-                        case CatType::Engi:
-                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
-                            break;
+                            // TODO P0: astro loop, astro cats fly in a loop for X seconds
                         case CatType::Repulso:
-                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
-                            break;
+                            // TODO P0: ??? something with wind? or stop bubbles from falling? blows special bubbles from below?
                         case CatType::Attracto:
-                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
-                            break;
-                        case CatType::Count:
-                            std::cout << "Doll of type " << (int)d.catType << " clicked\n";
-                            break;
-                    }
+                            // TODO P0: ??? clicking a bubble attracts nearby bubbles? increases bubble count?
+                    */
 
                     spawnParticles(64, d.getDrawPosition(), ParticleType::Hex, 0.5f, 0.35f);
 
@@ -4358,9 +4530,24 @@ Using prestige points, TODO P0
                     d.tcDeath.emplace(TargetedCountdown{.startingValue = 750.f});
                     d.tcDeath->restart();
 
+                    const bool allDollsClicked = sf::base::allOf(pt.dolls.begin(),
+                                                                 pt.dolls.end(),
+                                                                 [&](const Doll& otherDoll)
+                    { return otherDoll.tcDeath.hasValue(); });
 
-                    sounds.hex.setPosition({d.position.x, d.position.y});
-                    playSound(sounds.hex);
+                    if (allDollsClicked)
+                    {
+                        sounds.buffon.setPosition({d.position.x, d.position.y});
+                        playSound(sounds.buffon);
+
+                        const float buffDuration = d.buffPower * 1000.f;
+                        pt.buffCountdownsPerType[asIdx(d.catType)].value += buffDuration;
+                    }
+                    else
+                    {
+                        sounds.hex.setPosition({d.position.x, d.position.y});
+                        playSound(sounds.hex);
+                    }
 
                     // TODO P0: sound, particles, etc
                 }
@@ -4378,7 +4565,15 @@ Using prestige points, TODO P0
             }
         }
 
-        std::erase_if(pt.dolls, [](const Doll& d) { return d.getDeathProgress() >= 1.f; });
+        sf::base::vectorEraseIf(pt.dolls, [](const Doll& d) { return d.getDeathProgress() >= 1.f; });
+    }
+
+    ////////////////////////////////////////////////////////////
+    void gameLoopUpdateWitchBuffs(const float deltaTimeMs)
+    {
+        for (Countdown& buffCountdown : pt.buffCountdownsPerType)
+            if (buffCountdown.updateAndStop(deltaTimeMs) == CountdownStatusStop::JustFinished)
+                playSound(sounds.buffoff);
     }
 
     ////////////////////////////////////////////////////////////
@@ -4390,9 +4585,13 @@ Using prestige points, TODO P0
             return;
 
         //
+        // Mana mult buff
+        const float manaMult = pt.buffCountdownsPerType[asIdx(CatType::Wizard)].value > 0.f ? 3.f : 1.f;
+
+        //
         // Mana
         if (pt.mana < pt.getComputedMaxMana())
-            pt.manaTimer += deltaTimeMs;
+            pt.manaTimer += deltaTimeMs * manaMult;
         else
             pt.manaTimer = 0.f;
 
@@ -4556,8 +4755,7 @@ Using prestige points, TODO P0
                                  achievementData[achievementId].description);
 
                 ImGui::InsertNotification(toast);
-                // TODO:
-                // playSound(sounds.notification);
+                playSound(sounds.notification);
             }
         };
 
@@ -4685,16 +4883,16 @@ Using prestige points, TODO P0
         unlockIf(pt.psvBubbleValue.nPurchases >= 15);
         unlockIf(pt.psvBubbleValue.nPurchases >= 20);
 
-        unlockIf(pt.multiPopEnabled);
+        unlockIf(pt.perm.multiPopPurchased);
         unlockIf(pt.psvPPMultiPopRange.nPurchases >= 1);
         unlockIf(pt.psvPPMultiPopRange.nPurchases >= 2);
         unlockIf(pt.psvPPMultiPopRange.nPurchases >= 5);
         unlockIf(pt.psvPPMultiPopRange.nPurchases >= 10);
 
-        unlockIf(pt.smartCatsPurchased);
-        unlockIf(pt.geniusCatsPurchased);
-        unlockIf(pt.windPurchased);
-        unlockIf(pt.astroCatInspirePurchased);
+        unlockIf(pt.perm.smartCatsPurchased);
+        unlockIf(pt.perm.geniusCatsPurchased);
+        unlockIf(pt.perm.windPurchased);
+        unlockIf(pt.perm.astroCatInspirePurchased);
 
         unlockIf(combo >= 5);
         unlockIf(combo >= 10);
@@ -4859,6 +5057,8 @@ Using prestige points, TODO P0
         unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Engi)].nPurchases >= 3);
         unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Engi)].nPurchases >= 6);
         unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Engi)].nPurchases >= 9);
+
+        // TODO: witchcat achievements
     }
 
     ////////////////////////////////////////////////////////////
@@ -4903,11 +5103,11 @@ Using prestige points, TODO P0
     ////////////////////////////////////////////////////////////
     void gameLoopDrawCats(const sf::Vector2f mousePos)
     {
-        const sf::FloatRect* const normalCatTxr = pt.geniusCatsPurchased  ? &txrGeniusCat
-                                                  : pt.smartCatsPurchased ? &txrSmartCat
-                                                                          : &txrCat;
+        const sf::FloatRect* const normalCatTxr = pt.perm.geniusCatsPurchased  ? &txrGeniusCat
+                                                  : pt.perm.smartCatsPurchased ? &txrSmartCat
+                                                                               : &txrCat;
 
-        const sf::FloatRect* const astroCatTxr = pt.astroCatInspirePurchased ? &txrAstroCatWithFlag : &txrAstroCat;
+        const sf::FloatRect* const astroCatTxr = pt.perm.astroCatInspirePurchased ? &txrAstroCatWithFlag : &txrAstroCat;
 
         const sf::FloatRect* const catTxrsByType[] = {
             normalCatTxr, // Normal
@@ -4945,9 +5145,11 @@ Using prestige points, TODO P0
 
         for (Cat& cat : pt.cats)
         {
+            const bool beingDragged = &cat == draggedCat;
+
             U8 rangeInnerAlpha = 0u;
 
-            if (!anyCatHovered && &cat != draggedCat && !cat.isAstroAndInFlight() &&
+            if (!anyCatHovered && !beingDragged && !cat.isAstroAndInFlight() &&
                 (mousePos - cat.position).lengthSquared() <= cat.getRadiusSquared() && !mBtnDown(sf::Mouse::Button::Left))
             {
                 anyCatHovered   = true;
@@ -4975,6 +5177,10 @@ Using prestige points, TODO P0
             {
                 catRotation = cat.hexedTimer->remap(0.f, cat.wobbleRadians);
             }
+            else if (beingDragged)
+            {
+                catRotation = -0.22f + sf::base::sin(cat.wobbleRadians) * 0.12f;
+            }
 
             const auto range = pt.getComputedRangeByCatType(cat.type);
 
@@ -5001,12 +5207,15 @@ Using prestige points, TODO P0
             cpuDrawableBatch.add(circleShapeBuffer);
 
             cpuDrawableBatch.add(
-                sf::Sprite{.position    = cat.getDrawPosition(),
+                sf::Sprite{.position    = beingDragged ? cat.position : cat.getDrawPosition(),
                            .scale       = {0.2f, 0.2f},
                            .origin      = catTxr.size / 2.f,
                            .rotation    = sf::radians(catRotation),
                            .textureRect = catTxr,
                            .color       = catColor});
+
+            if (!bubbleCullingBoundaries.isInside(cat.position))
+                continue;
 
             if (!cat.hexedTimer.hasValue())
                 cpuDrawableBatch.add(
@@ -5016,6 +5225,7 @@ Using prestige points, TODO P0
                                .rotation    = cat.type == CatType::Mouse ? sf::radians(-0.6f) : cat.pawRotation,
                                .textureRect = catPawTxr,
                                .color       = catColor.withAlpha(static_cast<U8>(cat.pawOpacity))});
+
 
             if (profile.showCatText)
             {
@@ -5037,6 +5247,13 @@ Using prestige points, TODO P0
                 cat.textStatusShakeEffect.applyToText(textStatusBuffer);
                 textStatusBuffer.scale *= 0.5f;
                 cpuDrawableBatch.add(textStatusBuffer);
+
+                // TODO P2: (lib) make it possible to draw a rectangle directly via batching without any of this stuff
+                sf::RectangleShape catCooldownShape{{.size = {cat.cooldown.value / maxCooldown * 64.f, 3.f}}};
+                catCooldownShape.origin   = {32.f, 0.f};
+                catCooldownShape.position = {textStatusBuffer.getBottomCenter() + sf::Vector2f{0.f, 2.f}};
+                catCooldownShape.setFillColor(sf::Color::White.withAlpha(128u));
+                cpuDrawableBatch.add(catCooldownShape);
             }
         };
     }
@@ -5094,7 +5311,7 @@ Using prestige points, TODO P0
 
             if (shrine.isActive())
             {
-                // TODO P1: move to member data
+                // TODO P2: move to member data
                 static thread_local std::string shrineStatus;
 
                 shrineStatus = "$";
@@ -5231,7 +5448,7 @@ Using prestige points, TODO P0
     }
 
     ////////////////////////////////////////////////////////////
-    void gameLoopDrawCursor(const float deltaTimeMs)
+    void gameLoopDrawCursor(const float deltaTimeMs, const float cursorGrow)
     {
         auto&              window     = *optWindow;
         const sf::Vector2f resolution = getResolution();
@@ -5247,11 +5464,11 @@ Using prestige points, TODO P0
             }
 
             window.setView({.center = resolution / 2.f, .size = resolution});
-            window.draw(txCursor,
+            window.draw(draggedCat != nullptr || sf::Mouse::isButtonPressed(sf::Mouse::Button::Right) ? txCursorGrab : txCursor,
                         {.position = sf::Mouse::getPosition(window).toVector2f(),
-                         .scale    = {profile.cursorScale, profile.cursorScale},
-                         .origin   = {5.f, 5.f},
-                         .color    = hueColor(wrapHue(profile.cursorHue), 255u)},
+                         .scale = sf::Vector2f{profile.cursorScale, profile.cursorScale} * (1.f + easeInOutBack(cursorGrow)),
+                         .origin = {5.f, 5.f},
+                         .color  = hueColor(wrapHue(profile.cursorHue), 255u)},
                         {.shader = &shader});
         }
     }
@@ -5649,6 +5866,18 @@ Using prestige points, TODO P0
         const bool anyBubblePoppedByClicking = gameLoopUpdateBubbleClick(clickPosition, gameView);
 
         //
+        // Cursor grow effect on click
+        static float cursorGrow = 0.f;
+        if (anyBubblePoppedByClicking)
+            cursorGrow = 0.49f;
+
+        if (cursorGrow >= 0.f)
+        {
+            cursorGrow -= deltaTimeMs * 0.0015f;
+            cursorGrow = sf::base::max(cursorGrow, 0.f);
+        }
+
+        //
         // Combo failure due to timer end
         checkComboEnd(deltaTimeMs, combo, comboCountdown);
         checkComboEnd(deltaTimeMs, pt.mouseCatCombo, pt.mouseCatComboCountdown);
@@ -5693,7 +5922,7 @@ Using prestige points, TODO P0
                 {
                     if (catA.isAstroAndInFlight() && catB.type != CatType::Astro)
                     {
-                        if (pt.astroCatInspirePurchased &&
+                        if (pt.perm.astroCatInspirePurchased &&
                             detectCollision(catA.position, catB.position, catA.getRadius(), catB.getRadius()))
                         {
                             catB.inspiredCountdown.value = pt.getComputedInspirationDuration();
@@ -5725,8 +5954,9 @@ Using prestige points, TODO P0
 
         gameLoopUpdateCatDragging(deltaTimeMs, countFingersDown, mousePos);
         gameLoopUpdateCatActions(deltaTimeMs);
-        gameLoopUpdateShrines(deltaTimeMs, gameView);
+        gameLoopUpdateShrines(deltaTimeMs);
         gameLoopUpdateDolls(deltaTimeMs, mousePos);
+        gameLoopUpdateWitchBuffs(deltaTimeMs);
         gameLoopUpdateMana(deltaTimeMs);
 
         //
@@ -5754,8 +5984,8 @@ Using prestige points, TODO P0
             for (auto& particleLike : particleLikeVec)
                 particleLike.data.update(deltaTimeMs);
 
-            // TODO P2: (lib) to lib
-            std::erase_if(particleLikeVec, [](const auto& particleLike) { return particleLike.data.opacity <= 0.f; });
+            sf::base::vectorEraseIf(particleLikeVec,
+                                    [](const auto& particleLike) { return particleLike.data.opacity <= 0.f; });
         };
 
         updateParticleLike(particles);
@@ -5773,9 +6003,12 @@ Using prestige points, TODO P0
 
         //
         // Time played
-        playedUsAccumulator += playedClock.getElapsedTime().asMicroseconds();
-        autosaveUsAccumulator += playedClock.getElapsedTime().asMicroseconds();
+        const auto elapsedUs = playedClock.getElapsedTime().asMicroseconds();
         playedClock.restart();
+
+        playedUsAccumulator += elapsedUs;
+        autosaveUsAccumulator += elapsedUs;
+        fixedBgSlideAccumulator += elapsedUs;
 
         while (playedUsAccumulator > 1'000'000)
         {
@@ -5807,12 +6040,40 @@ Using prestige points, TODO P0
 
         window.clear(sf::Color{157, 171, 191});
 
+        //
+        // Underlying background
+        const float ratio = resolution.x / 1250.f;
+
+        static float fixedBgSlide       = 0.f;
+        static float fixedBgSlideTarget = 0.f;
+
+        if (fixedBgSlideAccumulator > 60'000'000)
+        {
+            fixedBgSlideAccumulator = 0;
+
+            fixedBgSlideTarget += 1.f;
+
+            if (fixedBgSlideTarget >= 3.f)
+                fixedBgSlideTarget = 0.f;
+        }
+
+        fixedBgSlide = exponentialApproach(fixedBgSlide, fixedBgSlideTarget, deltaTimeMs, 1000.f);
+
+        const float fixedBgX = 2100.f * sf::base::fmod(fixedBgSlide, 3.f);
+
+        window.draw(txFixedBg,
+                    {.position = {resolution.x / 2.f - actualScroll / 20.f - fixedBgX, 0.f}, .scale = {ratio, ratio}},
+                    {.shader = &shader});
+
+        //
+        // Background
         window.setView(gameView);
         window.draw(sf::RectangleShape{{.fillColor = sf::Color::Black, .size = boundaries}}, /* texture */ nullptr);
         window.draw(txBackground,
                     {.color = sf::Color::White.withAlpha(static_cast<U8>(profile.backgroundOpacity / 100.f * 255.f))},
                     {.shader = &shader});
 
+        window.setView(gameView);
         bubbleDrawableBatch.clear();
         gameLoopDrawBubbles();
         window.draw(bubbleDrawableBatch, {.texture = &textureAtlas.getTexture(), .shader = &shader});
@@ -5873,6 +6134,56 @@ Using prestige points, TODO P0
                 window.draw(comboText);
         }
 
+        if (findCatWitch() != nullptr)
+        {
+            constexpr const char* buffNames[] = {
+                "x5 Cat Reward",      // Normal
+                "Star Rain",          // Uni
+                "Bomb Rain",          // Devil
+                "N/A",                // Witch
+                "Astro Buff",         // Astro
+                "Mana Overload",      // Wizard
+                "x5 Click Reward",    // Mouse
+                "Global Maintenance", // Engi
+                "Repulso Buff TODO",  // Repulso
+                "Attracto Buff TODO", // Attracto
+            };
+
+            static_assert(sf::base::getArraySize(buffNames) == nCatTypes);
+
+            char  buffStrBuffer[1024]{};
+            SizeT writeIdx = 0u;
+
+            const SizeT nDollsToClick = sf::base::countIf(pt.dolls.begin(),
+                                                          pt.dolls.end(),
+                                                          [](const Doll& doll) { return !doll.tcDeath.hasValue(); });
+
+            if (nDollsToClick > 0u)
+                writeIdx = static_cast<SizeT>(
+                    std::snprintf(buffStrBuffer, sizeof(buffStrBuffer), "Dolls left: %zu\n", nDollsToClick));
+
+            for (SizeT i = 0u; i < nCatTypes; ++i)
+            {
+                const float buffTime = pt.buffCountdownsPerType[i].value;
+
+                if (buffTime == 0.f)
+                    continue;
+
+                std::snprintf(buffStrBuffer + writeIdx,
+                              sizeof(buffStrBuffer) - writeIdx,
+                              "%s: %.2fs\n",
+                              buffNames[i],
+                              static_cast<double>(buffTime / 1000.f));
+            }
+
+            buffText.setString(buffStrBuffer);
+            buffText.position.y = comboText.getBottomLeft().y + 10.f;
+            buffText.scale      = {0.5f, 0.5f};
+
+            if (shouldDrawUI)
+                window.draw(buffText);
+        }
+
         //
         // Combo bar
         if (shouldDrawUI)
@@ -5902,7 +6213,7 @@ Using prestige points, TODO P0
 
         //
         // High visibility cursor
-        gameLoopDrawCursor(deltaTimeMs);
+        gameLoopDrawCursor(deltaTimeMs, cursorGrow);
 
         //
         // Splash screen

@@ -17,12 +17,18 @@
 
 #include "SFML/System/Vector2.hpp"
 
-#include "SFML/Base/Optional.hpp"
+#include "SFML/Base/Math/Pow.hpp"
 
 #include <vector>
 
-#include <cmath>
 
+////////////////////////////////////////////////////////////
+struct BubbleIgnoreFlags
+{
+    bool normal = false;
+    bool star   = false;
+    bool bomb   = false;
+};
 
 ////////////////////////////////////////////////////////////
 struct Playthrough
@@ -104,6 +110,7 @@ struct Playthrough
     PurchasableScalingValue psvPPMouseCatGlobalBonusMult{&PSVDataConstants::mouseCatGlobalBonusMult};
     PurchasableScalingValue psvPPEngiCatGlobalBonusMult{&PSVDataConstants::engiCatGlobalBonusMult};
     PurchasableScalingValue psvPPRepulsoCatConverterChance{&PSVDataConstants::repulsoCatConverterChance};
+    PurchasableScalingValue psvPPWitchCatBuffDuration{&PSVDataConstants::witchCatBuffDuration};
 
     //
     // Currencies
@@ -133,30 +140,34 @@ struct Playthrough
 
     //
     // Permanent purchases
-    bool multiPopPurchased            = false;
-    bool smartCatsPurchased           = false;
-    bool geniusCatsPurchased          = false; // if true, `smartCatsPurchased` must be true
-    bool windPurchased                = false;
-    bool astroCatInspirePurchased     = false;
-    bool starpawConversionIgnoreBombs = false;
-    bool repulsoCatFilterPurchased    = false;
-    bool repulsoCatConverterPurchased = false;
-    bool attractoCatFilterPurchased   = false;
+    struct Permanent
+    {
+        bool multiPopPurchased                  = false;
+        bool smartCatsPurchased                 = false;
+        bool geniusCatsPurchased                = false; // if true, `smartCatsPurchased` must be true
+        bool windPurchased                      = false;
+        bool astroCatInspirePurchased           = false;
+        bool starpawConversionIgnoreBombs       = false;
+        bool repulsoCatFilterPurchased          = false;
+        bool repulsoCatConverterPurchased       = false;
+        bool attractoCatFilterPurchased         = false;
+        bool witchCatBuffPowerScalesWithNCats   = false;
+        bool witchCatBuffPowerScalesWithMapSize = false;
+        bool witchCatBuffFewerDolls             = false;
+        bool witchCatBuffFragileDolls           = false; // TODO P0: implement
+        bool unsealedByType[nCatTypes]          = {};
+    };
+
+    Permanent perm = {};
 
     //
     // Permanent purchases settings
-    bool multiPopEnabled                = false;
-    bool windEnabled                    = false;
-    bool geniusCatIgnoreNormalBubbles   = false;
-    bool geniusCatIgnoreStarBubbles     = false;
-    bool geniusCatIgnoreBombBubbles     = false;
-    bool repulsoCatIgnoreNormalBubbles  = false;
-    bool repulsoCatIgnoreStarBubbles    = false;
-    bool repulsoCatIgnoreBombBubbles    = false;
-    bool repulsoCatConverterEnabled     = false;
-    bool attractoCatIgnoreNormalBubbles = false;
-    bool attractoCatIgnoreStarBubbles   = false;
-    bool attractoCatIgnoreBombBubbles   = false;
+    bool              multiPopEnabled            = false;
+    bool              windEnabled                = false;
+    BubbleIgnoreFlags geniusCatIgnoreBubbles     = {};
+    BubbleIgnoreFlags repulsoCatIgnoreBubbles    = {};
+    BubbleIgnoreFlags attractoCatIgnoreBubbles   = {};
+    bool              repulsoCatConverterEnabled = false;
 
     //
     // Object state
@@ -179,6 +190,10 @@ struct Playthrough
     // Achievement tracking
     bool achAstrocatPopBomb                  = false;
     bool achAstrocatInspireByType[nCatTypes] = {};
+
+    //
+    // Witchcat buffs
+    Countdown buffCountdownsPerType[nCatTypes] = {};
 
     //
     // Other flags
@@ -213,7 +228,7 @@ struct Playthrough
         PrestigePointsType pointsToAdd = 0u;
 
         for (auto i = currentPrestigeLevel; i < targetPrestigeLevel; ++i)
-            pointsToAdd += static_cast<PrestigePointsType>(std::pow(2.f, static_cast<float>(i)));
+            pointsToAdd += static_cast<PrestigePointsType>(sf::base::pow(2.f, static_cast<float>(i)));
 
         return pointsToAdd;
     }
@@ -258,10 +273,14 @@ struct Playthrough
         windEnabled     = false;
 
         // bubbles, cats, and shrines are cleaned in the game loop
+        dolls.clear();
 
         nShrinesCompleted = 0u;
 
         statsSession = {};
+
+        for (Countdown& buffCountdown : buffCountdownsPerType)
+            buffCountdown = {};
 
         shrinesSpawned = false;
     }
@@ -379,8 +398,6 @@ struct Playthrough
     ////////////////////////////////////////////////////////////
     [[nodiscard]] float getComputedGlobalCostMultiplier() const
     {
-        // TODO P1: revisit and maybe add more factors
-
         const auto nCatNormal = getCatCountByType(CatType::Normal);
         const auto nCatUni    = getCatCountByType(CatType::Uni);
         const auto nCatDevil  = getCatCountByType(CatType::Devil);
@@ -388,7 +405,7 @@ struct Playthrough
 
         // [ 0.25, 0.25 + 0.125, 0.25 + 0.125 + 0.0625, ... ]
         const auto geomSum = [](auto n)
-        { return static_cast<float>(n) <= 0.f ? 0.f : 0.5f * (1.f - std::pow(0.5f, static_cast<float>(n) + 1.f)); };
+        { return static_cast<float>(n) <= 0.f ? 0.f : 0.5f * (1.f - sf::base::pow(0.5f, static_cast<float>(n) + 1.f)); };
 
         return 1.f +                                            //
                (geomSum(psvComboStartTime.nPurchases) * 0.1f) + //
@@ -404,6 +421,13 @@ struct Playthrough
     [[nodiscard]] bool isBubbleValueUnlocked() const // also unlocks prestige
     {
         const auto nCatUni = getCatCountByType(CatType::Uni);
-        return psvBubbleValue.nPurchases > 0 || (psvBubbleCount.nPurchases > 0 && nCatUni >= 3);
+        return psvBubbleValue.nPurchases > 0 || (psvBubbleCount.nPurchases > 0 && nCatUni >= 3 && nShrinesCompleted >= 1);
+    }
+
+    ////////////////////////////////////////////////////////////
+    [[nodiscard]] bool canBuyNextPrestige() const
+    {
+        return psvBubbleValue.nextCost() * getComputedGlobalCostMultiplier() <= static_cast<float>(money) &&
+               nShrinesCompleted >= psvBubbleValue.nPurchases;
     }
 };

@@ -193,7 +193,7 @@ template <typename T, typename U = T>
 
 ////////////////////////////////////////////////////////////
 template <typename Iter, typename Predicate>
-Iter removeIf(Iter first, Iter last, Predicate&& predicate)
+[[nodiscard, gnu::always_inline]] inline constexpr Iter removeIf(Iter first, Iter last, Predicate&& predicate)
 {
     first = findIf(first, last, predicate);
 
@@ -203,6 +203,18 @@ Iter removeIf(Iter first, Iter last, Predicate&& predicate)
                 *first++ = SFML_BASE_MOVE(*i);
 
     return first;
+}
+
+
+////////////////////////////////////////////////////////////
+template <typename Vector, typename Predicate>
+[[gnu::always_inline]] inline constexpr SizeT vectorEraseIf(Vector& vector, Predicate&& predicate)
+{
+    const auto it       = removeIf(vector.begin(), vector.end(), predicate);
+    const auto nRemoved = static_cast<SizeT>(vector.end() - it);
+
+    vector.erase(it, vector.end());
+    return nRemoved;
 }
 
 

@@ -66,6 +66,9 @@ struct Sounds
     LoadedSound cast0{"cast0.ogg"};
     LoadedSound notification{"notification.ogg"};
     LoadedSound failpop{"failpop.ogg"};
+    LoadedSound buffoff{"buffoff.ogg"};
+    LoadedSound buffon{"buffon.ogg"};
+    LoadedSound kaching{"kaching.ogg"};
 
     ////////////////////////////////////////////////////////////
     std::vector<sf::Sound> soundsBeingPlayed;
@@ -98,6 +101,7 @@ struct Sounds
         setupWorldSound(woosh, /* attenuationMult */ 0.1f);
         setupWorldSound(cast0, /* attenuationMult */ 0.1f);
         setupWorldSound(failpop);
+        setupWorldSound(kaching);
 
         setupUISound(click);
         setupUISound(byteMeow);
@@ -108,6 +112,8 @@ struct Sounds
         setupUISound(byteSpeak);
         setupUISound(prestige);
         setupUISound(notification);
+        setupUISound(buffoff);
+        setupUISound(buffon);
 
         scratch.setVolume(35.f);
         buy.setVolume(75.f);

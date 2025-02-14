@@ -1,9 +1,10 @@
 #pragma once
 
-#include "Cat.hpp"
+#include "CatType.hpp"
 #include "ExactArray.hpp"
 
 #include "SFML/Graphics/Color.hpp"
+
 
 namespace CatConstants
 {
@@ -52,12 +53,12 @@ inline constexpr EXACT_ARRAY(
     baseCooldowns,
     nCatTypes,
     {
-        1000.f,  // Normal
+        850.f,   // Normal
         3000.f,  // Uni
         7000.f,  // Devil
         10000.f, // Astro
 
-        15000.f, // Witch // TODO P0: revert to 30s, just testing
+        60000.f, // Witch
         1500.f,  // Wizard
         500.f,   // Mouse
         10000.f, // Engi

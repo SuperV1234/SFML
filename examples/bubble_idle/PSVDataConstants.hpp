@@ -25,7 +25,7 @@ inline constexpr PSVData bubbleCount //
 
 inline constexpr PSVData bubbleValue //
     {.nMaxPurchases = 19u,
-     .cost          = {.initial = 3500.f, .linear = 2500.f, .exponential = 2.25f, .flat = -1000.f},
+     .cost          = {.initial = 4250.f, .linear = 5000.f, .exponential = 2.25f, .flat = 500.f},
      .value         = {.initial = 0.f, .linear = 1.f}};
 
 inline constexpr PSVData explosionRadiusMult //
@@ -58,7 +58,7 @@ inline constexpr PSVData catUniRangeDiv //
      .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
 
 inline constexpr PSVData catDevil //
-    {.nMaxPurchases = 64u, .cost = {.initial = 15000.f, .exponential = 1.6f}, .value = {}};
+    {.nMaxPurchases = 64u, .cost = {.initial = 13000.f, .exponential = 1.6f, .flat = -5000.f}, .value = {}};
 
 inline constexpr PSVData catDevilCooldownMult //
     {.nMaxPurchases = 12u,
@@ -200,6 +200,11 @@ inline constexpr PSVData repulsoCatConverterChance //
     {.nMaxPurchases = 19u,
      .cost          = {.initial = 128.f, .linear = 64.f, .exponential = 1.5f},
      .value         = {.initial = 5.f, .linear = 5.f}};
+
+inline constexpr PSVData witchCatBuffDuration //
+    {.nMaxPurchases = 12u,
+     .cost          = {.initial = 1.f, .linear = 16.f, .exponential = 1.5f},
+     .value         = {.initial = 6.f, .linear = 1.f}};
 
 inline constexpr PSVData starpawPercentage //
     {.nMaxPurchases = 8u, .cost = {.initial = 1000.f, .exponential = 1.25f}, .value = {.initial = 40.f, .linear = 7.5f}};

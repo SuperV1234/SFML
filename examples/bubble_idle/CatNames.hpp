@@ -56,6 +56,23 @@ inline constexpr const char* astroCatNames[] =
 
 
 ////////////////////////////////////////////////////////////
+inline constexpr const char* witchCatNames[] =
+    {"Bayou",
+     "Roux",
+     "Gumbo",
+     "Maman",
+     "Marinette",
+     "Simbi",
+     "Legba",
+     "Erzulie",
+     "Damballa",
+     "Ayida",
+     "Agwe",
+     "Marassa",
+     "Samedi"};
+
+
+////////////////////////////////////////////////////////////
 inline constexpr const char* wizardCatNames[] = {
     "Gandalf",
     "Dumbledore",
@@ -133,7 +150,7 @@ inline constexpr EXACT_ARRAY(
         {devilCatNames, sf::base::getArraySize(devilCatNames)},   // Devil
         {astroCatNames, sf::base::getArraySize(astroCatNames)},   // Astro
 
-        {normalCatNames, sf::base::getArraySize(normalCatNames)},     // Witch (TODO)
+        {witchCatNames, sf::base::getArraySize(witchCatNames)},       // Witch
         {wizardCatNames, sf::base::getArraySize(wizardCatNames)},     // Wizard
         {mouseCatNames, sf::base::getArraySize(mouseCatNames)},       // Mouse
         {engiCatNames, sf::base::getArraySize(engiCatNames)},         // Engi

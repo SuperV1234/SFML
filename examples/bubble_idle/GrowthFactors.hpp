@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cmath>
+#include "SFML/Base/Math/Pow.hpp"
 
 
 ////////////////////////////////////////////////////////////
@@ -16,6 +16,6 @@ struct [[nodiscard]] GrowthFactors
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline, gnu::pure]] inline constexpr float computeGrowth(const float n) const
     {
-        return ((initial + n * multiplicative) * std::pow(exponential, n) + linear * n + flat) * finalMult;
+        return ((initial + n * multiplicative) * sf::base::pow(exponential, n) + linear * n + flat) * finalMult;
     }
 };

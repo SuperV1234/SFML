@@ -283,6 +283,34 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
 
 ////////////////////////////////////////////////////////////
 // NOLINTNEXTLINE(modernize-use-constraints)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BubbleIgnoreFlags,
+
+                                   normal,
+                                   star,
+                                   bomb);
+
+////////////////////////////////////////////////////////////
+// NOLINTNEXTLINE(modernize-use-constraints)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
+    Playthrough::Permanent,
+
+    multiPopPurchased,
+    smartCatsPurchased,
+    geniusCatsPurchased,
+    windPurchased,
+    astroCatInspirePurchased,
+    starpawConversionIgnoreBombs,
+    repulsoCatFilterPurchased,
+    repulsoCatConverterPurchased,
+    attractoCatFilterPurchased,
+    witchCatBuffPowerScalesWithNCats,
+    witchCatBuffPowerScalesWithMapSize,
+    witchCatBuffFewerDolls,
+    witchCatBuffFragileDolls,
+    unsealedByType);
+
+////////////////////////////////////////////////////////////
+// NOLINTNEXTLINE(modernize-use-constraints)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     Playthrough,
 
@@ -312,6 +340,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     psvPPMouseCatGlobalBonusMult,
     psvPPEngiCatGlobalBonusMult,
     psvPPRepulsoCatConverterChance,
+    psvPPWitchCatBuffDuration,
 
     money,
 
@@ -329,28 +358,14 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     mouseCatCombo,
     mouseCatComboCountdown,
 
-    multiPopPurchased,
-    smartCatsPurchased,
-    geniusCatsPurchased,
-    windPurchased,
-    astroCatInspirePurchased,
-    starpawConversionIgnoreBombs,
-    repulsoCatFilterPurchased,
-    repulsoCatConverterPurchased,
-    attractoCatFilterPurchased,
+    perm,
 
     multiPopEnabled,
     windEnabled,
-    geniusCatIgnoreNormalBubbles,
-    geniusCatIgnoreStarBubbles,
-    geniusCatIgnoreBombBubbles,
-    repulsoCatIgnoreNormalBubbles,
-    repulsoCatIgnoreStarBubbles,
-    repulsoCatIgnoreBombBubbles,
+    geniusCatIgnoreBubbles,
+    repulsoCatIgnoreBubbles,
+    attractoCatIgnoreBubbles,
     repulsoCatConverterEnabled,
-    attractoCatIgnoreNormalBubbles,
-    attractoCatIgnoreStarBubbles,
-    attractoCatIgnoreBombBubbles,
 
     bubbles,
     cats,
@@ -362,6 +377,11 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     statsTotal,
     statsSession,
     milestones,
+
+    achAstrocatPopBomb,
+    achAstrocatInspireByType,
+
+    buffCountdownsPerType,
 
     prestigeTipShown,
     shrinesSpawned);
