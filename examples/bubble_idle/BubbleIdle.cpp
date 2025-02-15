@@ -396,6 +396,14 @@ struct Main
     });
 
     ////////////////////////////////////////////////////////////
+    // Prestige tracking
+    bool wasPrestigeAvailableLastFrame = false;
+
+    ////////////////////////////////////////////////////////////
+    // Buy reminder secret achievement
+    int buyReminder = 0;
+
+    ////////////////////////////////////////////////////////////
     // HUD money text
     sf::Text        moneyText{fontSuperBakery,
                               {.position         = {15.f, 70.f},
@@ -707,6 +715,18 @@ struct Main
     }
 
     ////////////////////////////////////////////////////////////
+    void statDollCollected()
+    {
+        withAllStats([&](Stats& stats) { stats.nWitchcatDollsCollected += 1u; });
+    }
+
+    ////////////////////////////////////////////////////////////
+    void statRitual(const CatType catType)
+    {
+        withAllStats([&](Stats& stats) { stats.nWitchcatRitualsPerCatType[asIdx(catType)] += 1u; });
+    }
+
+    ////////////////////////////////////////////////////////////
     void statHighestSimultaneousMaintenances(const sf::base::U64 value)
     {
         withAllStats([&](Stats& stats)
@@ -842,7 +862,7 @@ struct Main
 
         playSound(sounds.byteMeow);
         tipString = str;
-        tipTimer  = 5000.f;
+        tipTimer  = 6000.f;
     }
 
     ////////////////////////////////////////////////////////////
@@ -1271,7 +1291,7 @@ Using prestige points, TODO P0
     ////////////////////////////////////////////////////////////
     bool makePSVButton(const char* label, PurchasableScalingValue& psv)
     {
-        return makePSVButtonEx(label, psv, 1u, static_cast<MoneyType>(pt.getComputedGlobalCostMultiplier() * psv.nextCost()));
+        return makePSVButtonEx(label, psv, 1u, static_cast<MoneyType>(psv.nextCost()));
     }
 
     ////////////////////////////////////////////////////////////
@@ -1310,12 +1330,11 @@ Using prestige points, TODO P0
     ////////////////////////////////////////////////////////////
     [[nodiscard]] bool makePurchasableButtonOneTime(const char* label, const MoneyType cost, bool& done)
     {
-        return makePurchasableButtonOneTimeByCurrency(
-            label,
-            done,
-            /* cost */ static_cast<MoneyType>(pt.getComputedGlobalCostMultiplier() * static_cast<float>(cost)),
-            /* availability */ pt.money,
-            "$%s##%u");
+        return makePurchasableButtonOneTimeByCurrency(label,
+                                                      done,
+                                                      /* cost */ static_cast<MoneyType>(static_cast<float>(cost)),
+                                                      /* availability */ pt.money,
+                                                      "$%s##%u");
     }
 
     ////////////////////////////////////////////////////////////
@@ -1406,7 +1425,7 @@ Using prestige points, TODO P0
             ImGui::EndTabItem();
         }
 
-        if (findCatWizard() != nullptr && ImGui::BeginTabItem("Magic"))
+        if (findFirstCatByType(CatType::Wizard) != nullptr && ImGui::BeginTabItem("Magic"))
         {
             uiTabBarMagic();
             ImGui::EndTabItem();
@@ -1420,7 +1439,9 @@ Using prestige points, TODO P0
                 doTip("Prestige to increase bubble value\nand unlock permanent upgrades!");
             }
 
-            if (pt.canBuyNextPrestige())
+            const bool canPrestige = pt.canBuyNextPrestige();
+
+            if (canPrestige)
             {
                 ImGui::PushStyleColor(ImGuiCol_Tab, IM_COL32(135, 50, 84, 255));
                 ImGui::PushStyleColor(ImGuiCol_TabHovered, IM_COL32(136, 65, 105, 255));
@@ -1433,7 +1454,7 @@ Using prestige points, TODO P0
                 ImGui::EndTabItem();
             }
 
-            if (pt.canBuyNextPrestige())
+            if (canPrestige)
                 ImGui::PopStyleColor(3);
         }
 
@@ -1458,12 +1479,12 @@ Using prestige points, TODO P0
         const auto nCatDevil  = pt.getCatCountByType(CatType::Devil);
         const auto nCatAstro  = pt.getCatCountByType(CatType::Astro);
 
-        Cat* catWitch    = findCatWitch();
-        Cat* catWizard   = findCatWizard();
-        Cat* catMouse    = findCatMouse();
-        Cat* catEngi     = findCatEngi();
-        Cat* catRepulso  = findCatRepulso();
-        Cat* catAttracto = findCatAttracto();
+        Cat* catWitch    = findFirstCatByType(CatType::Witch);
+        Cat* catWizard   = findFirstCatByType(CatType::Wizard);
+        Cat* catMouse    = findFirstCatByType(CatType::Mouse);
+        Cat* catEngi     = findFirstCatByType(CatType::Engi);
+        Cat* catRepulso  = findFirstCatByType(CatType::Repulso);
+        Cat* catAttracto = findFirstCatByType(CatType::Attracto);
 
         const bool anyUniqueCat = catWitch != nullptr || catWizard != nullptr || catMouse != nullptr ||
                                   catEngi != nullptr || catRepulso != nullptr || catAttracto != nullptr;
@@ -1478,7 +1499,7 @@ Using prestige points, TODO P0
         if (makePurchasableButtonOneTime("Combo", 15, pt.comboPurchased))
         {
             combo = 0;
-            doTip("Pop bubbles in quick succession to\nkeep your combo up and make money!");
+            doTip("Pop bubbles quickly keep to\nyour combo up and make more money!");
         }
 
         if (pt.comboPurchased)
@@ -1688,7 +1709,9 @@ Using prestige points, TODO P0
             if (catWitch != nullptr)
             {
                 makeCooldownButton("- witchcat cooldown", CatType::Witch);
-                makeRangeButton("- witchcat range", CatType::Witch);
+
+                if (pt.perm.witchCatBuffPowerScalesWithNCats)
+                    makeRangeButton("- witchcat range", CatType::Witch);
             }
 
             if (catWizard != nullptr)
@@ -1759,7 +1782,7 @@ Using prestige points, TODO P0
 
             if (!pt.mapPurchased)
             {
-                startList("to increase playing area:");
+                startList("to extend playing area:");
                 result += "\n- buy map scrolling";
             }
 
@@ -1848,14 +1871,14 @@ Using prestige points, TODO P0
             return result;
         }();
 
+        ImGui::Columns(1);
+
         if (nextGoalsText != "")
         {
             ImGui::SetWindowFontScale(subBulletFontScale);
             ImGui::Text("%s", nextGoalsText.c_str());
             ImGui::SetWindowFontScale(normalFontScale);
         }
-
-        ImGui::Columns(1);
     }
 
     ////////////////////////////////////////////////////////////
@@ -1880,11 +1903,8 @@ Using prestige points, TODO P0
                      "increased.\n\nDo not be afraid to prestige -- it is what enables you to progress further!");
         std::sprintf(labelBuffer, "current bubble value x%llu", pt.getComputedRewardByBubbleType(BubbleType::Normal));
 
-        const auto [times,
-                    maxCost,
-                    nextCost] = pt.psvBubbleValue.maxSubsequentPurchases(pt.money, pt.getComputedGlobalCostMultiplier());
-
-        const auto ppReward = pt.calculatePrestigePointReward(times);
+        const auto [times, maxCost, nextCost] = pt.psvBubbleValue.maxSubsequentPurchases(pt.money);
+        const auto ppReward                   = pt.calculatePrestigePointReward(times);
 
         uiBeginColumns();
 
@@ -2067,7 +2087,7 @@ Using prestige points, TODO P0
             (void)makePurchasablePPButtonOneTime("- Break the seal", ppCost, pt.perm.unsealedByType[asIdx(type)]);
         };
 
-        if (findCatWitch() != nullptr || pt.psvBubbleValue.nPurchases >= 3)
+        if (findFirstCatByType(CatType::Witch) != nullptr || pt.psvBubbleValue.nPurchases >= 3)
         {
             ImGui::Separator();
 
@@ -2100,7 +2120,7 @@ Using prestige points, TODO P0
             (void)makePurchasablePPButtonOneTime("- Fragile dolls", 256u, pt.perm.witchCatBuffFragileDolls);
         }
 
-        if (findCatWizard() != nullptr || pt.psvBubbleValue.nPurchases >= 3)
+        if (findFirstCatByType(CatType::Wizard) != nullptr || pt.psvBubbleValue.nPurchases >= 3)
         {
             ImGui::Separator();
 
@@ -2127,7 +2147,7 @@ Using prestige points, TODO P0
             (void)makePurchasablePPButtonOneTime("- Selective starpaw", 64u, pt.perm.astroCatInspirePurchased);
         }
 
-        if (findCatMouse() != nullptr || pt.psvBubbleValue.nPurchases >= 4)
+        if (findFirstCatByType(CatType::Mouse) != nullptr || pt.psvBubbleValue.nPurchases >= 4)
         {
             ImGui::Separator();
 
@@ -2142,7 +2162,7 @@ Using prestige points, TODO P0
             makePrestigePurchasablePPButtonPSV("- Global click mult", pt.psvPPMouseCatGlobalBonusMult);
         }
 
-        if (findCatEngi() != nullptr || pt.psvBubbleValue.nPurchases >= 5)
+        if (findFirstCatByType(CatType::Engi) != nullptr || pt.psvBubbleValue.nPurchases >= 5)
         {
             ImGui::Separator();
 
@@ -2157,7 +2177,7 @@ Using prestige points, TODO P0
             makePrestigePurchasablePPButtonPSV("- Global cat mult", pt.psvPPEngiCatGlobalBonusMult);
         }
 
-        if (findCatRepulso() != nullptr || pt.psvBubbleValue.nPurchases >= 5)
+        if (findFirstCatByType(CatType::Repulso) != nullptr || pt.psvBubbleValue.nPurchases >= 5)
         {
             ImGui::Separator();
 
@@ -2213,7 +2233,7 @@ Using prestige points, TODO P0
             }
         }
 
-        if (findCatAttracto() != nullptr || pt.psvBubbleValue.nPurchases >= 5)
+        if (findFirstCatByType(CatType::Attracto) != nullptr || pt.psvBubbleValue.nPurchases >= 5)
         {
             ImGui::Separator();
 
@@ -2281,7 +2301,7 @@ Using prestige points, TODO P0
     ////////////////////////////////////////////////////////////
     [[nodiscard]] bool isWizardBusy() const
     {
-        const Cat* wizardCat = findCatWizard();
+        const Cat* wizardCat = findFirstCatByType(CatType::Wizard);
 
         if (wizardCat == nullptr)
             return false;
@@ -2291,37 +2311,24 @@ Using prestige points, TODO P0
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] Cat* findFirstCatByType(const CatType& catType)
+    [[nodiscard]] Cat* findFirstCatByType(const CatType catType)
     {
-        const auto it = sf::base::findIf(pt.cats.begin(),
-                                         pt.cats.end(),
-                                         [&](const Cat& cat) { return cat.type == catType; });
+        for (Cat& cat : pt.cats)
+            if (cat.type == catType)
+                return &cat;
 
-        if (it == pt.cats.end())
-            return nullptr;
-
-        return &*it;
+        return nullptr;
     }
 
     ////////////////////////////////////////////////////////////
-#define DEFINE_CAT_FINDER_BY_TYPE(type)                                    \
-    [[nodiscard]] Cat* findCat##type()                                     \
-    {                                                                      \
-        return findFirstCatByType(CatType::type);                          \
-    }                                                                      \
-                                                                           \
-    [[nodiscard]] const Cat* findCat##type() const                         \
-    {                                                                      \
-        return const_cast<Main*>(this)->findFirstCatByType(CatType::type); \
-    }
+    [[nodiscard]] const Cat* findFirstCatByType(const CatType catType) const
+    {
+        for (const Cat& cat : pt.cats)
+            if (cat.type == catType)
+                return &cat;
 
-    ////////////////////////////////////////////////////////////
-    DEFINE_CAT_FINDER_BY_TYPE(Witch);
-    DEFINE_CAT_FINDER_BY_TYPE(Wizard);
-    DEFINE_CAT_FINDER_BY_TYPE(Mouse);
-    DEFINE_CAT_FINDER_BY_TYPE(Engi);
-    DEFINE_CAT_FINDER_BY_TYPE(Repulso);
-    DEFINE_CAT_FINDER_BY_TYPE(Attracto);
+        return nullptr;
+    }
 
     ////////////////////////////////////////////////////////////
     void addCombo(int& xCombo, Countdown& xComboCountdown) const
@@ -2350,7 +2357,7 @@ Using prestige points, TODO P0
     {
         ImGui::SetWindowFontScale(normalFontScale);
 
-        Cat* wizardCat = findCatWizard();
+        Cat* wizardCat = findFirstCatByType(CatType::Wizard);
 
         if (wizardCat == nullptr)
         {
@@ -2381,8 +2388,7 @@ Using prestige points, TODO P0
         (void)makePSVButtonExByCurrency("Remember spell",
                                         pt.psvSpellCount,
                                         1u,
-                                        static_cast<MoneyType>(
-                                            pt.getComputedGlobalCostMultiplier() * pt.psvSpellCount.nextCost()),
+                                        static_cast<MoneyType>(pt.psvSpellCount.nextCost()),
                                         pt.wisdom,
                                         "%s WP##%u");
 
@@ -2467,8 +2473,7 @@ Using prestige points, TODO P0
                 (void)makePSVButtonExByCurrency("- higher percentage",
                                                 pt.psvStarpawPercentage,
                                                 1u,
-                                                static_cast<MoneyType>(pt.getComputedGlobalCostMultiplier() *
-                                                                       pt.psvStarpawPercentage.nextCost()),
+                                                static_cast<MoneyType>(pt.psvStarpawPercentage.nextCost()),
                                                 pt.wisdom,
                                                 "%s WP##%u");
             }
@@ -2512,8 +2517,7 @@ Using prestige points, TODO P0
                 (void)makePSVButtonExByCurrency("- higher multiplier",
                                                 pt.psvMewltiplierMult,
                                                 1u,
-                                                static_cast<MoneyType>(pt.getComputedGlobalCostMultiplier() *
-                                                                       pt.psvMewltiplierMult.nextCost()),
+                                                static_cast<MoneyType>(pt.psvMewltiplierMult.nextCost()),
                                                 pt.wisdom,
                                                 "%s WP##%u");
             }
@@ -2738,7 +2742,7 @@ Using prestige points, TODO P0
                 ImGui::BeginChild("AchScroll", ImVec2(ImGui::GetContentRegionAvail().x, getWindowHeight() - 125.f));
 
                 sf::base::U64 id = 0u;
-                for (const auto& [name, description] : achievementData)
+                for (const auto& [name, description, secret] : achievementData)
                 {
                     const bool  unlocked = profile.unlockedAchievements[id];
                     const float opacity  = unlocked ? 1.f : 0.5f;
@@ -2746,11 +2750,11 @@ Using prestige points, TODO P0
                     const ImVec4 textColor{1.f, 1.f, 1.f, opacity};
 
                     ImGui::SetWindowFontScale(1.f);
-                    ImGui::TextColored(textColor, "%llu - %s", id++, name);
+                    ImGui::TextColored(textColor, "%llu - %s", id++, (!secret || unlocked) ? name : "???");
 
                     ImGui::PushFont(fontImGuiMouldyCheese);
                     ImGui::SetWindowFontScale(0.75f);
-                    ImGui::TextColored(textColor, "%s", description);
+                    ImGui::TextColored(textColor, "%s", (!secret || unlocked) ? description : "(...secret achievement...)");
                     ImGui::PopFont();
 
                     ImGui::Separator();
@@ -2786,7 +2790,7 @@ Using prestige points, TODO P0
     ////////////////////////////////////////////////////////////
     [[nodiscard]] MoneyType computeFinalReward(const sf::Vector2f bubblePosition, const MoneyType computedReward, const int xCombo)
     {
-        Cat* wizardCat = findCatWizard();
+        Cat* wizardCat = findFirstCatByType(CatType::Wizard);
 
         const bool inRangeOfWizard = wizardCat != nullptr && (wizardCat->position - bubblePosition).lengthSquared() <=
                                                                  pt.getComputedSquaredRangeByCatType(CatType::Wizard);
@@ -3004,6 +3008,9 @@ Using prestige points, TODO P0
 
                 pt      = Playthrough{};
                 pt.seed = rng.getSeed();
+
+                wasPrestigeAvailableLastFrame = false;
+                buyReminder                   = 0u;
 
                 particles.clear();
                 textParticles.clear();
@@ -3227,10 +3234,10 @@ Using prestige points, TODO P0
     ////////////////////////////////////////////////////////////
     void popWithRewardAndReplaceBubble(MoneyType reward, const bool byHand, Bubble& bubble, int xCombo, bool popSoundOverlap)
     {
-        if (byHand && findCatMouse() != nullptr)
+        if (byHand && findFirstCatByType(CatType::Mouse) != nullptr)
             reward = static_cast<MoneyType>(
                 sf::base::ceil(static_cast<float>(reward) * pt.psvPPMouseCatGlobalBonusMult.currentValue()));
-        else if (!byHand && findCatEngi() != nullptr)
+        else if (!byHand && findFirstCatByType(CatType::Engi) != nullptr)
             reward = static_cast<MoneyType>(
                 sf::base::ceil(static_cast<float>(reward) * pt.psvPPEngiCatGlobalBonusMult.currentValue()));
 
@@ -3490,7 +3497,7 @@ Using prestige points, TODO P0
             cat.pawOpacity  = 255.f;
             cat.pawRotation = (bubble.position - cat.position).angle() + sf::degrees(45);
 
-            const Cat* mouseCat = findCatMouse();
+            const Cat* mouseCat = findFirstCatByType(CatType::Mouse);
 
             const bool inMouseCatRange = mouseCat != nullptr && (mouseCat->position - cat.position).lengthSquared() <=
                                                                     pt.getComputedSquaredRangeByCatType(CatType::Mouse);
@@ -3668,10 +3675,9 @@ Using prestige points, TODO P0
         if (otherCatCount > 0)
         {
             // TODO P0:
-            // each in a different screen?
-            // cats can kill dolls on prestige
-            // maybe some prestige upgrades for buff duration, etc
-            // magic spell to refresh witch cooldown immediately
+            // - each in a different screen? more spread out
+            // - cats can kill dolls on prestige
+            // - magic spell to refresh witch cooldown immediately
 
             SFML_BASE_ASSERT(selected != nullptr);
 
@@ -3692,9 +3698,11 @@ Using prestige points, TODO P0
 
             SFML_BASE_ASSERT(pt.dolls.empty());
 
+            statRitual(selected->type);
+
             constexpr float offset = 64.f;
 
-            for (SizeT i = 0u; i < nDollsToSpawn; ++i) // TODO
+            for (SizeT i = 0u; i < nDollsToSpawn; ++i)
             {
                 auto& d = pt.dolls.emplace_back(
                     Doll{.position = rng.getVec2f({offset, offset}, {pt.getMapLimit() - offset, boundaries.y - offset}),
@@ -3940,8 +3948,8 @@ Using prestige points, TODO P0
                 }
                 else if (shrine.type == ShrineType::Voodoo && shrine.isActive())
                 {
-                    if (shrine.isInRange(cat.position) && findCatWitch() == nullptr && !anyCatHexed() &&
-                        !cat.hexedTimer.hasValue())
+                    if (shrine.isInRange(cat.position) && findFirstCatByType(CatType::Witch) == nullptr &&
+                        !anyCatHexed() && !cat.hexedTimer.hasValue())
                     {
                         cat.hexedTimer.emplace(BidirectionalTimer{.direction = TimerDirection::Forward});
                         cat.wobbleRadians = 0.f;
@@ -4470,7 +4478,7 @@ Using prestige points, TODO P0
     ////////////////////////////////////////////////////////////
     void gameLoopUpdateDolls(const float deltaTimeMs, const sf::Vector2f mousePos)
     {
-        if (findCatWitch() == nullptr)
+        if (findFirstCatByType(CatType::Witch) == nullptr)
             return;
 
         Cat* hexedCat = getHexedCat();
@@ -4522,6 +4530,7 @@ Using prestige points, TODO P0
                             // TODO P0: ??? clicking a bubble attracts nearby bubbles? increases bubble count?
                     */
 
+                    statDollCollected();
                     spawnParticles(64, d.getDrawPosition(), ParticleType::Hex, 0.5f, 0.35f);
 
                     screenShakeAmount = 1.5f;
@@ -4579,7 +4588,7 @@ Using prestige points, TODO P0
     ////////////////////////////////////////////////////////////
     void gameLoopUpdateMana(const float deltaTimeMs)
     {
-        Cat* wizardCat = findCatWizard();
+        Cat* wizardCat = findFirstCatByType(CatType::Wizard);
 
         if (wizardCat == nullptr)
             return;
@@ -4622,6 +4631,17 @@ Using prestige points, TODO P0
     }
 
     ////////////////////////////////////////////////////////////
+    void pushNotification(const char* title, const char* format, const auto&... args)
+    {
+        ImGuiToast toast{ImGuiToastType::None, 4500};
+        toast.setTitle(title);
+        toast.setContent(format, args...);
+
+        ImGui::InsertNotification(toast);
+        playSound(sounds.notification);
+    }
+
+    ////////////////////////////////////////////////////////////
     void gameLoopUpdateMilestones()
     {
         const auto updateMilestone = [&](const char* name, sf::base::U64& milestone)
@@ -4633,13 +4653,7 @@ Using prestige points, TODO P0
             if (milestone != oldMilestone)
             {
                 const auto [h, m, s] = formatTime(milestone);
-
-                ImGuiToast toast{ImGuiToastType::None, 3000};
-                toast.setTitle("Milestone reached!");
-                toast.setContent("'%s' at %lluh %llum %llus", name, h, m, s);
-
-                ImGui::InsertNotification(toast);
-                playSound(sounds.notification);
+                pushNotification("Milestone reached!", "'%s' at %lluh %llum %llus", name, h, m, s);
             }
         };
 
@@ -4744,19 +4758,15 @@ Using prestige points, TODO P0
         {
             const auto achievementId = nextId++;
 
-            if (condition && !profile.unlockedAchievements[achievementId])
-            {
-                profile.unlockedAchievements[achievementId] = true;
+            if (profile.unlockedAchievements[achievementId] || !condition)
+                return;
 
-                ImGuiToast toast{ImGuiToastType::None, 3000};
-                toast.setTitle("Achievement unlocked!");
-                toast.setContent("\"%s\"\n- %s",
-                                 achievementData[achievementId].name,
-                                 achievementData[achievementId].description);
+            profile.unlockedAchievements[achievementId] = true;
 
-                ImGui::InsertNotification(toast);
-                playSound(sounds.notification);
-            }
+            pushNotification("Achievement unlocked!",
+                             "\"%s\"\n- %s",
+                             achievementData[achievementId].name,
+                             achievementData[achievementId].description);
         };
 
         const auto skip = [&] { ++nextId; };
@@ -4765,12 +4775,12 @@ Using prestige points, TODO P0
         const auto bubblesCatPopped  = profile.statsLifetime.getTotalNBubblesCatPopped();
 
         unlockIf(bubblesHandPopped >= 1);
+        unlockIf(bubblesHandPopped >= 10);
         unlockIf(bubblesHandPopped >= 100);
         unlockIf(bubblesHandPopped >= 1'000);
         unlockIf(bubblesHandPopped >= 10'000);
         unlockIf(bubblesHandPopped >= 100'000);
         unlockIf(bubblesHandPopped >= 1'000'000);
-        unlockIf(bubblesHandPopped >= 10'000'000);
 
         unlockIf(bubblesCatPopped >= 1);
         unlockIf(bubblesCatPopped >= 100);
@@ -4779,6 +4789,7 @@ Using prestige points, TODO P0
         unlockIf(bubblesCatPopped >= 100'000);
         unlockIf(bubblesCatPopped >= 1'000'000);
         unlockIf(bubblesCatPopped >= 10'000'000);
+        unlockIf(bubblesCatPopped >= 100'000'000);
 
         unlockIf(pt.comboPurchased);
 
@@ -4972,6 +4983,63 @@ Using prestige points, TODO P0
         unlockIf(pt.nShrinesCompleted >= 8);
         unlockIf(pt.nShrinesCompleted >= 9);
 
+        unlockIf(pt.perm.unsealedByType[asIdx(CatType::Witch)]);
+        unlockIf(pt.perm.unsealedByType[asIdx(CatType::Wizard)]);
+        unlockIf(pt.perm.unsealedByType[asIdx(CatType::Mouse)]);
+        unlockIf(pt.perm.unsealedByType[asIdx(CatType::Engi)]);
+        unlockIf(pt.perm.unsealedByType[asIdx(CatType::Repulso)]);
+        unlockIf(pt.perm.unsealedByType[asIdx(CatType::Attracto)]);
+
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Normal)] >= 1);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Uni)] >= 1);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Devil)] >= 1);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Astro)] >= 1);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Wizard)] >= 1);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Mouse)] >= 1);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Engi)] >= 1);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Repulso)] >= 1);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Attracto)] >= 1);
+
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Normal)] >= 100);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Uni)] >= 100);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Devil)] >= 100);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Astro)] >= 100);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Wizard)] >= 10);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Mouse)] >= 10);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Engi)] >= 10);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Repulso)] >= 10);
+        unlockIf(profile.statsLifetime.nWitchcatRitualsPerCatType[asIdx(CatType::Attracto)] >= 10);
+
+        unlockIf(profile.statsLifetime.nWitchcatDollsCollected >= 1);
+        unlockIf(profile.statsLifetime.nWitchcatDollsCollected >= 10);
+        unlockIf(profile.statsLifetime.nWitchcatDollsCollected >= 100);
+        unlockIf(profile.statsLifetime.nWitchcatDollsCollected >= 1'000);
+        unlockIf(profile.statsLifetime.nWitchcatDollsCollected >= 10'000);
+
+        unlockIf(pt.perm.witchCatBuffPowerScalesWithNCats);
+        unlockIf(pt.perm.witchCatBuffPowerScalesWithMapSize);
+        unlockIf(pt.perm.witchCatBuffFewerDolls);
+        unlockIf(pt.perm.witchCatBuffFragileDolls);
+
+        const auto nActiveBuffs = sf::base::countIf(pt.buffCountdownsPerType,
+                                                    pt.buffCountdownsPerType + nCatTypes,
+                                                    [](const Countdown& c) { return c.value > 0.f; });
+
+        unlockIf(nActiveBuffs >= 2);
+        unlockIf(nActiveBuffs >= 3);
+        unlockIf(nActiveBuffs >= 4);
+
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Witch)].nPurchases >= 1);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Witch)].nPurchases >= 3);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Witch)].nPurchases >= 6);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Witch)].nPurchases >= 9);
+        unlockIf(pt.psvCooldownMultsPerCatType[asIdx(CatType::Witch)].nPurchases >= 12);
+
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Witch)].nPurchases >= 1);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Witch)].nPurchases >= 3);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Witch)].nPurchases >= 6);
+        unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Witch)].nPurchases >= 9);
+
         unlockIf(profile.statsLifetime.nAbsorbedStarBubbles >= 1);
         unlockIf(profile.statsLifetime.nAbsorbedStarBubbles >= 100);
         unlockIf(profile.statsLifetime.nAbsorbedStarBubbles >= 1'000);
@@ -5057,6 +5125,8 @@ Using prestige points, TODO P0
         unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Engi)].nPurchases >= 3);
         unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Engi)].nPurchases >= 6);
         unlockIf(pt.psvRangeDivsPerCatType[asIdx(CatType::Engi)].nPurchases >= 9);
+
+        unlockIf(buyReminder >= 5); // Secret
 
         // TODO: witchcat achievements
     }
@@ -5486,8 +5556,8 @@ Using prestige points, TODO P0
 
         float fade = 255.f;
 
-        if (tipTimer > 4500.f)
-            fade = remap(tipTimer, 4500.f, 5000.f, 255.f, 0.f);
+        if (tipTimer > 5500.f)
+            fade = remap(tipTimer, 5500.f, 6000.f, 255.f, 0.f);
         else if (tipTimer < 500.f)
             fade = remap(tipTimer, 0.f, 500.f, 0.f, 255.f);
 
@@ -5500,7 +5570,7 @@ Using prestige points, TODO P0
                           .scale            = {0.5f, 0.5f},
                           .string           = tipString.substr(0,
                                                      static_cast<SizeT>(
-                                                         sf::base::clamp((4100.f - tipTimer) / 25.f,
+                                                         sf::base::clamp((5100.f - tipTimer) / 25.f,
                                                                          0.f,
                                                                          static_cast<float>(tipString.size())))),
                           .characterSize    = 60u,
@@ -6134,7 +6204,7 @@ Using prestige points, TODO P0
                 window.draw(comboText);
         }
 
-        if (findCatWitch() != nullptr)
+        if (findFirstCatByType(CatType::Witch) != nullptr)
         {
             constexpr const char* buffNames[] = {
                 "x5 Cat Reward",      // Normal
@@ -6224,6 +6294,49 @@ Using prestige points, TODO P0
         //
         // Tips
         gameLoopTips(deltaTimeMs);
+
+        //
+        // Prestige notification
+        if (!wasPrestigeAvailableLastFrame && pt.canBuyNextPrestige())
+        {
+            pushNotification("Prestige available!", "Purchase through the \"Prestige\" menu!");
+
+            if (pt.psvBubbleValue.nPurchases == 0u)
+                doTip("You can now prestige for the first time!");
+        }
+
+        //
+        // Reminder to buy something
+        if (pt.psvBubbleValue.nPurchases == 0u && !pt.comboPurchased)
+        {
+            if (pt.money >= 20u && buyReminder == 0)
+            {
+                buyReminder = 1;
+                doTip("Remember to buy the combo upgrade!");
+            }
+            else if (pt.money >= 50u && buyReminder == 1)
+            {
+                buyReminder = 2;
+                doTip("You should really buy the upgrade now!");
+            }
+            else if (pt.money >= 100u && buyReminder == 2)
+            {
+                buyReminder = 3;
+                doTip("What are you trying to prove...?");
+            }
+            else if (pt.money >= 200u && buyReminder == 3)
+            {
+                buyReminder = 4;
+                doTip("There is no achievement for doing this!");
+            }
+            else if (pt.money >= 300u && buyReminder == 4)
+            {
+                buyReminder = 5;
+                doTip("Fine, have it your way!\nHere's your dumb achievement!\nAnd now buy the upgrade!");
+            }
+        }
+
+        wasPrestigeAvailableLastFrame = pt.canBuyNextPrestige();
 
         //
         // Display

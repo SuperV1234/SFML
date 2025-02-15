@@ -9,7 +9,7 @@ namespace PSVDataConstants
 
 inline constexpr PSVData comboStartTime //
     {.nMaxPurchases = 20u,
-     .cost          = {.initial = 35.f, .linear = 125.f, .exponential = 1.7f},
+     .cost          = {.initial = 235.f, .linear = 125.f, .exponential = 1.7f, .flat = -200.f},
      .value         = {.initial = 0.55f, .linear = 0.04f, .exponential = 1.02f}};
 
 inline constexpr PSVData mapExtension //
@@ -25,14 +25,16 @@ inline constexpr PSVData bubbleCount //
 
 inline constexpr PSVData bubbleValue //
     {.nMaxPurchases = 19u,
-     .cost          = {.initial = 4250.f, .linear = 5000.f, .exponential = 2.25f, .flat = 500.f},
+     .cost          = {.initial = 10000.f, .linear = 15000.f, .exponential = 2.25f, .flat = -5000.f},
      .value         = {.initial = 0.f, .linear = 1.f}};
 
 inline constexpr PSVData explosionRadiusMult //
-    {.nMaxPurchases = 10u, .cost = {.initial = 15000.f, .exponential = 1.5f}, .value = {.initial = 1.f, .linear = 0.1f}};
+    {.nMaxPurchases = 10u,
+     .cost          = {.initial = 15000.f, .exponential = 1.5f, .flat = -5000.f},
+     .value         = {.initial = 1.f, .linear = 0.1f}};
 
 inline constexpr PSVData catNormal //
-    {.nMaxPurchases = 64u, .cost = {.initial = 35.f, .exponential = 1.7f}, .value = {}};
+    {.nMaxPurchases = 64u, .cost = {.initial = 35.f, .linear = 100.f, .exponential = 1.7f}, .value = {}};
 
 inline constexpr PSVData catNormalCooldownMult //
     {.nMaxPurchases = 12u,
@@ -45,7 +47,7 @@ inline constexpr PSVData catNormalRangeDiv //
      .value         = {.initial = 0.6f, .multiplicative = -0.05f, .exponential = 0.75f, .flat = 0.4f}};
 
 inline constexpr PSVData catUni //
-    {.nMaxPurchases = 64u, .cost = {.initial = 250.f, .exponential = 1.75f}, .value = {}};
+    {.nMaxPurchases = 64u, .cost = {.initial = 350.f, .linear = 300.f, .exponential = 1.75f}, .value = {}};
 
 inline constexpr PSVData catUniCooldownMult //
     {.nMaxPurchases = 12u,

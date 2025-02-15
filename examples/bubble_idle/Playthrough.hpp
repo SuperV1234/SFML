@@ -330,8 +330,7 @@ struct Playthrough
                                   1'000'000'000, // Victory
                               });
 
-        return static_cast<MoneyType>(
-            static_cast<float>(baseRequiredRewards[asIdx(type)]) * getComputedGlobalCostMultiplier());
+        return static_cast<MoneyType>(static_cast<float>(baseRequiredRewards[asIdx(type)]));
     }
 
     ////////////////////////////////////////////////////////////
@@ -396,28 +395,6 @@ struct Playthrough
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] float getComputedGlobalCostMultiplier() const
-    {
-        const auto nCatNormal = getCatCountByType(CatType::Normal);
-        const auto nCatUni    = getCatCountByType(CatType::Uni);
-        const auto nCatDevil  = getCatCountByType(CatType::Devil);
-        const auto nCatAstro  = getCatCountByType(CatType::Astro);
-
-        // [ 0.25, 0.25 + 0.125, 0.25 + 0.125 + 0.0625, ... ]
-        const auto geomSum = [](auto n)
-        { return static_cast<float>(n) <= 0.f ? 0.f : 0.5f * (1.f - sf::base::pow(0.5f, static_cast<float>(n) + 1.f)); };
-
-        return 1.f +                                            //
-               (geomSum(psvComboStartTime.nPurchases) * 0.1f) + //
-               (geomSum(psvBubbleCount.nPurchases) * 0.5f) +    //
-               (geomSum(psvBubbleValue.nPurchases) * 0.75f) +   //
-               (geomSum(nCatNormal) * 0.35f) +                  //
-               (geomSum(nCatUni) * 0.5f) +                      //
-               (geomSum(nCatDevil) * 0.75f) +                   //
-               (geomSum(nCatAstro) * 0.75f);
-    }
-
-    ////////////////////////////////////////////////////////////
     [[nodiscard]] bool isBubbleValueUnlocked() const // also unlocks prestige
     {
         const auto nCatUni = getCatCountByType(CatType::Uni);
@@ -427,7 +404,6 @@ struct Playthrough
     ////////////////////////////////////////////////////////////
     [[nodiscard]] bool canBuyNextPrestige() const
     {
-        return psvBubbleValue.nextCost() * getComputedGlobalCostMultiplier() <= static_cast<float>(money) &&
-               nShrinesCompleted >= psvBubbleValue.nPurchases;
+        return psvBubbleValue.nextCost() <= static_cast<float>(money) && nShrinesCompleted >= psvBubbleValue.nPurchases;
     }
 };

@@ -209,6 +209,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(
     highestStarBubblePopCombo,
     nAbsorbedStarBubbles,
     nSpellCasts,
+    nWitchcatRitualsPerCatType,
     nMaintenances,
     highestSimultaneousMaintenances);
 

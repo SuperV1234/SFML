@@ -25,7 +25,7 @@ struct [[nodiscard]] PurchasableScalingValue
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard]] auto maxSubsequentPurchases(const MoneyType money, float globalMultiplier) const
+    [[nodiscard]] auto maxSubsequentPurchases(const MoneyType money) const
     {
         struct Result
         {
@@ -40,8 +40,7 @@ struct [[nodiscard]] PurchasableScalingValue
         // Try to purchase as many subsequent upgrades as possible.
         for (; i < data->nMaxPurchases; ++i)
         {
-            const auto currentCost = static_cast<MoneyType>(
-                data->cost.computeGrowth(static_cast<float>(i)) * globalMultiplier);
+            const auto currentCost = static_cast<MoneyType>(data->cost.computeGrowth(static_cast<float>(i)));
 
             if (cumulative + currentCost > money)
                 break;
@@ -53,10 +52,7 @@ struct [[nodiscard]] PurchasableScalingValue
 
         // If further purchases are possible, compute the cost for one more.
         if (nPurchases < data->nMaxPurchases)
-        {
-            result.nextCost = cumulative +
-                              static_cast<MoneyType>(data->cost.computeGrowth(static_cast<float>(i)) * globalMultiplier);
-        }
+            result.nextCost = cumulative + static_cast<MoneyType>(data->cost.computeGrowth(static_cast<float>(i)));
 
         return result;
     }

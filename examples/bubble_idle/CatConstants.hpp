@@ -53,7 +53,7 @@ inline constexpr EXACT_ARRAY(
     baseCooldowns,
     nCatTypes,
     {
-        850.f,   // Normal
+        750.f,   // Normal
         3000.f,  // Uni
         7000.f,  // Devil
         10000.f, // Astro

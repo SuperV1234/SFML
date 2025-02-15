@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BubbleType.hpp"
+#include "CatType.hpp"
 #include "PSVDataConstants.hpp"
 
 #include "SFML/Base/IntTypes.hpp"
@@ -19,6 +20,8 @@ struct [[nodiscard]] Stats
     sf::base::U64 highestStarBubblePopCombo                               = 0u;
     sf::base::U64 nAbsorbedStarBubbles                                    = 0u;
     sf::base::U64 nSpellCasts[PSVDataConstants::spellCount.nMaxPurchases] = {};
+    sf::base::U64 nWitchcatRitualsPerCatType[nCatTypes]                   = {};
+    sf::base::U64 nWitchcatDollsCollected                                 = 0u;
     sf::base::U64 nMaintenances                                           = 0u;
     sf::base::U64 highestSimultaneousMaintenances                         = 0u;
 

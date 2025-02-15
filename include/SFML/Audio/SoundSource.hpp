@@ -140,7 +140,7 @@ public:
     /// \see `isSpatializationEnabled`
     ///
     ////////////////////////////////////////////////////////////
-    void setSpatializationEnabled(bool enabled); // TODO P0: BUBBLEBYTE
+    void setSpatializationEnabled(bool enabled);
 
     ////////////////////////////////////////////////////////////
     /// \brief Set the 3D position of the sound in the audio scene
