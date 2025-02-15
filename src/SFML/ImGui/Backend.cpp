@@ -8,6 +8,7 @@
 #include "SFML/Window/GLCheck.hpp"
 #include "SFML/Window/Glad.hpp"
 
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include <imgui.h>
 
 #if defined(__APPLE__)

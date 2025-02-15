@@ -7,11 +7,11 @@
 
 #include "SFML/System/Vector2.hpp"
 
+#include "SFML/Base/Constants.hpp"
 #include "SFML/Base/IntTypes.hpp"
+#include "SFML/Base/Math/Sin.hpp"
 #include "SFML/Base/Optional.hpp"
 #include "SFML/Base/SizeT.hpp"
-
-#include <cmath>
 
 
 ////////////////////////////////////////////////////////////
@@ -66,7 +66,7 @@ struct [[nodiscard]] Cat
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline, gnu::pure]] inline sf::Vector2f getDrawPosition() const
     {
-        return position + sf::Vector2f{0.f, std::sin(wobbleRadians * 2.f) * 7.5f};
+        return position + sf::Vector2f{0.f, sf::base::sin(wobbleRadians * 2.f) * 7.5f};
     }
 
     ////////////////////////////////////////////////////////////

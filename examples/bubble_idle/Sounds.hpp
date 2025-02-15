@@ -69,6 +69,9 @@ struct Sounds
     LoadedSound buffoff{"buffoff.ogg"};
     LoadedSound buffon{"buffon.ogg"};
     LoadedSound kaching{"kaching.ogg"};
+    LoadedSound coin{"coin.ogg"};
+    LoadedSound btnswitch{"btnswitch.ogg"};
+    LoadedSound uitab{"uitab.ogg"};
 
     ////////////////////////////////////////////////////////////
     std::vector<sf::Sound> soundsBeingPlayed;
@@ -114,10 +117,14 @@ struct Sounds
         setupUISound(notification);
         setupUISound(buffoff);
         setupUISound(buffon);
+        setupUISound(coin);
+        setupUISound(btnswitch);
+        setupUISound(uitab);
 
         scratch.setVolume(35.f);
         buy.setVolume(75.f);
         explosion.setVolume(75.f);
+        coin.setVolume(50.f);
     }
 
     ////////////////////////////////////////////////////////////

@@ -5,7 +5,9 @@
 
 #include "SFML/System/Vector2.hpp"
 
-#include <cmath>
+#include "SFML/Base/Constants.hpp"
+#include "SFML/Base/Math/Cos.hpp"
+#include "SFML/Base/Math/Sin.hpp"
 
 
 ////////////////////////////////////////////////////////////
@@ -47,8 +49,8 @@ struct [[nodiscard]] Doll
     ////////////////////////////////////////////////////////////
     [[nodiscard, gnu::always_inline, gnu::pure]] inline sf::Vector2f getDrawPosition() const
     {
-        const sf::Vector2f wobbleOffset{std::cos(wobbleRadians) * (7.5f + getDeathProgress() * 128.f),
-                                        std::sin(wobbleRadians) * (14.f + getDeathProgress() * 128.f)};
+        const sf::Vector2f wobbleOffset{sf::base::cos(wobbleRadians) * (7.5f + getDeathProgress() * 128.f),
+                                        sf::base::sin(wobbleRadians) * (14.f + getDeathProgress() * 128.f)};
 
         return position + getActivationProgress() * wobbleOffset;
     }

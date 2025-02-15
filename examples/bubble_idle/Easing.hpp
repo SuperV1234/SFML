@@ -5,6 +5,7 @@
 #include "SFML/Base/Constants.hpp"
 #include "SFML/Base/Math/Cos.hpp"
 #include "SFML/Base/Math/Pow.hpp"
+#include "SFML/Base/Math/Sin.hpp"
 
 
 ////////////////////////////////////////////////////////////
@@ -64,4 +65,16 @@ using EasingFn = float (*)(const float);
     const float c3 = c1 + 1.f;
 
     return 1.f + c3 * sf::base::pow(x - 1.f, 3.f) + c1 * sf::base::pow(x - 1.f, 2.f);
+}
+
+
+////////////////////////////////////////////////////////////
+[[nodiscard, gnu::always_inline, gnu::flatten, gnu::const]] inline constexpr float easeInOutElastic(const float x) noexcept
+{
+    const float c5 = (2.f * sf::base::pi) / 4.5f;
+
+    return x == 0.f   ? 0.f
+           : x == 1.f ? 1.f
+           : x < 0.5f ? -(sf::base::pow(2.f, 20.f * x - 10.f) * sf::base::sin((20.f * x - 11.125f) * c5)) / 2.f
+                      : (sf::base::pow(2.f, -20.f * x + 10.f) * sf::base::sin((20.f * x - 11.125f) * c5)) / 2.f + 1.f;
 }
