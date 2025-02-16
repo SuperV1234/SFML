@@ -42,6 +42,8 @@ using EasingFn = float (*)(const float);
 ////////////////////////////////////////////////////////////
 [[nodiscard, gnu::always_inline, gnu::flatten, gnu::const]] inline constexpr float easeInOutBack(const float x) noexcept
 {
+    ASSERT_AND_ASSUME(x >= 0.f && x <= 1.f);
+
     const float c1 = 1.70158f;
     const float c2 = c1 * 1.525f;
 
@@ -52,6 +54,8 @@ using EasingFn = float (*)(const float);
 ////////////////////////////////////////////////////////////
 [[nodiscard, gnu::always_inline, gnu::flatten, gnu::const]] inline constexpr float easeInBack(const float x) noexcept
 {
+    ASSERT_AND_ASSUME(x >= 0.f && x <= 1.f);
+
     const float c1 = 1.70158f;
     const float c3 = c1 + 1.f;
 
@@ -61,6 +65,8 @@ using EasingFn = float (*)(const float);
 ////////////////////////////////////////////////////////////
 [[nodiscard, gnu::always_inline, gnu::flatten, gnu::const]] inline constexpr float easeOutBack(const float x) noexcept
 {
+    ASSERT_AND_ASSUME(x >= 0.f && x <= 1.f);
+
     const float c1 = 1.70158f;
     const float c3 = c1 + 1.f;
 
@@ -71,6 +77,8 @@ using EasingFn = float (*)(const float);
 ////////////////////////////////////////////////////////////
 [[nodiscard, gnu::always_inline, gnu::flatten, gnu::const]] inline constexpr float easeInOutElastic(const float x) noexcept
 {
+    ASSERT_AND_ASSUME(x >= 0.f && x <= 1.f);
+
     const float c5 = (2.f * sf::base::pi) / 4.5f;
 
     return x == 0.f   ? 0.f

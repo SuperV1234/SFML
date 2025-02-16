@@ -1,7 +1,6 @@
 #pragma once
 
 #include "AssertAssume.hpp"
-#include "Easing.hpp"
 
 #include "SFML/Base/IntTypes.hpp"
 #include "SFML/Base/Math/Fabs.hpp"
@@ -100,24 +99,21 @@ struct [[nodiscard]] Timer // TODO P2: turn to free funcs?
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline, gnu::flatten, gnu::pure]] constexpr float getProgressForward(
-        const EasingFn easingFn = easeIdentity) const noexcept
+    [[nodiscard, gnu::always_inline, gnu::flatten, gnu::pure]] constexpr float getProgressForward() const noexcept
     {
-        return easingFn(value);
+        return value;
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline, gnu::flatten, gnu::pure]] constexpr float getProgressBackwards(
-        const EasingFn easingFn = easeIdentity) const noexcept
+    [[nodiscard, gnu::always_inline, gnu::flatten, gnu::pure]] constexpr float getProgressBackwards() const noexcept
     {
-        return easingFn(1.f - value);
+        return 1.f - value;
     }
 
     ////////////////////////////////////////////////////////////
-    [[nodiscard, gnu::always_inline, gnu::flatten, gnu::pure]] constexpr float getProgressBounced(
-        const EasingFn easingFn = easeIdentity) const noexcept
+    [[nodiscard, gnu::always_inline, gnu::flatten, gnu::pure]] constexpr float getProgressBounced() const noexcept
     {
-        return easingFn(1.f - sf::base::fabs(value - 0.5f) * 2.f);
+        return 1.f - sf::base::fabs(value - 0.5f) * 2.f;
     }
 
     ////////////////////////////////////////////////////////////

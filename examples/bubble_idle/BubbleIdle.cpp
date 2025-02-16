@@ -268,7 +268,7 @@ void drawSplashScreen(sf::RenderWindow&        window,
                       const sf::Vector2f       resolution,
                       const float              hudScale)
 {
-    const auto progress = splashCountdown.getProgressBounced(easeInOutCubic);
+    const auto progress = easeInOutCubic(splashCountdown.getProgressBounced());
 
     window.draw({.position    = resolution / 2.f / hudScale,
                  .scale       = sf::Vector2f{0.7f, 0.7f} * (0.35f + 0.65f * easeInOutCubic(progress)) / hudScale,
@@ -6569,9 +6569,12 @@ Using prestige points, TODO P0
         const sf::View hudView = makeScaledHUDView(resolution, profile.hudScale);
         window.setView(hudView);
 
-        hudDrawableBatch.clear();
-        gameLoopDrawHUDParticles();
-        window.draw(hudDrawableBatch, {.texture = &textureAtlas.getTexture(), .shader = &shader});
+        if (shouldDrawUI)
+        {
+            hudDrawableBatch.clear();
+            gameLoopDrawHUDParticles();
+            window.draw(hudDrawableBatch, {.texture = &textureAtlas.getTexture(), .shader = &shader});
+        }
 
         moneyText.setString("$" + std::string(toStringWithSeparators(pt.money + spentMoney)));
         moneyText.scale  = {0.5f, 0.5f};
@@ -6709,9 +6712,12 @@ Using prestige points, TODO P0
         gameLoopDrawImGui();
 
         // Top-level hud particles
+        if (shouldDrawUI)
+        {
         hudTopDrawableBatch.clear();
         gameLoopDrawHUDTopParticles();
         window.draw(hudTopDrawableBatch, {.texture = &textureAtlas.getTexture(), .shader = &shader});
+        }
 
         //
         // High visibility cursor
